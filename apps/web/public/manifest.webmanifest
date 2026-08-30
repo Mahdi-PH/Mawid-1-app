@@ -1,0 +1,17 @@
+{
+  "name": "موعد — إدارة حجوزات العيادات",
+  "short_name": "موعد",
+  "description": "نظام حجوزات عيادات يعمل بدون إنترنت، للاستقبال وشاشة صالة الانتظار.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "lang": "ar",
+  "dir": "rtl",
+  "background_color": "#f5f3ee",
+  "theme_color": "#0f7a6c",
+  "icons": [
+    { "src": "/brand/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/brand/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
