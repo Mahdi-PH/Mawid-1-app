@@ -1,0 +1,12 @@
+<!-- Wordmark: مَوْعِد (Mawid) set in Amiri Bold with full tashkeel.
+     Uses foreignObject + real CSS so Arabic bidi/shaping renders exactly as
+     in a browser. Load Amiri (Google Fonts) alongside this file when
+     embedding in an app; for a font-independent asset use wordmark-teal.png. -->
+<svg width="590" height="300" viewBox="0 0 590 300" xmlns="http://www.w3.org/2000/svg" xmlns:xhtml="http://www.w3.org/1999/xhtml" role="img" aria-label="موعد">
+  <style><![CDATA[
+    @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@700&display=swap');
+  ]]></style>
+  <foreignObject x="0" y="0" width="590" height="300">
+    <xhtml:div style="direction:rtl; display:flex; align-items:center; justify-content:flex-end; width:100%; height:100%; padding:0 20px; box-sizing:border-box; font-family:'Amiri','Traditional Arabic',serif; font-weight:700; font-size:220px; line-height:1; color:#0f7a6c; white-space:nowrap;">مَوْعِد</xhtml:div>
+  </foreignObject>
+</svg>

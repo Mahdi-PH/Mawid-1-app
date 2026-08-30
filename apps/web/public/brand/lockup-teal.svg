@@ -1,0 +1,29 @@
+<!-- Horizontal lockup: icon mark + "مَوْعِد" wordmark, for headers and splash
+     screens. Icon leads on the right, matching RTL reading order. -->
+<svg width="740" height="300" viewBox="0 0 740 300" xmlns="http://www.w3.org/2000/svg" xmlns:xhtml="http://www.w3.org/1999/xhtml" role="img" aria-label="موعد">
+  <style><![CDATA[
+    @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@700&display=swap');
+  ]]></style>
+  <defs>
+    <radialGradient id="mawid-bg-lockup" cx="32%" cy="28%" r="85%">
+      <stop offset="0%" stop-color="#17a892"/>
+      <stop offset="55%" stop-color="#0f7a6c"/>
+      <stop offset="100%" stop-color="#0a5a4f"/>
+    </radialGradient>
+    <clipPath id="mawid-round-lockup">
+      <rect x="520" y="40" width="220" height="220" rx="50" ry="50"/>
+    </clipPath>
+  </defs>
+
+  <foreignObject x="0" y="0" width="500" height="300">
+    <xhtml:div style="direction:rtl; display:flex; align-items:center; justify-content:flex-end; width:100%; height:100%; box-sizing:border-box; font-family:'Amiri','Traditional Arabic',serif; font-weight:700; font-size:200px; line-height:1; color:#0f7a6c; white-space:nowrap;">مَوْعِد</xhtml:div>
+  </foreignObject>
+
+  <g clip-path="url(#mawid-round-lockup)">
+    <rect x="520" y="40" width="220" height="220" fill="url(#mawid-bg-lockup)"/>
+    <g transform="translate(630,164) scale(0.43)" fill="none" stroke="#f5fbf9" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="38" cy="-26" r="58" stroke-width="42"/>
+      <path d="M 10 22 C -20 76, -78 104, -112 92 C -136 84, -146 62, -134 42" stroke-width="42" fill="none"/>
+    </g>
+  </g>
+</svg>

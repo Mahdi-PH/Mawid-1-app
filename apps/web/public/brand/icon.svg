@@ -1,0 +1,18 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="شعار موعد">
+  <defs>
+    <radialGradient id="mawid-bg" cx="32%" cy="28%" r="85%">
+      <stop offset="0%" stop-color="#17a892"/>
+      <stop offset="55%" stop-color="#0f7a6c"/>
+      <stop offset="100%" stop-color="#0a5a4f"/>
+    </radialGradient>
+  </defs>
+  <!-- Full-bleed square on purpose: iOS/Android/Windows each apply their own
+       icon mask (squircle, circle, teardrop). Do not pre-round this file -
+       the glyph below stays inside Android's adaptive-icon safe zone
+       (~64% of the canvas, centered) so it survives every mask shape. -->
+  <rect x="0" y="0" width="512" height="512" fill="url(#mawid-bg)"/>
+  <g transform="translate(256,264)" fill="none" stroke="#f5fbf9" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="38" cy="-26" r="58" stroke-width="42"/>
+    <path d="M 10 22 C -20 76, -78 104, -112 92 C -136 84, -146 62, -134 42" stroke-width="42" fill="none"/>
+  </g>
+</svg>
