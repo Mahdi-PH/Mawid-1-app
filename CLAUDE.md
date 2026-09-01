@@ -58,15 +58,24 @@ localStorage-backed, no server):
 1. **Home**: choose "عيادة" (badge: أول شهر مجاناً) or "مراجع" (badge: مجاني دائماً).
 2. **Clinic path**: subscription screen (one free-plan card; price after
    month 1 explicitly marked "لم يُحدَّد بعد" / TBD and editable, per the
-   user's instruction — no invented paid tiers) → **account creation**
-   (clinic name, unique username with live availability check against a
-   reserved-word list + existing accounts, password + confirm) → success
-   screen with a **shareable public booking link**
-   (`<page-url>#book/<username>`) with copy button + WhatsApp share intent →
-   reception dashboard (timeline + waiting-room TV), now scoped per
-   logged-in clinic account rather than a single hardcoded clinic. A
+   user's instruction — no invented paid tiers) → a **"الدفع بعد انتهاء
+   الشهر المجاني"** info card showing a payment account number
+   (`910459764999`, user-supplied, with a copy button — informational only,
+   no real payment processing) → **account creation** (clinic name, unique
+   username with live availability check against a reserved-word list +
+   existing accounts, optional specialty, optional المحافظة/الحي/الشارع
+   location picked from the *same* `GEO` table the patient side uses,
+   password + confirm) → success screen with a **shareable public booking
+   link** (`<page-url>#book/<username>`) with copy button + WhatsApp share
+   intent → reception dashboard (timeline + waiting-room TV), now scoped
+   per logged-in clinic account rather than a single hardcoded clinic. A
    **login screen** exists for returning owners (demo credentials
-   `alnoor-demo` / `demo1234` pre-seeded and shown on the login screen).
+   `alnoor-demo` / `demo1234` pre-seeded and shown on the login screen). A
+   clinic that sets a governorate+district also becomes findable through
+   the patient directory's browse/GPS search (`directoryClinics()` merges
+   the static demo list with any clinic account that set a location) — not
+   only reachable via its direct link, per the user's explicit ask that the
+   two windows "sync."
 3. **Patient path**: GPS auto-detects location (`navigator.geolocation`),
    matched to the nearest entry in a small hardcoded country→governorate→
    district directory (no real reverse-geocoding API is reachable from the
@@ -96,6 +105,16 @@ file with no backend, and were explained to the user each time):
 - Account/session data lives only in the creating browser's localStorage —
   no cross-device sync. This is exactly what the real Postgres-backed
   server already built in `apps/server` would solve.
+- The "الدفع بعد انتهاء الشهر المجاني" account number is static, informational
+  text (a manual bank/wallet transfer instruction) — there is no payment
+  gateway, invoicing, or subscription-expiry tracking behind it.
+
+Visual: the demo layers soft radial/linear gradients (`--grad-page`,
+`--grad-card`, `--grad-bar`, `--grad-accent` in the `<style>` root tokens)
+over the same teal accent (`#0F7A6C` / `#2DD6BD` dark) on the page
+background, primary buttons, topbars, and card surfaces — the brand color
+itself was deliberately left unchanged, only given more depth, per the
+user's request.
 
 ## Deployment status
 
