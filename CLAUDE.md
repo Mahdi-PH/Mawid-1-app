@@ -55,7 +55,11 @@ approved. Current artifact URL (same URL republished on every iteration):
 What the artifact currently demonstrates end-to-end (all client-side,
 localStorage-backed, no server):
 
-1. **Home**: choose "عيادة" (badge: أول شهر مجاناً) or "مراجع" (badge: مجاني دائماً).
+1. **Home**: choose "عيادة" or "مراجع" — both role-card titles set in the
+   teal accent color (not the default near-black ink) for prominence. No
+   pricing badges on this screen (removed per the user's ask — "أول شهر
+   مجاناً" / "مجاني دائماً" now only appear where they're contextually
+   relevant, e.g. the subscription screen).
 2. **Clinic path**: subscription screen (one free-plan card; price after
    month 1 explicitly marked "لم يُحدَّد بعد" / TBD and editable, per the
    user's instruction — no invented paid tiers) → a **"الدفع بعد انتهاء
@@ -72,20 +76,19 @@ localStorage-backed, no server):
    **login screen** exists for returning owners (demo credentials
    `alnoor-demo` / `demo1234` pre-seeded and shown on the login screen). A
    clinic that sets a governorate+district also becomes findable through
-   the patient directory's browse/GPS search (`directoryClinics()` merges
+   the patient directory's browse/search (`directoryClinics()` merges
    the static demo list with any clinic account that set a location) — not
    only reachable via its direct link, per the user's explicit ask that the
    two windows "sync."
-3. **Patient path**: GPS auto-detects location (`navigator.geolocation`),
-   matched to the nearest entry in a small hardcoded country→governorate→
-   district directory (no real reverse-geocoding API is reachable from the
-   artifact sandbox — see caveat below), with manual country/governorate/
-   district selects as fallback/override. Clinic list sorted by real
-   Haversine distance from the actual GPS coordinates. Clicking a clinic
-   shows today's live slot grid; requesting a slot collects name+phone (no
-   account) and lands in a "طلباتي" pending-confirmation list.
+3. **Patient path**: no GPS — the user asked for it removed. A search box
+   (clinic name, live substring filter) plus a "الحي" dropdown (flattened
+   from the same `GEO` table the clinic signup form uses) replaced the old
+   GPS/reverse-geocoding flow entirely; both filters combine, and the full
+   list shows by default. Clicking a clinic shows today's live slot grid;
+   requesting a slot collects name+phone (no account) and lands in a
+   "طلباتي" pending-confirmation list.
 4. **Direct booking link** (`#book/<username>`): opens straight into that
-   one clinic's booking window, skipping home/role-picker/GPS entirely —
+   one clinic's booking window, skipping home/role-picker/search entirely —
    this is literally the "شارك الرابط في مواقع التواصل" feature. It only
    resolves within the same browser that created the account, since the
    artifact has no backend — **told to the user explicitly**, not silently
@@ -98,10 +101,6 @@ file with no backend, and were explained to the user each time):
 
 - Passwords are stored in plain text in `localStorage` — demo-only, never
   do this server-side (the real `apps/server` would hash them).
-- Reverse geocoding (lat/lng → country/governorate/district names) is
-  approximated from a ~10-entry hardcoded list, not a real geocoding API
-  (CSP blocks arbitrary outbound fetch from the artifact). Distances in km
-  ARE real, computed from real device GPS coordinates via Haversine.
 - Account/session data lives only in the creating browser's localStorage —
   no cross-device sync. This is exactly what the real Postgres-backed
   server already built in `apps/server` would solve.
