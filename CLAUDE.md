@@ -66,27 +66,35 @@ localStorage-backed, no server):
    الشهر المجاني"** info card showing a payment account number
    (`910459764999`, user-supplied, with a copy button — informational only,
    no real payment processing) → **account creation** (clinic name, unique
-   username with live availability check against a reserved-word list +
-   existing accounts, optional specialty, optional المحافظة/الحي/الشارع
-   location picked from the *same* `GEO` table the patient side uses,
-   password + confirm) → success screen with a **shareable public booking
-   link** (`<page-url>#book/<username>`) with copy button + WhatsApp share
-   intent → reception dashboard (timeline + waiting-room TV), now scoped
-   per logged-in clinic account rather than a single hardcoded clinic. A
-   **login screen** exists for returning owners (demo credentials
-   `alnoor-demo` / `demo1234` pre-seeded and shown on the login screen). A
-   clinic that sets a governorate+district also becomes findable through
-   the patient directory's browse/search (`directoryClinics()` merges
-   the static demo list with any clinic account that set a location) — not
-   only reachable via its direct link, per the user's explicit ask that the
-   two windows "sync."
-3. **Patient path**: no GPS — the user asked for it removed. A search box
-   (clinic name, live substring filter) plus a "الحي" dropdown (flattened
-   from the same `GEO` table the clinic signup form uses) replaced the old
-   GPS/reverse-geocoding flow entirely; both filters combine, and the full
-   list shows by default. Clicking a clinic shows today's live slot grid;
+   username — accepts upper/lowercase letters, digits, `_` and `-`, case
+   preserved and case-sensitive, checked against a reserved-word list +
+   existing accounts; optional specialty; optional المحافظة/الحي/الشارع
+   location picked from the *same* `GEO` table the patient side searches,
+   governorates flattened across every country in `GEO` with Iraq listed
+   first; password + confirm) → success screen with a **shareable public
+   booking link** (`<page-url>#book/<username>`) with copy button +
+   WhatsApp share intent → reception dashboard (timeline + waiting-room
+   TV), now scoped per logged-in clinic account rather than a single
+   hardcoded clinic. A **login screen** exists for returning owners (two
+   pre-seeded demo accounts, both password `demo1234`: `alnoor-demo` in
+   Riyadh, `karbala-demo` in Karbala). A clinic that sets a
+   governorate+district also becomes findable through the patient
+   directory's search (`directoryClinics()` merges the static demo list
+   with any clinic account that set a location) — not only reachable via
+   its direct link, per the user's explicit ask that the two windows
+   "sync."
+3. **Patient path**: no GPS — the user asked for it removed. A single
+   search box (no district dropdown) matches against `"اسم العيادة - الحي"`
+   combined, so typing either the clinic name or its district finds it,
+   exactly as asked. Clicking a clinic shows today's live slot grid;
    requesting a slot collects name+phone (no account) and lands in a
-   "طلباتي" pending-confirmation list.
+   "طلباتي" pending-confirmation list. Every clinic that is a real
+   registered account (`accountKey` set) shows a light-blue gradient
+   checkmark next to its name in both the list and the detail header
+   (`verifiedBadge()`); directory-only/static demo entries never get one —
+   this is the one honest way to distinguish "really registered in موعد"
+   from "just listed," since there is no real data source behind the
+   listing (see below).
 4. **Direct booking link** (`#book/<username>`): opens straight into that
    one clinic's booking window, skipping home/role-picker/search entirely —
    this is literally the "شارك الرابط في مواقع التواصل" feature. It only
@@ -107,6 +115,22 @@ file with no backend, and were explained to the user each time):
 - The "الدفع بعد انتهاء الشهر المجاني" account number is static, informational
   text (a manual bank/wallet transfer instruction) — there is no payment
   gateway, invoicing, or subscription-expiry tracking behind it.
+- **Karbala, Iraq is the app's designated official location** (`GEO.العراق
+  .كربلاء`, listed first in every location picker) — the user asked for
+  this explicitly, and separately asked to seed the search database with
+  every clinic registered with Iraq's Ministry of Health in Karbala
+  governorate. That second part was **not done**: this session has no
+  access to any real MOH registry, and fabricating a list of real-sounding
+  clinic names and presenting them as ministry-verified would be inventing
+  fake official records — explicitly refused, and the user agreed when
+  asked. What exists instead are two clearly-labeled placeholder Karbala
+  entries (`"عيادة كربلاء التجريبية (مثال توضيحي)"` as a real seeded account,
+  `"مركز الفرات الطبي (مثال توضيحي)"` as a directory-only static entry) whose
+  names say outright that they're illustrative. If a real MOH dataset is
+  ever provided (by the user, or a real integration), it should replace
+  these placeholders and populate `directoryClinics()`/`CLINICS` for real —
+  see `verifiedBadge()` in the artifact for how registered-vs-listed is
+  distinguished today.
 
 Visual: the demo layers soft radial/linear gradients (`--grad-page`,
 `--grad-card`, `--grad-bar`, `--grad-accent` in the `<style>` root tokens)
