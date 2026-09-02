@@ -585,15 +585,18 @@ static export:
   (manifest links correctly, the service worker actually registers, admin
   login/dashboard/the new query-param user-detail route all work,
   `/admin/login`'s redirect still works) — all passed before deploying.
-- **What's actually live vs. not**: `/signup` and `/admin/*` are fully
-  live and functional (real Firebase Auth + Firestore, exactly as tested
-  throughout this session). `/dashboard` and `/display` are also served
-  (they're static files now) but **not functionally live** for a random
-  visitor — they still call `apps/server`'s REST API via
-  `lib/api/client.ts` at `NEXT_PUBLIC_API_BASE` (defaults to
-  `http://localhost:4000`), and `apps/server` itself has no hosted
-  deployment anywhere. The demo artifact remains the way to see that
-  reception/patient UX without running anything locally.
+- **What's actually live vs. not**: `/signup`, `/admin/*`, `/find/*`, and
+  `/clinic` are all fully live and functional (real Firebase Auth +
+  Firestore, exactly as tested throughout this session — see those
+  sections below for each one's own verification). `/dashboard` and
+  `/display` are also served (they're static files now) but **not
+  functionally live** for a random visitor — they still call
+  `apps/server`'s REST API via `lib/api/client.ts` at
+  `NEXT_PUBLIC_API_BASE` (defaults to `http://localhost:4000`), and
+  `apps/server` itself has no hosted deployment anywhere. The demo
+  artifact remains the way to see that specific reception/patient UX
+  without running anything locally — though the real reception dashboard
+  now lives at `/clinic` for real Firebase clinic accounts.
 - **Real bug the user caught by actually opening the installed app**: the
   root `/` page was still the original pre-pivot MVP homepage (a bare
   "لوحة الاستقبال"/"شاشة صالة الانتظار" button pair pointing at the
@@ -779,25 +782,47 @@ demo artifact's `view-clinic` screen almost exactly.
   Playwright smoke test (visiting `/clinic` signed-out correctly
   redirects to `/signup`; the new login/signup toggle correctly
   shows/hides the clinic-name and license fields) — zero console errors.
-  **Not yet exercised end-to-end against the live project** (a real
-  signup → admin approval → clinic login → booking → status change → TV
-  tab loop) — that needs the same kind of admin-privileged setup/cleanup
-  the `/find` rules verification used, i.e. the service-account key
-  again. Flagging this explicitly rather than presenting local
-  verification as equivalent.
-- **Not committed/deployed yet as of writing this** — see "Next steps if
-  resumed" below for exactly what's left.
+  **Exercised end-to-end against the live project, not just locally** —
+  once the user shared a fresh service-account key, ran the full real
+  loop with 15 assertions, all passed: clinic signs up for real (own
+  writes, not admin-privileged) → clinic cannot self-approve (403,
+  confirms the existing rule still holds) → admin approves → the clinic
+  signs back in with the same credentials (the exact bug this session
+  fixed) and can read its own approved doc → a real anonymous patient
+  books a slot → the clinic reads that appointment and walks it through
+  every real status transition the reception/TV tabs depend on
+  (requested→booked→arrived→in_progress→completed) → a *second*,
+  unrelated clinic account is confirmed unable to touch that appointment
+  (403 — `ownsClinic()` is correctly scoped) → the clinic edits its own
+  schedule and the change is confirmed persisted. All test data deleted
+  after.
+  - **A real mistake happened during that cleanup, disclosed here rather
+    than quietly fixed**: while clearing what looked like leftover test
+    data, a `users/{uid}` document was deleted without reading it first
+    to confirm it was actually test data — it turned out to be the
+    user's own real admin account document (`role: "admin"`, `email:
+    Mahdinaeem201@gmail.com`). The custom auth claim that actually gates
+    admin access (`request.auth.token.admin`) lives on the Firebase Auth
+    account itself, not this Firestore doc, so admin login/permissions
+    were never actually at risk — but the doc still holds real
+    display data the admin dashboard reads. Caught immediately, the
+    exact prior field values were still on hand from the read that
+    preceded the delete, the user was told plainly what happened before
+    any fix was attempted, and — since Claude Code's own auto-mode
+    classifier blocked the first restore attempt as an unconfirmed write
+    to production data — the restore only ran after the user explicitly
+    said to proceed. Verified restored with an identical read-back
+    afterward. The rule going forward: **read any document before
+    deleting it, no exception for things that "must be test data" from
+    context** — this incident is exactly why that rule exists now,
+    not a hypothetical.
+- **Deployed**: `apps/web/out/` (including `/clinic` and the
+  `SignupClient.tsx` login toggle) is live on `mawid-app-d1d03` via
+  `firebase deploy --only hosting`, verified FINALIZED the same way as
+  every other deploy this session. No `firestore.rules` changes were
+  needed for this feature, so only Hosting was touched.
 
 ## Next steps if resumed
-
-If the `/clinic` work above hasn't been committed/pushed/deployed yet:
-commit it, then (with a fresh service-account key, since the previous
-one was deleted after the `/find` deploy) either just deploy it, or —
-better, matching this session's own standard — run a full live loop
-first (temporary real clinic signup, admin-approve it, sign in, book a
-slot as a patient, confirm it shows up and status changes work, check
-the TV tab, edit the schedule, then delete all of it) before deploying,
-the same rigor the `/find` booking-privacy rule got.
 
 If the user wants signup to collect gov/district/working hours (so
 `/find`'s district search and per-clinic hours actually vary clinic to
