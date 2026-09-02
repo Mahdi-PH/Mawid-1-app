@@ -149,7 +149,7 @@ export default function AdminDashboardPage() {
                 <td className="px-4 py-2">{u.role === "admin" ? "مدير" : "عيادة"}</td>
                 <td className="px-4 py-2">{formatDate(u.createdAt)}</td>
                 <td className="px-4 py-2">
-                  <Link href={`/admin/users/${u.uid}`} className="text-brand-600 hover:underline">
+                  <Link href={`/admin/user?uid=${u.uid}`} className="text-brand-600 hover:underline">
                     التفاصيل ›
                   </Link>
                 </td>

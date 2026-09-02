@@ -18,7 +18,7 @@ relates to `apps/server`" at the bottom for the reasoning.
 - `apps/web/src/app/signup/` — the one public signup/sign-in page (see
   "Unified signup" below)
 - `apps/web/src/app/admin/` — the admin dashboard (`/admin`,
-  `/admin/users/[uid]`; `/admin/login` just redirects to `/signup` now)
+  `/admin/user?uid=...`; `/admin/login` just redirects to `/signup` now)
 - `apps/web/scripts/seed-admin.mjs` — creates/promotes the one primary admin
   account (never done client-side — see the script's own comments for why)
 
@@ -190,10 +190,11 @@ ADMIN_PASSWORD='a-strong-password' \
 npm run seed:admin --workspace=apps/web
 ```
 
-Sign in at `/admin/login` with that email/password. If you were already
-signed in as this user in a browser before running the script, sign out
-and back in — custom claims (the `admin: true` flag security rules check)
-only refresh on a fresh token.
+Sign in at `/signup` with that email/password (it becomes a sign-in, not
+a new signup, for the address matching `NEXT_PUBLIC_ADMIN_EMAIL`). If you
+were already signed in as this user in a browser before running the
+script, sign out and back in — custom claims (the `admin: true` flag
+security rules check) only refresh on a fresh token.
 
 ## 5. Testing locally without touching the real project
 
@@ -213,7 +214,54 @@ double-booking, malformed input, self-approval/email-spoofing on the
 clinic approval workflow, the inline license-image size cap) — not
 shipped untested.
 
-## 6. Spark (free) plan — what stays free
+## 6. Deploy apps/web as an installable app — DONE, live at mawid-app-d1d03.web.app
+
+`apps/web` builds as a Next.js **static export** (`next.config.js`
+`output: "export"`) and deploys to **Firebase Hosting** — free static
+hosting on the same project, no separate hosting account needed, and no
+Blaze requirement (unlike Firebase's SSR "web frameworks" integration,
+which needs Cloud Functions/Cloud Run).
+
+```bash
+npm run build --workspace=apps/web   # writes apps/web/out/
+firebase deploy --only hosting       # reads firebase.json's hosting.public: "apps/web/out"
+```
+
+This worked directly through the CLI with the service-account key — no
+permission wall, unlike Firestore rules/indexes or Storage earlier.
+
+**What's live vs. not**: `/signup` and `/admin/*` are fully functional
+(real Firebase Auth + Firestore). `/dashboard` and `/display` are served
+as static files too but aren't functionally live for a random visitor —
+they still call `apps/server`'s REST API (`NEXT_PUBLIC_API_BASE`,
+defaults to `http://localhost:4000`), and `apps/server` has no hosted
+deployment. The demo artifact is still the way to see that reception UX
+without running anything locally.
+
+Two routes needed real changes to become static-exportable, not just a
+config flip:
+- `/admin/users/[uid]` → `/admin/user?uid=...` — a static export has to
+  enumerate every dynamic-segment path at build time, impossible here
+  since uids aren't known until runtime; a query-param route sidesteps it.
+- `export const dynamic = "force-dynamic"` (on the admin layout and
+  `/signup`, added earlier only to survive a build-time prerender crash
+  when Firebase env vars were still missing) was removed — incompatible
+  with static export, and unnecessary now that `.env.local` has real
+  values baked in at build time instead of missing ones.
+
+**PWA installability**: `apps/web/public/manifest.webmanifest` +
+`public/sw.js` were already built (see root `CLAUDE.md`'s PWA section) —
+deploying to a real HTTPS origin is the only missing piece for the
+install prompt to actually appear, which this now provides. Verified
+locally (served the exported `out/` with a static file server; the
+service worker registers, the manifest link resolves, admin
+login/dashboard/the new query-param route all work) before deploying —
+this sandbox's own network egress policy doesn't allow reaching
+`*.web.app` to verify the live URL directly (confirmed live instead via
+the Firebase Hosting Management API), so open the link yourself on a
+real device to see the install prompt.
+
+## 7. Spark (free) plan — what stays free
 
 Firestore's free daily quota (check
 [firebase.google.com/pricing](https://firebase.google.com/pricing) for the
@@ -256,8 +304,9 @@ below, in case that changes later):
 
 - **Replace** (not chosen, but the option stays open): migrate
   `/dashboard`, `/display`, and the patient-facing screens onto
-  `lib/firebase/` too, and retire `apps/server` + Postgres entirely —
-  Firebase's free tier means the whole app could run without ever needing
-  paid hosting, which directly solves the "no live hosted URL, no hosting
-  credentials" gap noted in the root `CLAUDE.md`. Revisit this only if the
-  user asks for it explicitly.
+  `lib/firebase/` too, and retire `apps/server` + Postgres entirely — the
+  Firebase-backed parts of `apps/web` are already live on Firebase
+  Hosting's free tier (§6), so this would mean the *whole* app runs
+  without ever needing paid hosting, closing the remaining gap where
+  `/dashboard`/`/display` need `apps/server` deployed somewhere it isn't.
+  Revisit this only if the user asks for it explicitly.

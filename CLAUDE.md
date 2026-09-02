@@ -419,13 +419,49 @@ user's request.
 
 ## Deployment status
 
-No live hosted URL exists for the real Next.js/Express app — nothing has
-been deployed to Vercel/Railway/etc. (no hosting credentials available in
-this environment). What *does* work as a "try it now" link is the demo
-artifact above, and the PWA install flow once/if the real app is deployed
-somewhere. Asked the user once about deployment strategy (quick
-frontend-only demo vs full real deploy vs "not yet") — they chose to see
-the artifact demo instead of pursuing a real deploy at that point.
+**`apps/web` is live**: **https://mawid-app-d1d03.web.app**, deployed to
+Firebase Hosting (free static hosting, part of the same `mawid-app-d1d03`
+project as the Firebase backend track — no separate hosting account
+needed). Getting here required converting the whole app to a Next.js
+static export:
+
+- `next.config.js` now has `output: "export"` — every route was already a
+  client component with no server-only data fetching, so this cost
+  nothing except two things static export genuinely can't do: the old
+  `/admin/users/[uid]` dynamic segment (uids aren't known at build time)
+  became `/admin/user?uid=...` reading the id via `useSearchParams()`
+  instead; and `export const dynamic = "force-dynamic"` (added earlier to
+  dodge a build-time prerender crash when Firebase env vars were still
+  missing) was removed — no longer needed now that `.env.local` has real
+  values baked in at build time, and actively incompatible with static
+  export anyway.
+- Deployed via `firebase deploy --only hosting` with the service-account
+  key — this one worked through the CLI directly with no permission wall,
+  unlike Firestore rules/indexes or Storage earlier. Verified live and
+  finalized by reading the release back from the Firebase Hosting
+  Management API (`firebasehosting.googleapis.com`), since this sandbox's
+  own network egress policy doesn't allow reaching `*.web.app` directly to
+  curl/Playwright-test it — that's a limitation of this environment, not
+  of the deployment; the user needs to be the one to open the link and
+  confirm the install prompt on their own device.
+- Verified locally first, not just assumed: served the exported `out/`
+  directory with a static file server and ran Playwright against it
+  (manifest links correctly, the service worker actually registers, admin
+  login/dashboard/the new query-param user-detail route all work,
+  `/admin/login`'s redirect still works) — all passed before deploying.
+- **What's actually live vs. not**: `/signup` and `/admin/*` are fully
+  live and functional (real Firebase Auth + Firestore, exactly as tested
+  throughout this session). `/dashboard` and `/display` are also served
+  (they're static files now) but **not functionally live** for a random
+  visitor — they still call `apps/server`'s REST API via
+  `lib/api/client.ts` at `NEXT_PUBLIC_API_BASE` (defaults to
+  `http://localhost:4000`), and `apps/server` itself has no hosted
+  deployment anywhere. The demo artifact remains the way to see that
+  reception/patient UX without running anything locally.
+- To redeploy after future changes: `npm run build --workspace=apps/web`
+  (regenerates `apps/web/out/`), then `firebase deploy --only hosting`
+  from the repo root (needs `firebase login` or the same service-account
+  key approach).
 
 ## Next steps if resumed
 

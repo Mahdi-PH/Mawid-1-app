@@ -1,17 +1,20 @@
 "use client";
 
-// Forced dynamic (no static prerendering) via admin/layout.tsx.
-
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+// Query-param route (?uid=...) rather than a dynamic segment
+// (/admin/users/[uid]) — a static export (see next.config.js) has to
+// enumerate every dynamic-segment path at build time, which is impossible
+// here since uids aren't known until runtime. A single always-exported
+// page reading the id from the query string sidesteps that entirely.
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   adminGetUser,
   adminListAppointmentsForUser,
   deleteAppointment,
   setAppointmentStatus,
-} from "../../../../lib/firebase/firestore";
-import type { AppointmentDoc, AppointmentStatus, UserDoc } from "../../../../lib/firebase/types";
+} from "../../../lib/firebase/firestore";
+import type { AppointmentDoc, AppointmentStatus, UserDoc } from "../../../lib/firebase/types";
 
 const STATUS_LABEL: Record<AppointmentStatus, string> = {
   requested: "بانتظار تأكيد",
@@ -24,7 +27,16 @@ const STATUS_LABEL: Record<AppointmentStatus, string> = {
 };
 
 export default function AdminUserDetailPage() {
-  const { uid } = useParams<{ uid: string }>();
+  // useSearchParams() requires a Suspense boundary in the App Router.
+  return (
+    <Suspense fallback={<p className="text-gray-500">جارٍ التحميل…</p>}>
+      <AdminUserDetail />
+    </Suspense>
+  );
+}
+
+function AdminUserDetail() {
+  const uid = useSearchParams().get("uid") ?? "";
   const [user, setUser] = useState<UserDoc | null>(null);
   const [appts, setAppts] = useState<AppointmentDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,6 +49,10 @@ export default function AdminUserDetailPage() {
   }
 
   useEffect(() => {
+    if (!uid) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     reload()
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
@@ -55,6 +71,7 @@ export default function AdminUserDetailPage() {
     await reload();
   }
 
+  if (!uid) return <p className="text-red-600">لم يُحدَّد مستخدم (رابط ناقص).</p>;
   if (loading) return <p className="text-gray-500">جارٍ التحميل…</p>;
   if (error) return <p className="text-red-600">{error}</p>;
   if (!user) return <p className="text-gray-500">المستخدم غير موجود.</p>;

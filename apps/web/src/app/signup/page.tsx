@@ -1,9 +1,9 @@
-// Server Component wrapper — see admin/layout.tsx's comment for why this
-// has to be a Server Component: `dynamic` route-segment config is a no-op
-// in a "use client" file, and this page reads live Firebase config on
-// load, which next build would otherwise try (and fail) to prerender.
-export const dynamic = "force-dynamic";
+"use client";
 
+// force-dynamic isn't needed (or allowed) anymore — see admin/layout.tsx's
+// comment: real Firebase env values are now baked in at build time, and
+// this app builds as a static export (next.config.js output:"export"),
+// which is incompatible with that route-segment config anyway.
 import SignupClient from "./SignupClient";
 
 export default function SignupPage() {

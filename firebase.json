@@ -6,6 +6,11 @@
   "storage": {
     "rules": "storage.rules"
   },
+  "hosting": {
+    "public": "apps/web/out",
+    "cleanUrls": true,
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
+  },
   "emulators": {
     "auth": { "port": 9099 },
     "firestore": { "port": 8080 },
