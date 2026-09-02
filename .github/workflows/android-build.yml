@@ -31,6 +31,11 @@ jobs:
     defaults:
       run:
         working-directory: android
+    env:
+      # `secrets` isn't allowed directly inside step `if:` expressions, so
+      # this job-level env (which IS allowed there) is the switch that
+      # decides whether the release-signing steps below run.
+      HAS_RELEASE_SECRETS: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -52,13 +57,13 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Decode release keystore
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.HAS_RELEASE_SECRETS == 'true' }}
         run: echo "$KEYSTORE_BASE64" | base64 -d > app/release.keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
 
       - name: Build release APK
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.HAS_RELEASE_SECRETS == 'true' }}
         env:
           ANDROID_KEYSTORE_PATH: release.keystore
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -67,7 +72,7 @@ jobs:
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload release APK
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.HAS_RELEASE_SECRETS == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: mawid-release-apk
