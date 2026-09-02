@@ -588,6 +588,22 @@ static export:
   `http://localhost:4000`), and `apps/server` itself has no hosted
   deployment anywhere. The demo artifact remains the way to see that
   reception/patient UX without running anything locally.
+- **Real bug the user caught by actually opening the installed app**: the
+  root `/` page was still the original pre-pivot MVP homepage (a bare
+  "لوحة الاستقبال"/"شاشة صالة الانتظار" button pair pointing at the
+  non-hosted `/dashboard`/`/display` routes above) — it had never been
+  updated to the branded two-sided home screen (logo mark, wordmark, role
+  cards) iterated in the demo artifact, so opening the real installed app
+  looked "completely different" from the demo the user had been trying.
+  Rewrote `apps/web/src/app/page.tsx` to match the demo's branding (same
+  inline SVG logo mark, teal gradient, "مَوْعِد" wordmark, role-card
+  layout). The "عيادة أو مركز تجميل" card routes to the real, live
+  `/signup`; the "مراجع" card is shown but visibly disabled with "قريباً"
+  rather than routed anywhere, since no real patient-facing directory/
+  search/booking flow exists in `apps/web` yet — that's still only the
+  demo artifact (see "Two-sided product direction" above and "Next steps
+  if resumed" below), a genuinely separate, larger effort needing real
+  product decisions, not something to fake a working link to.
 - To redeploy after future changes: `npm run build --workspace=apps/web`
   (regenerates `apps/web/out/`), then `firebase deploy --only hosting`
   from the repo root (needs `firebase login` or the same service-account
