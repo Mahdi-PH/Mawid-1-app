@@ -64,14 +64,16 @@ jobs:
         # base64 -d alone failed twice in a row here with "invalid input"
         # even after the secret was reportedly re-copied, so this is
         # explicit defense against that instead of relying on a perfect
-        # paste. Then verify the result actually looks like a keystore
-        # (a real one starts with the ZIP magic bytes, since modern
-        # keytool writes PKCS12) so a bad secret fails with a clear
-        # message here rather than a confusing Gradle signing error later.
+        # paste. Then verify the result actually looks like a keystore: a
+        # modern keytool PKCS12 keystore is DER/ASN.1, so it starts with
+        # byte 0x30 (a SEQUENCE tag) - NOT "PK" (that's the ZIP magic
+        # number, which this is not; an earlier version of this check
+        # wrongly looked for "PK" and rejected a perfectly valid decode).
         run: |
           echo "$KEYSTORE_BASE64" | base64 -d -i > app/release.keystore
-          if [ ! -s app/release.keystore ] || ! head -c2 app/release.keystore | grep -q $'PK'; then
-            echo "::error::Decoded release.keystore is empty or not a valid keystore file - ANDROID_KEYSTORE_BASE64 secret is likely wrong (re-run: base64 -w0 mawid-release.keystore and replace the secret value exactly, no surrounding quotes)."
+          first_byte=$(od -An -tx1 -N1 app/release.keystore | tr -d ' \n')
+          if [ ! -s app/release.keystore ] || [ "$first_byte" != "30" ]; then
+            echo "::error::Decoded release.keystore is empty or not a valid keystore file (first byte: 0x${first_byte:-none}, expected 0x30) - ANDROID_KEYSTORE_BASE64 secret is likely wrong (re-run: base64 -w0 mawid-release.keystore and replace the secret value exactly, no surrounding quotes)."
             exit 1
           fi
         env:
