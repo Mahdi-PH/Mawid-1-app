@@ -24,6 +24,7 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busySlug, setBusySlug] = useState<string | null>(null);
+  const [zoomedImage, setZoomedImage] = useState<{ url: string; alt: string } | null>(null);
 
   async function reload() {
     const [s, u, p] = await Promise.all([adminGetStats(), adminListUsers(), adminListPendingClinics()]);
@@ -61,18 +62,32 @@ export default function AdminDashboardPage() {
         <StatCard label="طلبات بانتظار المراجعة" value={pending.length} />
       </div>
 
+      {zoomedImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
+          onClick={() => setZoomedImage(null)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={zoomedImage.url} alt={zoomedImage.alt} className="max-h-full max-w-full rounded-lg" />
+        </div>
+      )}
+
       <div className="rounded-xl border bg-white">
         <div className="border-b px-4 py-3 font-bold">طلبات التسجيل المعلَّقة</div>
         {pending.length === 0 ? (
           <p className="px-4 py-6 text-center text-gray-400">لا توجد طلبات معلَّقة حالياً.</p>
         ) : (
           <ul className="divide-y">
+            {/* licenseImageUrl is a data: URL (see lib/firebase/licenseImage.ts),
+                not an https:// link — Chrome blocks top-level navigation to
+                data: URLs (an anti-phishing measure), so an <a target="_blank">
+                here would silently do nothing on click. A same-page zoom
+                overlay works for any URL scheme and needs no navigation. */}
             {pending.map((c) => (
               <li key={c.slug} className="flex flex-wrap items-center gap-4 px-4 py-3">
-                <a
-                  href={c.licenseImageUrl}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  type="button"
+                  onClick={() => setZoomedImage({ url: c.licenseImageUrl, alt: `إجازة ${c.clinicName}` })}
                   className="shrink-0"
                   title="عرض صورة الإجازة بالحجم الكامل"
                 >
@@ -82,7 +97,7 @@ export default function AdminDashboardPage() {
                     alt={`إجازة ${c.clinicName}`}
                     className="h-16 w-16 rounded-lg border object-cover"
                   />
-                </a>
+                </button>
                 <div className="min-w-[10rem] flex-1">
                   <div className="font-bold">{c.clinicName}</div>
                   <div className="text-sm text-gray-500" dir="ltr">

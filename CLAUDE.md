@@ -186,24 +186,54 @@ explicit request to update both.
   disabled (see below) — `registerClinic()`'s existing
   create-then-cleanup-on-failure logic correctly deleted the orphaned
   Auth account and left no stray Firestore docs, confirmed by listing
-  users/clinics via the Admin SDK straight after. Also caught and fixed a
-  copy-paste gap: `firestore.indexes.json` needed a new
-  `clinics(status, createdAt)` composite index for the pending-list query
-  — added alongside the existing appointment indexes (same
-  not-yet-deployed status as those, see below).
-- **Known gap, blocking live license uploads until resolved**: Firebase
-  Storage has never been "gotten started" for `mawid-app-d1d03` — same
-  one-time-console-activation pattern as Firestore/Auth earlier, confirmed
-  by both a direct GCS bucket check (404, bucket doesn't exist) and the
-  Firebase Storage Management API (403, "Cloud Storage for Firebase API
-  has not been used in project ... before or it is disabled"). Needs the
-  user to open Firebase console → Build → Storage → Get started once;
-  `storage.rules` is written and ready (root of repo) but not yet
-  deployed — same direct-API-bypass approach as `firestore.rules` will
-  work once Storage itself exists. Until then, a real signup attempt
-  against the live project fails at the license-upload step (verified
-  this fails cleanly, see above) — the demo artifact's simulated version
-  (data-URL, no real Storage) is unaffected and fully working.
+  users/clinics via the Admin SDK straight after. (This specific failure
+  mode is now moot — see the Storage-to-Firestore pivot below — but the
+  cleanup-on-failure path it exercised is the same one any future
+  registerClinic() failure hits, so the verification still stands.)
+- **Pivoted away from Firebase Storage entirely — license images live
+  inline in Firestore now.** The user did open Storage in console, but
+  hit a wall neither of us knew about going in: Google now requires the
+  **Blaze** (pay-as-you-go) plan to enable Cloud Storage for Firebase at
+  all, even for usage that would stay within Blaze's own free daily quota
+  — confirmed by the 403 "Cloud Storage for Firebase API has not been
+  used" error persisting after enabling it in console and after waiting
+  for propagation. Asked the user rather than assuming: pay to unlock
+  Storage, or keep the license image inside Firestore (like the demo
+  artifact always did)? They chose to stay fully free. Result:
+  `apps/web/src/lib/firebase/storage.ts` was deleted; a new
+  `licenseImage.ts` downscales the image client-side (`createImageBitmap`
+  → canvas → JPEG, max 1000px / quality 0.7) into a base64 `data:` URL
+  capped under 900KB, well inside Firestore's 1 MiB document limit —
+  `firestore.rules`' clinic-create rule enforces the same cap server-side.
+  `licenseImageUrl` keeps its name/type (still a string holding a URL, now
+  a `data:` one instead of an `https://` Storage link) so the schema/type
+  barely changed. `storage.rules` and `firebase.json`'s storage block are
+  left in the repo, unused and undeployed, in case Blaze is adopted later.
+- **A second real bug found by this same pivot, before it shipped**: the
+  admin dashboard used to wrap each license thumbnail in
+  `<a href={licenseImageUrl} target="_blank">` to view it full-size —
+  works fine for an `https://` Storage URL, but Chrome blocks top-level
+  navigation to `data:` URLs (an anti-phishing measure), so that link
+  would have silently done nothing once switched to inline images. Fixed
+  by replacing it with a same-page click-to-zoom overlay, which works
+  for any URL scheme since it never navigates.
+- **A third real bug, this time in the query, not the upload**: the new
+  admin pending-list query (`where("status","==","pending"),
+  orderBy("createdAt","desc")`) needs a composite index — caught live
+  when a real signup succeeded but the admin dashboard then failed to
+  load the pending list at all (Firestore's own "this query requires an
+  index" error). Rather than depend on deploying that index (the service
+  account still lacks `datastore.indexAdmin`, see below), dropped the
+  `orderBy` and sort the small pending list client-side instead —
+  `adminListPendingClinics()` needs zero indexes now.
+- **Fully verified end-to-end against the live project after all three
+  fixes**: a real signup (real Gmail-shaped test address, a real image
+  file, no mocking) succeeded, the admin dashboard correctly showed it
+  with its license image rendering as an `<img>`, and clicking the
+  thumbnail opened the zoom overlay — confirmed via Playwright screenshot,
+  not just a passing build. Test accounts were then deleted via the Admin
+  SDK (both the Auth user and its Firestore docs) so the live project is
+  clean, not left with test clutter.
 - **Android/iOS app id finalized as `com.mawid.clinic`** (reverse-DNS, both
   platforms) — the earlier `MH_Mawid` was invalid (no dot separator) and
   told to the user directly rather than silently substituted. No native

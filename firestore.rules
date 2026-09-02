@@ -103,6 +103,13 @@ service cloud.firestore {
       // Every new clinic/beauty-center starts "pending" with a license
       // image on file — there is no client-side path to "approved",
       // enforced below in the update rule, not here.
+      //
+      // licenseImageUrl holds a compressed base64 data: URL, not a
+      // Firebase Storage link - Storage now requires the paid Blaze plan
+      // to enable at all, so the image lives inline on this document
+      // instead (see lib/firebase/licenseImage.ts). The 900,000-char cap
+      // here mirrors that file's own pre-write check, leaving headroom
+      // under Firestore's 1 MiB total document size limit.
       allow create: if isSignedIn()
                     && slug.matches('^[A-Za-z0-9_-]{3,32}$')
                     && request.resource.data.ownerUid == request.auth.uid
@@ -113,6 +120,7 @@ service cloud.firestore {
                     && request.resource.data.status == "pending"
                     && request.resource.data.licenseImageUrl is string
                     && request.resource.data.licenseImageUrl.size() > 0
+                    && request.resource.data.licenseImageUrl.size() < 900000
                     && !exists(/databases/$(database)/documents/clinics/$(slug));
 
       // The owner can edit their own profile/schedule freely, but never

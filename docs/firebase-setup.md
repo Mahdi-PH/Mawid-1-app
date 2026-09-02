@@ -9,11 +9,12 @@ relates to `apps/server`" at the bottom for the reasoning.
 
 ## What's here
 
-- `firestore.rules` / `firestore.indexes.json` / `storage.rules` /
-  `firebase.json` (repo root)
+- `firestore.rules` / `firestore.indexes.json` / `firebase.json` (repo
+  root) — `storage.rules` is also there but currently unused/undeployed,
+  see "Unified signup" below for why
 - `apps/web/src/lib/firebase/` — client SDK init, auth helpers, data access
-  (`config.ts`, `auth.ts`, `firestore.ts`, `storage.ts`, `slotEngine.ts`,
-  `types.ts`)
+  (`config.ts`, `auth.ts`, `firestore.ts`, `licenseImage.ts`,
+  `slotEngine.ts`, `types.ts`)
 - `apps/web/src/app/signup/` — the one public signup/sign-in page (see
   "Unified signup" below)
 - `apps/web/src/app/admin/` — the admin dashboard (`/admin`,
@@ -27,7 +28,7 @@ relates to `apps/server`" at the bottom for the reasoning.
 users/{uid}                 — admin & clinic accounts only (role: "admin" | "clinic")
 clinics/{slug}               — slug IS the doc id = the public booking username
                                 status: "pending" | "approved" | "rejected"
-                                licenseImageUrl: Storage download URL
+                                licenseImageUrl: compressed base64 data: URL (see below)
 appointments/{clinicSlug}_{date}_{startTime}  — deterministic id = the double-booking guard
 ```
 
@@ -47,6 +48,21 @@ There is no user-facing "username" field — the public booking slug is
 auto-derived from the Gmail address's local part
 (`generateUniqueSlugFromEmail()`), retried with a numeric suffix on
 collision.
+
+**Why the license image isn't in Firebase Storage**: Google now requires
+the paid **Blaze** plan to enable Cloud Storage for Firebase at all, even
+for usage that stays within Blaze's own free daily quota — confirmed live
+on `mawid-app-d1d03` (403 "Cloud Storage for Firebase API has not been
+used" persisted after enabling it in console and waiting for propagation).
+The user chose to stay fully on Spark rather than attach billing, so
+`licenseImage.ts` downscales the image client-side (canvas, max 1000px,
+JPEG quality 0.7) into a base64 `data:` URL capped under 900KB and stores
+it directly on the `clinics/{slug}` document — well inside Firestore's
+1 MiB document limit, which `firestore.rules` also enforces server-side.
+This is fully verified working end-to-end against the live project (a
+real signup, real image, admin dashboard rendering it, zoom-to-view all
+confirmed via Playwright). If Blaze is adopted later, `storage.rules` is
+already written and ready to deploy the same way `firestore.rules` was.
 
 Why the appointment id is built that way: a booking write happens inside a
 Firestore transaction that reads that exact document first (see
@@ -71,20 +87,13 @@ confirm once, if you haven't already:
 
 1. Confirm it's on the **Spark (free) plan** — the default for a new
    project, nothing to opt into unless it was changed.
-2. **Storage — NOT yet enabled, blocks license uploads until you do this
-   once.** Build → Storage → Get started → choose the default (production
-   mode) rules and a location. Confirmed two ways that this hasn't
-   happened yet: a direct Cloud Storage bucket check returns 404 (bucket
-   doesn't exist), and the Firebase Storage Management API returns 403
-   "Cloud Storage for Firebase API has not been used in project ... before
-   or it is disabled." Until this is done, a real clinic signup against
-   the live project will fail at the license-image-upload step (the
-   failure path itself is verified clean — `registerClinic()` deletes the
-   orphaned Auth account and leaves no stray Firestore docs, so a failed
-   attempt here is safe to just retry after enabling Storage). Once
-   enabled, deploy `storage.rules` the same way `firestore.rules` was
-   deployed (§3) — or just `firebase deploy --only storage` with your own
-   `firebase login`.
+2. **Storage: deliberately not enabled — not needed.** license images are
+   stored inline in Firestore instead (see "Unified signup" above), since
+   enabling Cloud Storage for Firebase now requires the paid Blaze plan.
+   Nothing in the app calls Firebase Storage. If Blaze is adopted later:
+   Build → Storage → Get started, then deploy `storage.rules` the same
+   way `firestore.rules` was deployed (§3) — or `firebase deploy --only
+   storage` with your own `firebase login`.
 
 ## 2. Register your apps in the project
 
@@ -150,14 +159,20 @@ redeploy:
 - `firestore:indexes` — a separate, narrower permission
   (`datastore.indexAdmin`-equivalent) that this service account also
   doesn't have; calling the Firestore Admin API directly (same approach as
-  above) still got a plain permission-denied. **Indexes are NOT deployed.**
-  Not urgent: nothing in the code runs those composite queries yet, and
-  Firestore hands you a direct "create this index" link the moment a
-  query actually needs one that's missing — click it when that happens.
-  To deploy them properly now instead: either run `firebase login` with
-  your own Google account (owns the project, no permission gap) and rerun
-  the command above, or grant the service account
-  `roles/datastore.indexAdmin` in Cloud Console → IAM first.
+  above) still got a plain permission-denied. **Indexes are NOT deployed,
+  and this was hit for real** (not just theoretically): the admin pending-
+  clinics query originally needed one, a real signup surfaced Firestore's
+  "this query requires an index" error live, and rather than depend on
+  deploying it, `adminListPendingClinics()` was rewritten to avoid needing
+  a composite index at all (dropped the `orderBy`, sorts the small pending
+  list client-side instead — see `firestore.ts`). The one remaining
+  undeployed index (`appointments` by `clinicSlug`+`date`+`startTime`,
+  etc. — `firestore.indexes.json`) still isn't used by any code path
+  today; Firestore hands you a direct "create this index" link the moment
+  a query actually needs one that's missing. To deploy it anyway: run
+  `firebase login` with your own Google account (owns the project, no
+  permission gap) and rerun the command above, or grant the service
+  account `roles/datastore.indexAdmin` in Cloud Console → IAM first.
 
 ## 4. Seed the admin account — DONE
 
@@ -193,9 +208,10 @@ want this for day-to-day development — not wired up yet, since the emulator
 is normally only needed to test rule changes, not for every dev session.
 
 The rules themselves were validated against this exact emulator during
-development (31 assertions: role escalation, cross-tenant reads/writes,
+development (33 assertions: role escalation, cross-tenant reads/writes,
 double-booking, malformed input, self-approval/email-spoofing on the
-clinic approval workflow) — not shipped untested.
+clinic approval workflow, the inline license-image size cap) — not
+shipped untested.
 
 ## 6. Spark (free) plan — what stays free
 

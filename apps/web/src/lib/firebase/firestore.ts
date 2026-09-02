@@ -16,8 +16,8 @@ import {
 } from "firebase/firestore";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth, db } from "./config";
+import { compressLicenseImageToDataUrl } from "./licenseImage";
 import { generateDaySlots, resolveSlotEndTime } from "./slotEngine";
-import { uploadLicenseImage } from "./storage";
 import { OCCUPYING_STATUSES } from "./types";
 import type { AppointmentDoc, AppointmentStatus, ClinicDoc, ClinicStatus, UserDoc } from "./types";
 
@@ -49,8 +49,9 @@ export interface RegisterClinicInput {
   password: string;
   clinicName: string;
   /** The business-license image file, straight from a file input —
-   *  registerClinic() uploads it itself (via storage.ts) once the Auth
-   *  account it just created gives it a uid to upload under. */
+   *  registerClinic() compresses it to a data: URL itself (see
+   *  licenseImage.ts) and stores it inline on the clinic doc; there is no
+   *  Firebase Storage upload (see that file's comment for why). */
   licenseImageFile: File;
   /** Public booking-link slug. Omit to auto-generate one from the email's
    *  local part (see generateUniqueSlugFromEmail) — there is no
@@ -107,7 +108,7 @@ export async function registerClinic(input: RegisterClinicInput): Promise<void> 
   try {
     const [slug, licenseImageUrl] = await Promise.all([
       input.slug ?? generateUniqueSlugFromEmail(input.email),
-      uploadLicenseImage(uid, input.licenseImageFile),
+      compressLicenseImageToDataUrl(input.licenseImageFile),
     ]);
     await runTransaction(db, async (tx) => {
       const clinicRef = doc(db, "clinics", slug);
@@ -326,10 +327,18 @@ export async function adminGetStats(): Promise<{ userCount: number; appointmentC
   return { userCount: users.data().count, appointmentCount: appts.data().count };
 }
 
+/** Single-field equality only (no orderBy) - deliberately avoids needing a
+ *  composite (status, createdAt) index at all, rather than depend on the
+ *  service account's undeployed datastore.indexAdmin permission (see
+ *  docs/firebase-setup.md). The pending queue is small for a handful of
+ *  pilot clinics, so sorting the already-fetched docs client-side costs
+ *  nothing extra and needs zero index deployment. */
 export async function adminListPendingClinics(): Promise<ClinicDoc[]> {
-  const q = query(collection(db, "clinics"), where("status", "==", "pending"), orderBy("createdAt", "desc"));
+  const q = query(collection(db, "clinics"), where("status", "==", "pending"));
   const snap = await getDocs(q);
-  return snap.docs.map((d) => d.data() as ClinicDoc);
+  return snap.docs
+    .map((d) => d.data() as ClinicDoc)
+    .sort((a, b) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0));
 }
 
 /** Approve/reject a pending signup. firestore.rules only lets admin move

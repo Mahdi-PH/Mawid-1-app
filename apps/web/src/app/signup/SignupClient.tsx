@@ -12,7 +12,10 @@ import { useRouter } from "next/navigation";
 import { isConfiguredAdminEmail, signInWithEmail } from "../../lib/firebase/auth";
 import { registerClinic, SlugTakenError } from "../../lib/firebase/firestore";
 
-const MAX_LICENSE_BYTES = 10 * 1024 * 1024;
+// Sanity cap on the raw upload before client-side compression kicks in
+// (see registerClinic() -> compressLicenseImageToDataUrl()), not the
+// final stored size — a huge original just takes longer to decode/resize.
+const MAX_LICENSE_UPLOAD_BYTES = 15 * 1024 * 1024;
 
 export default function SignupClient() {
   const router = useRouter();
@@ -57,7 +60,7 @@ export default function SignupClient() {
     if (password !== password2) return setError("كلمتا المرور غير متطابقتين");
     if (!licenseFile) return setError("ارفع صورة الإجازة الرسمية للعيادة أو مركز التجميل");
     if (!licenseFile.type.startsWith("image/")) return setError("صورة الإجازة يجب أن تكون ملف صورة");
-    if (licenseFile.size > MAX_LICENSE_BYTES) return setError("حجم صورة الإجازة يجب ألا يتجاوز 10 ميجابايت");
+    if (licenseFile.size > MAX_LICENSE_UPLOAD_BYTES) return setError("حجم صورة الإجازة يجب ألا يتجاوز 15 ميجابايت");
 
     setBusy(true);
     try {

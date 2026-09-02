@@ -25,14 +25,6 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "date", "order": "ASCENDING" }
       ]
-    },
-    {
-      "collectionGroup": "clinics",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
     }
   ],
   "fieldOverrides": []
