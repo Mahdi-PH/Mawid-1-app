@@ -8,3 +8,8 @@ out/
 .DS_Store
 *.tsbuildinfo
 apps/server/prisma/dev.db
+serviceAccountKey.json
+*firebase-adminsdk*.json
+firestore-debug.log
+firebase-debug.log
+.firebase/

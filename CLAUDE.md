@@ -11,6 +11,65 @@ what exists, why it's built this way, and what's still only prototyped.
   App Router + Tailwind), `packages/shared` (types + the slot-scheduling
   engine, used by both server and web so offline slot math never drifts).
 
+## Firebase backend track (Spark plan) — parallel to `apps/server`, not a replacement
+
+Added a second, self-contained backend on Firebase (Firestore + Auth,
+Spark/free plan) alongside the existing Postgres/Prisma one — nothing in
+`apps/server` was touched, removed, or deprecated. Full detail in
+`docs/firebase-setup.md`; summary here:
+
+- **Schema**: `users/{uid}` (admin/clinic accounts only), `clinics/{slug}`
+  (slug = doc id = public booking username), `appointments/{clinicSlug}_
+  {date}_{startTime}` — the deterministic appointment id IS the
+  double-booking guard: `bookSlot()` in `apps/web/src/lib/firebase/
+  firestore.ts` reads that exact doc inside a Firestore transaction before
+  writing, so Firestore's same-document transaction serialization gives
+  the same one-of-two-concurrent-bookings-wins guarantee the Postgres
+  `slotLockKey` unique index gives the other backend — implemented
+  Firestore-natively instead of via a DB constraint.
+- **Patients never get passwords**: Firebase Anonymous Auth
+  (`ensurePatientSession()`) gives every patient a stable uid invisibly,
+  so the "book with just name+phone, no account" flow from the demo
+  artifact carries over.
+- **Roles are a custom auth claim** (`request.auth.token.admin`), never a
+  client-writable field — `firestore.rules`' `users/{uid}` create/update
+  rules explicitly block self-promotion to admin; the claim is only ever
+  set by `apps/web/scripts/seed-admin.mjs` (run locally with a Firebase
+  service-account key + `ADMIN_EMAIL`/`ADMIN_PASSWORD` env vars) via the
+  Admin SDK.
+- **Admin dashboard** at `/admin` (`apps/web/src/app/admin/`): stats
+  (`getCountFromServer()` — bills as one read regardless of collection
+  size, deliberately chosen over `getDocs().length` to stay cheap on
+  Spark's daily read quota), a users table with registration dates, and a
+  per-user page listing/editing/deleting that clinic's appointments.
+  `/admin/layout.tsx` is a Server Component solely so its `export const
+  dynamic = "force-dynamic"` actually takes effect (this route-segment
+  config is a no-op in a `"use client"` file — learned by `next build`
+  actually failing during prerendering, see the layout's comment) so the
+  auth-gated subtree never gets statically prerendered.
+- **Security rules validated against the real Firestore emulator**, not
+  just read-through: 23 assertions (role escalation attempts, cross-tenant
+  reads/writes, double-booking, malformed/oversized input) all passed
+  before this was considered done.
+- **Known gap, disclosed not hidden**: no Firebase App Check configured,
+  so anonymous patient writes have no real rate limiting beyond the
+  rules' format/size checks — a scripted abuser could still burn Spark's
+  daily write quota. App Check is free on Spark too; not wired up yet
+  because it needs reCAPTCHA site-key setup, real friction for a
+  handful-of-pilot-clinics stage. Flag it before a public launch.
+- **Open decision, deliberately not made unilaterally**: whether this
+  track replaces `apps/server`/Postgres for the public/reception/patient
+  screens (`/dashboard`, `/display`, root page — currently still 100%
+  Postgres via `lib/api/client.ts`), or the two stay permanently separate
+  (Postgres for reception, Firebase for a future native app + admin). See
+  "How this relates to `apps/server`" in `docs/firebase-setup.md`.
+- **The package name given for Android/iOS registration
+  (`MH_Mawid`) is not valid** — told to the user directly rather than
+  silently substituted: store package/bundle ids need ≥2 dot-separated
+  segments (e.g. `com.mawid.clinic`). No native Android/iOS project exists
+  in this repo yet either way; Firebase app registration + google-
+  services.json/GoogleService-Info.plist only matters once one does.
+
 ## Architecture decisions worth knowing before touching this code
 
 - **Double-booking guard**: `Appointment.slotLockKey` is a unique Postgres

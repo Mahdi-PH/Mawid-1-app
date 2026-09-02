@@ -1,0 +1,134 @@
+rules_version = '2';
+
+// موعد (Mawid) — Firestore security rules.
+//
+// Model: three roles carried as a custom auth claim (request.auth.token.admin
+// / .clinic), never as a client-writable field, so nobody can grant
+// themselves privileges by just writing a different value into their own
+// document:
+//   - admin:   full read/write everywhere (claim set only by the seed
+//              script / Admin SDK, see scripts/seed-admin.mjs).
+//   - clinic:  a signed-in clinic account; can manage only the clinic
+//              document it owns (ownerUid == its uid) and that clinic's
+//              own appointments.
+//   - patient: any signed-in user (including anonymous — patients never
+//              create a password account in this app, see
+//              lib/firebase/auth.ts ensureSignedIn()) who can read/write
+//              only appointments carrying their own uid as patientUid.
+//
+// Double-booking guard: appointment documents are keyed deterministically
+// as `${clinicSlug}_${date}_${startTime}`, and every booking write happens
+// inside a client-side Firestore transaction that first reads that exact
+// document (see lib/firebase/firestore.ts bookSlot()). Firestore serializes
+// transactions that touch the same document, so two concurrent bookings for
+// the same slot can never both commit — this is the same guarantee the
+// Postgres slotLockKey unique index gives the real apps/server backend,
+// implemented Firestore-natively instead of via a DB constraint.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return isSignedIn() && ("admin" in request.auth.token) && request.auth.token.admin == true;
+    }
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+    function ownsClinic(clinicSlug) {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/clinics/$(clinicSlug)).data.ownerUid == request.auth.uid;
+    }
+    function isDateString(s) {
+      return s is string && s.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+    function isTimeString(s) {
+      return s is string && s.matches('^[0-9]{2}:[0-9]{2}$');
+    }
+    // No App Check on the Spark plan here, so anonymous patient writes are
+    // otherwise unrateable — these checks don't stop a determined attacker
+    // but they do reject garbage shapes/oversized fields cheaply, and the
+    // id-matches-tuple check keeps every stored appointment usable by the
+    // double-booking transaction that reads it. See docs/firebase-setup.md
+    // for adding App Check as the real abuse mitigation later.
+    function isValidApptCreate(apptId, data) {
+      return isDateString(data.date)
+        && isTimeString(data.startTime)
+        && isTimeString(data.endTime)
+        && apptId == data.clinicSlug + '_' + data.date + '_' + data.startTime
+        && data.patientName is string && data.patientName.size() > 0 && data.patientName.size() <= 120
+        && data.patientPhone is string && data.patientPhone.size() > 0 && data.patientPhone.size() <= 30;
+    }
+
+    // ---------------------------------------------------------------
+    // users/{uid} — one document per registered account (admin or
+    // clinic; anonymous patients are never written here, only to
+    // appointments, to avoid a write for every anonymous visitor).
+    // ---------------------------------------------------------------
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+
+      // A brand-new user may create only their OWN doc, and only as
+      // "clinic" — "admin" can never be self-assigned client-side.
+      allow create: if isOwner(uid)
+                    && request.resource.data.role == "clinic"
+                    && request.resource.data.uid == uid;
+
+      // Nobody may change their own role after creation (prevents a
+      // clinic from promoting itself); admin can edit anything.
+      allow update: if isAdmin()
+                    || (isOwner(uid) && request.resource.data.role == resource.data.role);
+
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // clinics/{slug} — slug IS the document id (same "unique username"
+    // concept as the demo artifact's accUsername), which is what makes
+    // creation collision-proof: two clinics racing for the same slug
+    // hit the same document and only one create() can win.
+    // ---------------------------------------------------------------
+    match /clinics/{slug} {
+      // Public directory: unauthenticated patients must be able to
+      // browse clinics and see today's schedule before booking.
+      allow read: if true;
+
+      // Same charset as the demo artifact's username field, so a slug
+      // chosen there stays valid here too: letters, digits, _ and -.
+      allow create: if isSignedIn()
+                    && slug.matches('^[A-Za-z0-9_-]{3,32}$')
+                    && request.resource.data.ownerUid == request.auth.uid
+                    && !exists(/databases/$(database)/documents/clinics/$(slug));
+
+      allow update: if isAdmin() || ownsClinic(slug);
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // appointments/{apptId} — apptId = `${clinicSlug}_${date}_${startTime}`.
+    // ---------------------------------------------------------------
+    match /appointments/{apptId} {
+      allow read: if isAdmin()
+                  || (isSignedIn() && resource.data.patientUid == request.auth.uid)
+                  || ownsClinic(resource.data.clinicSlug);
+
+      // A patient may only ever create an appointment under their own
+      // uid, for a clinic that actually exists, starting life as
+      // "requested" — a clinic confirms it via update, never create.
+      allow create: if isAdmin() || (
+                    isSignedIn() &&
+                    request.resource.data.patientUid == request.auth.uid &&
+                    request.resource.data.status == "requested" &&
+                    exists(/databases/$(database)/documents/clinics/$(request.resource.data.clinicSlug)) &&
+                    isValidApptCreate(apptId, request.resource.data)
+                  );
+
+      // Status transitions (confirm/arrive/complete/cancel) and any
+      // clinic-side edit belong to that clinic's own owner, or admin.
+      allow update: if isAdmin() || ownsClinic(resource.data.clinicSlug);
+
+      allow delete: if isAdmin();
+    }
+  }
+}
