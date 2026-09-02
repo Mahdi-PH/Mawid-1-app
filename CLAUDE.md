@@ -57,18 +57,17 @@ Spark/free plan) alongside the existing Postgres/Prisma one — nothing in
   daily write quota. App Check is free on Spark too; not wired up yet
   because it needs reCAPTCHA site-key setup, real friction for a
   handful-of-pilot-clinics stage. Flag it before a public launch.
-- **Open decision, deliberately not made unilaterally**: whether this
-  track replaces `apps/server`/Postgres for the public/reception/patient
-  screens (`/dashboard`, `/display`, root page — currently still 100%
-  Postgres via `lib/api/client.ts`), or the two stay permanently separate
-  (Postgres for reception, Firebase for a future native app + admin). See
-  "How this relates to `apps/server`" in `docs/firebase-setup.md`.
-- **The package name given for Android/iOS registration
-  (`MH_Mawid`) is not valid** — told to the user directly rather than
-  silently substituted: store package/bundle ids need ≥2 dot-separated
-  segments (e.g. `com.mawid.clinic`). No native Android/iOS project exists
-  in this repo yet either way; Firebase app registration + google-
-  services.json/GoogleService-Info.plist only matters once one does.
+- **Decided by the user**: `apps/server`/Postgres and this Firebase track
+  stay permanently parallel for now (Postgres/Express for the existing
+  reception/patient screens, Firebase for the admin dashboard and a future
+  native app) — not a replacement, and `apps/server` is not to be removed.
+  Revisit only if the user says otherwise.
+- **Android/iOS app id finalized as `com.mawid.clinic`** (reverse-DNS, both
+  platforms) — the earlier `MH_Mawid` was invalid (no dot separator) and
+  told to the user directly rather than silently substituted. No native
+  Android/iOS project exists in this repo yet; this id is what to type in
+  Firebase console → Add app whenever one is created, not something
+  already registered anywhere.
 
 ## Architecture decisions worth knowing before touching this code
 

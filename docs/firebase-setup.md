@@ -2,8 +2,10 @@
 
 This is a second, additive backend track living alongside the existing
 Postgres/Prisma one in `apps/server` — nothing here touches or replaces it.
-See **"How this relates to `apps/server`"** at the bottom before you decide
-whether to keep both, or drop one.
+**Decided**: the two stay permanently parallel (Postgres/Express for the
+existing reception/patient screens, Firebase for the admin dashboard and a
+future native app) — `apps/server` is not being removed. See "How this
+relates to `apps/server`" at the bottom for the reasoning.
 
 ## What's here
 
@@ -58,18 +60,30 @@ the config object into `apps/web/.env.local` (copy
 This config is not secret — access control is entirely in
 `firestore.rules`.
 
-**About the package name you asked me to register earlier
-(`MH_Mawid`)**: that string isn't valid for either store — Android
-`applicationId` and iOS `CFBundleIdentifier` must be reverse-DNS with at
-least two dot-separated segments, lowercase by convention (e.g.
-`com.mawid.clinic`, or `iq.mawid.app` if you own a `mawid` domain in a
-ccTLD). Pick the real one before registering native apps — **you can't
-change it after publishing to either store**. Only register Android/iOS
-apps in Firebase once you're actually building a native or wrapped
-(Capacitor/TWA) client — the Next.js web app never uses
+**Android/iOS app ID — finalized**: the earlier `MH_Mawid` isn't valid
+(no dot separator), so per your instruction to use reverse-domain notation,
+the recommended id for **both** platforms is:
+
+```
+com.mawid.clinic
+```
+
+— Android `applicationId` and iOS `CFBundleIdentifier` (Bundle ID in
+Xcode / App Store Connect). Same string on both platforms is a convention,
+not a requirement, but keeps the two listings easy to associate. If you
+register a real domain for the product later (e.g. `mawid.app` or an
+Iraqi `mawid.iq`), the id can still switch to match it for any app you
+register *after* that — **but never for one already published**, since
+neither store allows changing a package/bundle id post-publish. No native
+Android/iOS project exists in this repo yet, so nothing has been
+registered anywhere with this id yet either — it's the value to type in
+when you actually create the Android/iOS app entries in the Firebase
+console (Project settings → Your apps → Add app), not something already
+submitted. Only do that once you're actually building a native or wrapped
+(Capacitor/TWA) client — the Next.js web app itself never uses
 `google-services.json` / `GoogleService-Info.plist` at all; those two
 files exist only to configure the native Firebase SDKs inside an
-Android/iOS project, which doesn't exist yet in this repo.
+Android/iOS project.
 
 ## 3. Deploy security rules + indexes
 
@@ -144,26 +158,22 @@ pilot clinics; flag it if you want it added before a public launch.
 
 ## How this relates to `apps/server` (Postgres/Prisma)
 
-**This is genuinely an open question, not one I decided for you.** The
-existing MVP (`apps/server` + `apps/web`'s `lib/api/client.ts` +
-`lib/offline`) is a complete, working Postgres-backed system with its own
-double-booking guard and IndexedDB offline-first sync — none of that was
-touched, removed, or deprecated by this work. What was added is a fully
-separate, parallel data layer (`lib/firebase/`) that a *different* set of
-pages (`/admin/*`) talk to. Nothing currently wires the two together, and
-nothing currently makes the public/patient/reception screens (`/dashboard`,
-`/display`, the root page) use Firestore instead of the Postgres API.
+**Decided: keep both, permanently, for now.** The existing MVP
+(`apps/server` + `apps/web`'s `lib/api/client.ts` + `lib/offline`) stays
+the system of record for the reception/patient screens (`/dashboard`,
+`/display`, the root page) — none of it was touched, removed, or
+deprecated by this work, and it isn't going to be. Firebase
+(`lib/firebase/`) is a fully separate, parallel data layer that only
+`/admin/*` talks to today; nothing wires the two together, and nothing
+currently makes the reception/patient screens use Firestore instead of the
+Postgres API. If a future native/mobile client gets built, Firebase is the
+backend it would talk to (see the "replace" path this doc used to lay out,
+below, in case that changes later):
 
-Two real paths from here, and the right one depends on what you actually
-want to run in production:
-- **Replace**: migrate `/dashboard`, `/display`, and the patient-facing
-  screens onto `lib/firebase/` too, and retire `apps/server` + Postgres
-  entirely — Firebase's free tier means the whole app could run without
-  ever needing paid hosting, which directly solves the "no live hosted
-  URL, no hosting credentials" gap noted in the root `CLAUDE.md`.
-- **Keep both**: Postgres stays the system of record for reception/
-  patients, Firebase becomes purely the backend for a future native
-  mobile app and the admin dashboard.
-
-Say which one you want and I'll do the migration work — this isn't a small
-patch either way, so I didn't guess.
+- **Replace** (not chosen, but the option stays open): migrate
+  `/dashboard`, `/display`, and the patient-facing screens onto
+  `lib/firebase/` too, and retire `apps/server` + Postgres entirely —
+  Firebase's free tier means the whole app could run without ever needing
+  paid hosting, which directly solves the "no live hosted URL, no hosting
+  credentials" gap noted in the root `CLAUDE.md`. Revisit this only if the
+  user asks for it explicitly.
