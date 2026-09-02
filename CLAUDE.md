@@ -102,6 +102,36 @@ localStorage-backed, no server):
    artifact has no backend — **told to the user explicitly**, not silently
    glossed over. A different device/browser opening the same link falls
    back cleanly to the home screen rather than erroring.
+5. **Per-clinic working hours + configurable slot duration**: every clinic
+   now owns its own schedule instead of one shared global timetable. Account
+   creation (`view-account`) has بداية/نهاية الدوام (`accWorkStart`/
+   `accWorkEnd`, `<input type="time">`) and مدة الموعد الواحد (`accSlotMin`,
+   a `<select>` restricted to `5/10/15/20` minutes — the exact set the user
+   asked for). Validated at signup: both times required, and the work
+   window must fit at least one slot of the chosen length
+   (`toMin(workEnd) - toMin(workStart) >= slotMin`), each with an inline
+   Arabic error rather than a silent failure. The engine (`slotConfigOf()` /
+   `generateSlotsFor(cfg)` in the `<script>`) generates slots by walking
+   `workStart..workEnd` in `slotMin` steps and skipping any step that
+   overlaps `breakStart..breakEnd` (optional, not yet exposed in the UI —
+   stored as `null` for new accounts, only the two pre-seeded demo accounts
+   have one) — so "available only during clinic hours" holds by
+   construction, not as a separate rule to keep in sync. Every render path
+   that used to read one global `SLOTS` array now resolves a per-entity
+   config first: `slotConfigForClinic(clinic)` for directory
+   cards/detail (defers to the linked account's own config via
+   `accountKey` when the directory entry is a real registered clinic,
+   otherwise uses the static entry's own fields), `slotConfigOf(acc)` for
+   the logged-in clinic's own dashboard/timeline/TV/public-booking-link
+   views. `queueNumberIn(slots, t)` replaced the old global
+   `queueNumberFor(t)` for the same reason (a queue number is only
+   meaningful against the slot list it was computed from). Pre-seeded demo
+   accounts: `alnoor-demo` 15-minute slots, 09:00–17:00, break
+   13:00–14:00; `karbala-demo` 10-minute slots, 08:30–16:00, no break. The
+   four static directory-only `CLINICS` entries were also given varied,
+   realistic schedules (10/15/20-minute slots, some with a break) so the
+   patient-facing search/detail views exercise the same per-clinic math,
+   not one hardcoded case.
 
 Known, disclosed limitations of the artifact (do not silently "fix" these
 by pretending they don't exist — they're inherent to a single static HTML
