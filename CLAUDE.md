@@ -182,22 +182,29 @@ explicit request to update both.
   re-reading the diff before testing, fixed before it ever ran in a
   browser.
 - **Reported-and-fixed bug: license upload "not responding to clicks"**
-  (artifact only). The license `<input type="file">` was styled with the
-  same `.field input` rule as every text field (full-width box, border,
-  padding) — but a native file input only forwards clicks from the small
-  browser-drawn "Choose file" button, not the padded box CSS drew around
-  it, so most of what visually looked like one clickable field silently
-  did nothing. Fixed by hiding the native input (`.file-input-hidden`,
-  the standard clip-based technique, not `display:none`) behind a
-  full-size `<label for="accLicense">` "dropzone" — label-for clicks are
-  real browser-forwarded clicks, not synthetic ones, so this stays
-  functional everywhere the raw input was. Also now shows a thumbnail +
-  filename once a file is chosen, both for reassurance the file "was
-  received" and as a discoverable affordance during a normal walkthrough.
-  `apps/web`'s real `/signup` file input (`SignupClient.tsx`) uses plain
-  Tailwind classes with no such padded-box styling, so it isn't affected
-  by this specific bug — left as-is; flag it if it turns out to need the
-  same treatment.
+  (artifact only) — took two attempts. First attempt: the license
+  `<input type="file">` was styled with the same `.field input` rule as
+  every text field (full-width box, border, padding), but a native file
+  input only forwards clicks from the small browser-drawn "Choose file"
+  button, not the padded box CSS drew around it — fixed by hiding the
+  native input behind a full-size `<label for="accLicense">` "dropzone"
+  using the standard clip-based hidden-input technique. Reported as still
+  not opening a file dialog after that fix, so switched to a strictly
+  more robust pattern instead of guessing again: the real `<input
+  type="file">` (`.file-input-overlay`) now sits directly on top of the
+  visible dropzone box itself — `position:absolute;inset:0;opacity:0` —
+  so every click inside the box lands on the actual input element, not a
+  `<label>` acting as a proxy for it (this also still carries a
+  `for="accLicense"` label wrapper as a redundant fallback). The
+  filename/thumbnail preview writes into a separate sibling `<span
+  id="accLicensePreview">` rather than the dropzone's own innerHTML, so
+  showing a preview never deletes the input node it depends on. Also
+  shows a thumbnail + filename once a file is chosen, both for
+  reassurance the file "was received" and as a discoverable affordance
+  during a normal walkthrough. `apps/web`'s real `/signup` file input
+  (`SignupClient.tsx`) uses plain Tailwind classes with no such
+  padded-box styling, so it isn't affected by this specific bug —
+  left as-is; flag it if it turns out to need the same treatment.
 - **Requested change: المحافظة/الحي from dropdown to free text** (artifact
   only — the real Firebase app has no location fields at all yet, see
   "Two-sided product direction" below). `accGov`/`accDistrict` were
