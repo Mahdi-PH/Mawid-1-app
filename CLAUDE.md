@@ -181,6 +181,36 @@ explicit request to update both.
   let every license upload through regardless of file type — caught by
   re-reading the diff before testing, fixed before it ever ran in a
   browser.
+- **Reported-and-fixed bug: license upload "not responding to clicks"**
+  (artifact only). The license `<input type="file">` was styled with the
+  same `.field input` rule as every text field (full-width box, border,
+  padding) — but a native file input only forwards clicks from the small
+  browser-drawn "Choose file" button, not the padded box CSS drew around
+  it, so most of what visually looked like one clickable field silently
+  did nothing. Fixed by hiding the native input (`.file-input-hidden`,
+  the standard clip-based technique, not `display:none`) behind a
+  full-size `<label for="accLicense">` "dropzone" — label-for clicks are
+  real browser-forwarded clicks, not synthetic ones, so this stays
+  functional everywhere the raw input was. Also now shows a thumbnail +
+  filename once a file is chosen, both for reassurance the file "was
+  received" and as a discoverable affordance during a normal walkthrough.
+  `apps/web`'s real `/signup` file input (`SignupClient.tsx`) uses plain
+  Tailwind classes with no such padded-box styling, so it isn't affected
+  by this specific bug — left as-is; flag it if it turns out to need the
+  same treatment.
+- **Requested change: المحافظة/الحي from dropdown to free text** (artifact
+  only — the real Firebase app has no location fields at all yet, see
+  "Two-sided product direction" below). `accGov`/`accDistrict` were
+  `<select>`s populated from the `GEO` table; changed to plain
+  `<input type="text">` per the user's explicit ask. `GEO` still backs
+  `findCountryForGov()` (best-effort match, only used to fill in
+  `country` when a typed governorate happens to match a known one) and
+  the patient directory's district-based lat/lng lookup — both fall back
+  to `null`/`0` harmlessly on a non-matching typed value, since neither
+  `directoryClinics()`'s search filter nor `clinicAreaLabel()` reads
+  `country` (both key off the raw gov/district text). The now-unused
+  `fillAccGov()`/`fillAccDistrict()` select-population helpers were
+  removed.
 - **Real failure-path verified, not just the happy path**: attempted an
   actual signup against the live project while Storage was still
   disabled (see below) — `registerClinic()`'s existing
