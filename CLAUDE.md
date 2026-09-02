@@ -132,6 +132,24 @@ localStorage-backed, no server):
    realistic schedules (10/15/20-minute slots, some with a break) so the
    patient-facing search/detail views exercise the same per-clinic math,
    not one hardcoded case.
+6. **Editing working hours after signup**: the clinic dashboard's topbar
+   (`view-clinic`) has a third tab, إعدادات الدوام, alongside الاستقبال and
+   شاشة الانتظار (`activateClinicTab()` in the `<script>`), with the same
+   بداية/نهاية الدوام + مدة الموعد الواحد fields as signup, pre-filled from
+   the logged-in account and reusing the same two validation rules (both
+   times required; the window must fit at least one slot of the chosen
+   length). Saving applies immediately — the dashboard timeline and doctor-
+   meta line re-render on save, and the public booking link/patient views
+   pick it up on their next render since they all read the account's config
+   live rather than a cached copy. The one extra rule editing needs that
+   creation didn't: **saving is refused if any already-booked appointment's
+   start time would fall outside the new schedule** (checked by generating
+   the new slot grid and diffing it against every occupied appointment
+   time) — the error names the exact conflicting times and tells the
+   clinic to cancel/reschedule them first, rather than silently orphaning a
+   patient's booking. `breakStart`/`breakEnd` aren't editable from this
+   screen yet (still signup-time-only, `null` for new accounts) — same gap
+   noted above.
 
 Known, disclosed limitations of the artifact (do not silently "fix" these
 by pretending they don't exist — they're inherent to a single static HTML
