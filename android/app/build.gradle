@@ -55,6 +55,10 @@ android {
 dependencies {
     // Google's official TWA launcher helper - handles the Custom Tabs /
     // Trusted Web Activity connection, status bar/nav bar theming, and the
-    // Digital Asset Links handshake with the hosted origin.
-    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.6.0'
+    // Digital Asset Links handshake with the hosted origin. Pinned to 2.5.0
+    // rather than the newer 2.6.0: that version pulls in an alpha
+    // androidx.browser that requires compileSdk 36 + AGP 8.9.1+, which
+    // cascades into needing a newer Gradle wrapper too - 2.5.0 stays on a
+    // stable androidx.browser that's happy with compileSdk 34 / AGP 8.5.2.
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
 }
