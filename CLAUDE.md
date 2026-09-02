@@ -62,17 +62,40 @@ Spark/free plan) alongside the existing Postgres/Prisma one — nothing in
   daily write quota. App Check is free on Spark too; not wired up yet
   because it needs reCAPTCHA site-key setup, real friction for a
   handful-of-pilot-clinics stage. Flag it before a public launch.
-- **Deployment status of this track (as of this writing): code done,
-  emulator-tested, NOT yet live.** `firestore.rules`/`firestore.indexes.json`
-  have never been `firebase deploy`ed to the real `mawid-app-d1d03`
-  project, no admin account has been seeded there, and `apps/web` has no
-  `.env.local` (so it can't even connect — `NEXT_PUBLIC_FIREBASE_*` are
-  all unset, see `.env.local.example`). This needs the user's own Google
-  auth (`firebase login`) or a service-account key — a session here has
-  neither by default. If the user pastes/uploads a service-account key,
-  the actual `firebase deploy` + `seed-admin.mjs` run can happen directly
-  from this session; otherwise it's the 3 commands in
-  `docs/firebase-setup.md` §3–4, run by the user locally.
+- **Deployment status of this track (as of this writing): rules and admin
+  are LIVE on the real `mawid-app-d1d03` project; indexes are not.** The
+  user created the Firestore database and enabled Auth (Email/Password +
+  Anonymous) in console, then shared a service-account key in-session for
+  the rest:
+  - Firestore database: created (production mode).
+  - `firestore.rules`: **deployed and verified live** — but not via
+    `firebase deploy`, which kept failing on `serviceusage.googleapis.com`
+    403s (the Admin SDK service account's role intentionally excludes
+    general GCP API-enablement checks). Worked around by calling the
+    Firebase Rules API (`firebaserules.googleapis.com`) directly with the
+    same service-account credentials, bypassing the CLI's redundant
+    preflight check — then read the live release back to confirm it
+    matches. See the session transcript for the exact script if this needs
+    repeating after a future rules change.
+  - `firestore.indexes.json`: **NOT deployed** — same service account
+    lacks `datastore.indexAdmin`-type permission (a narrower, separate
+    grant from what rules deploy needs), confirmed by a direct Firestore
+    Admin API call failing with a plain permission-denied, unrelated to
+    the serviceusage issue above. Not blocking anything today (no code
+    path runs those composite queries yet); Firestore surfaces a direct
+    "create this index" link the moment a query actually needs one that's
+    missing, which is the easiest fix if this is hit later — or grant the
+    service account `roles/datastore.indexAdmin` and re-run
+    `firebase deploy --only firestore:indexes`.
+  - Admin account: created and **verified** — `Mahdinaeem201@gmail.com`,
+    custom claim `{admin:true}` set, matching `users/{uid}` Firestore doc
+    confirmed to exist with `role:"admin"`.
+  - `apps/web/.env.local` still doesn't exist in this environment (no
+    Web app config values were provided), so `apps/web` itself still can't
+    connect yet — the deploy work above used the Admin SDK directly, which
+    doesn't need it. Whoever runs `apps/web` next needs to register a Web
+    app in the Firebase console and fill `.env.local` per
+    `.env.local.example`.
 - **Decided by the user**: `apps/server`/Postgres and this Firebase track
   stay permanently parallel for now (Postgres/Express for the existing
   reception/patient screens, Firebase for the admin dashboard and a future

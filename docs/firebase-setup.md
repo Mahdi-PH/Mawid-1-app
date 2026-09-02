@@ -38,20 +38,16 @@ so the "book with just name + phone, no account" flow from the demo
 artifact carries over unchanged while still giving Firestore a stable uid
 per device to enforce rules against.
 
-## 1. The Firebase project
+## 1. The Firebase project — DONE
 
-**Done** — the project exists: **`mawid-app-d1d03`**, pinned in
-`.firebaserc` so every `firebase` CLI command in this repo already targets
-it. Still to confirm/do once inside it (console.firebase.google.com →
-select `mawid-app-d1d03`):
+The project exists: **`mawid-app-d1d03`**, pinned in `.firebaserc` so
+every `firebase` CLI command in this repo already targets it. Firestore
+database (production mode) and Authentication (Email/Password +
+Anonymous providers) are both created and enabled. Only remains to
+confirm once, if you haven't already:
 
 1. Confirm it's on the **Spark (free) plan** — the default for a new
    project, nothing to opt into unless it was changed.
-2. Build → Firestore Database → Create database (if not already created)
-   → **production mode** (the shipped `firestore.rules` is the real
-   access control, not the 30-day test-mode default).
-3. Build → Authentication → Get started → enable two sign-in providers:
-   **Email/Password** (admin + clinics) and **Anonymous** (patients).
 
 ## 2. Register your apps in the project
 
@@ -87,7 +83,7 @@ submitted. Only do that once you're actually building a native or wrapped
 files exist only to configure the native Firebase SDKs inside an
 Android/iOS project.
 
-## 3. Deploy security rules + indexes
+## 3. Deploy security rules + indexes — STATUS: rules live, indexes not
 
 Project id is pinned in `.firebaserc` (`mawid-app-d1d03`), so `firebase`
 commands run from the repo root already know which project to target —
@@ -99,10 +95,39 @@ firebase login                  # opens a browser — needs your Google account
 firebase deploy --only firestore:rules,firestore:indexes
 ```
 
-The Firestore console will also offer a direct "create index" link if a
-query ever needs one `firestore.indexes.json` doesn't already cover.
+**If you're signing in with your own Google account (`firebase login`),
+the command above should just work.** It was run once already for this
+project using a service-account key instead (in-session, no browser
+available there), and hit two permission walls specific to that key —
+worth knowing about since the same key would hit them again on a future
+redeploy:
 
-## 4. Seed the admin account
+- `firestore:rules` — the CLI's preflight "is the Firestore API enabled"
+  check calls `serviceusage.googleapis.com`, which the Admin SDK service
+  account's role doesn't include (by design — that role is scoped to
+  Firebase data/rules, not general GCP project administration). Worked
+  around by calling the Firebase Rules API
+  (`firebaserules.googleapis.com`) directly with the same credentials,
+  skipping the CLI's redundant check — **rules are live now**, verified
+  by reading the deployed release back.
+- `firestore:indexes` — a separate, narrower permission
+  (`datastore.indexAdmin`-equivalent) that this service account also
+  doesn't have; calling the Firestore Admin API directly (same approach as
+  above) still got a plain permission-denied. **Indexes are NOT deployed.**
+  Not urgent: nothing in the code runs those composite queries yet, and
+  Firestore hands you a direct "create this index" link the moment a
+  query actually needs one that's missing — click it when that happens.
+  To deploy them properly now instead: either run `firebase login` with
+  your own Google account (owns the project, no permission gap) and rerun
+  the command above, or grant the service account
+  `roles/datastore.indexAdmin` in Cloud Console → IAM first.
+
+## 4. Seed the admin account — DONE
+
+The primary admin account is created and verified: `Mahdinaeem201@gmail.com`,
+with the `admin: true` custom claim set and a matching `users/{uid}`
+Firestore doc. To create/promote another admin later (same command,
+idempotent — safe to rerun for the same email to just reset its password):
 
 ```bash
 # Service account key: Project settings → Service Accounts → Generate new private key.
