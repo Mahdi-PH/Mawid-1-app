@@ -7,9 +7,13 @@ import type { User } from "firebase/auth";
 
 type Status = "checking" | "signed-out" | "not-admin" | "ok";
 
-/** Gate for every /admin/* route: redirects to /admin/login unless the
- *  signed-in user carries the admin custom claim (see auth.ts isAdminUser
- *  and scripts/seed-admin.mjs, the only place that claim is ever set).
+/** Gate for every /admin/* route: redirects to the unified /signup page
+ *  (which itself becomes a plain sign-in when the entered email matches
+ *  the configured admin address — see app/signup) unless the signed-in
+ *  user carries the admin custom claim (see auth.ts isAdminUser and
+ *  scripts/seed-admin.mjs, the only place that claim is ever set). There
+ *  is deliberately no separate admin-only login page anymore — /admin/login
+ *  is kept only as a redirect for old links (see that file).
  *  Kept as a plain client component; the route segment's `dynamic` config
  *  (which this needs, to avoid Next trying to statically prerender an
  *  auth-gated page at build time) has to live in the Server Component
@@ -29,17 +33,17 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
     });
   }, []);
 
-  // This effect is the ONLY place that navigates based on auth state — the
-  // login page used to also call router.replace("/admin") itself right
+  // This effect is the ONLY place that navigates based on auth state — an
+  // auth page used to also call router.replace("/admin") itself right
   // after a successful sign-in, which raced this effect: status briefly
   // still read "signed-out" (onAuthChange's async isAdminUser() check
   // hadn't resolved yet) at the exact moment pathname flipped to "/admin",
-  // bouncing straight back to /admin/login before the real "ok" update
-  // ever landed — a login that visibly "worked" (network calls all
-  // succeeded) but never actually let you in. Funneling both directions
-  // through this single effect, driven only by `status`, removes the race.
+  // bouncing straight back before the real "ok" update ever landed — a
+  // login that visibly "worked" (network calls all succeeded) but never
+  // actually let you in. Funneling navigation through this single effect,
+  // driven only by `status`, removes the race.
   useEffect(() => {
-    if (status === "signed-out" && pathname !== "/admin/login") router.replace("/admin/login");
+    if (status === "signed-out" && pathname !== "/admin/login") router.replace("/signup");
     if (status === "ok" && pathname === "/admin/login") router.replace("/admin");
   }, [status, pathname, router]);
 

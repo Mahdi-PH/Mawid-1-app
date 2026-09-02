@@ -9,11 +9,15 @@ relates to `apps/server`" at the bottom for the reasoning.
 
 ## What's here
 
-- `firestore.rules` / `firestore.indexes.json` / `firebase.json` (repo root)
+- `firestore.rules` / `firestore.indexes.json` / `storage.rules` /
+  `firebase.json` (repo root)
 - `apps/web/src/lib/firebase/` — client SDK init, auth helpers, data access
-  (`config.ts`, `auth.ts`, `firestore.ts`, `slotEngine.ts`, `types.ts`)
-- `apps/web/src/app/admin/` — the admin dashboard (`/admin`, `/admin/login`,
-  `/admin/users/[uid]`)
+  (`config.ts`, `auth.ts`, `firestore.ts`, `storage.ts`, `slotEngine.ts`,
+  `types.ts`)
+- `apps/web/src/app/signup/` — the one public signup/sign-in page (see
+  "Unified signup" below)
+- `apps/web/src/app/admin/` — the admin dashboard (`/admin`,
+  `/admin/users/[uid]`; `/admin/login` just redirects to `/signup` now)
 - `apps/web/scripts/seed-admin.mjs` — creates/promotes the one primary admin
   account (never done client-side — see the script's own comments for why)
 
@@ -22,8 +26,27 @@ relates to `apps/server`" at the bottom for the reasoning.
 ```
 users/{uid}                 — admin & clinic accounts only (role: "admin" | "clinic")
 clinics/{slug}               — slug IS the doc id = the public booking username
+                                status: "pending" | "approved" | "rejected"
+                                licenseImageUrl: Storage download URL
 appointments/{clinicSlug}_{date}_{startTime}  — deterministic id = the double-booking guard
 ```
+
+### Unified signup + approval workflow
+
+`/signup` is the only public auth page — no separate admin login. One email
+field decides everything (`isConfiguredAdminEmail()` in `auth.ts`): the
+configured admin address (`NEXT_PUBLIC_ADMIN_EMAIL`) becomes a sign-in
+attempt, anything else becomes a new clinic/beauty-center signup requiring
+a business-license image upload. Every new signup starts
+`status: "pending"` — `firestore.rules` locks that field to admin-only
+writes, so a clinic can edit its own profile but never self-approve. The
+admin dashboard (`/admin`) lists pending signups with the license image
+and Approve/Reject buttons (`adminSetClinicStatus()`).
+
+There is no user-facing "username" field — the public booking slug is
+auto-derived from the Gmail address's local part
+(`generateUniqueSlugFromEmail()`), retried with a numeric suffix on
+collision.
 
 Why the appointment id is built that way: a booking write happens inside a
 Firestore transaction that reads that exact document first (see
@@ -48,6 +71,20 @@ confirm once, if you haven't already:
 
 1. Confirm it's on the **Spark (free) plan** — the default for a new
    project, nothing to opt into unless it was changed.
+2. **Storage — NOT yet enabled, blocks license uploads until you do this
+   once.** Build → Storage → Get started → choose the default (production
+   mode) rules and a location. Confirmed two ways that this hasn't
+   happened yet: a direct Cloud Storage bucket check returns 404 (bucket
+   doesn't exist), and the Firebase Storage Management API returns 403
+   "Cloud Storage for Firebase API has not been used in project ... before
+   or it is disabled." Until this is done, a real clinic signup against
+   the live project will fail at the license-image-upload step (the
+   failure path itself is verified clean — `registerClinic()` deletes the
+   orphaned Auth account and leaves no stray Firestore docs, so a failed
+   attempt here is safe to just retry after enabling Storage). Once
+   enabled, deploy `storage.rules` the same way `firestore.rules` was
+   deployed (§3) — or just `firebase deploy --only storage` with your own
+   `firebase login`.
 
 ## 2. Register your apps in the project
 
@@ -156,8 +193,9 @@ want this for day-to-day development — not wired up yet, since the emulator
 is normally only needed to test rule changes, not for every dev session.
 
 The rules themselves were validated against this exact emulator during
-development (23 assertions: role escalation, cross-tenant reads/writes,
-double-booking, malformed input) — not shipped untested.
+development (31 assertions: role escalation, cross-tenant reads/writes,
+double-booking, malformed input, self-approval/email-spoofing on the
+clinic approval workflow) — not shipped untested.
 
 ## 6. Spark (free) plan — what stays free
 

@@ -1,0 +1,35 @@
+rules_version = '2';
+
+// موعد (Mawid) — Firebase Storage security rules.
+//
+// Only holds one thing today: the business-license image a clinic/beauty
+// center uploads at signup for admin review (see the approval workflow in
+// firestore.rules' clinics/{slug} rules and lib/firebase/storage.ts). Not a
+// public asset bucket — a license document can contain a real business
+// owner's personal/registration details, so only the uploading account and
+// admin may ever read it back.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /licenses/{uid}/{fileName} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isAdmin() {
+        return isSignedIn() && ("admin" in request.auth.token) && request.auth.token.admin == true;
+      }
+      function isOwner() {
+        return isSignedIn() && request.auth.uid == uid;
+      }
+
+      allow read: if isOwner() || isAdmin();
+
+      // 10 MB cap, images only — a phone photo of a license document, not
+      // an arbitrary file upload.
+      allow write: if isOwner()
+                   && request.resource.size < 10 * 1024 * 1024
+                   && request.resource.contentType.matches("image/.*");
+
+      allow delete: if isAdmin();
+    }
+  }
+}

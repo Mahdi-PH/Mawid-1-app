@@ -131,6 +131,79 @@ Spark/free plan) alongside the existing Postgres/Prisma one — nothing in
   reception/patient screens, Firebase for the admin dashboard and a future
   native app) — not a replacement, and `apps/server` is not to be removed.
   Revisit only if the user says otherwise.
+
+### Clinic/beauty-center signup + admin approval workflow
+
+Added a real, publicly-usable signup flow and turned the admin dashboard
+into an actual approval gate — not just a read-only viewer. Present in
+both tracks (the real Firebase app and the demo artifact), per the user's
+explicit request to update both.
+
+- **One unified entry point, no separate admin login**: `/signup`
+  (`apps/web/src/app/signup/`) is now the only public auth page. One email
+  field decides everything (`isConfiguredAdminEmail()` in
+  `lib/firebase/auth.ts`): the configured admin address becomes a plain
+  sign-in (the admin account still only ever comes from
+  `scripts/seed-admin.mjs` — this is a UX routing hint, not a security
+  boundary, since Firebase Auth's own email-uniqueness rejects anyone
+  trying to *register* a second account on that address), anything else
+  becomes a new clinic/beauty-center signup. `/admin/login` now just
+  redirects to `/signup` for old links; `AdminLayoutClient` redirects
+  signed-out visitors straight to `/signup`.
+- **Every new clinic starts `status: "pending"`** (`ClinicDoc.status` in
+  `lib/firebase/types.ts`) with a required business-license image upload
+  to Firebase Storage (`lib/firebase/storage.ts` `uploadLicenseImage()`,
+  path `licenses/{uid}/...`). `firestore.rules`' `clinics/{slug}` update
+  rule locks `status` to admin-only writes — a clinic can edit its own
+  profile freely but can never self-approve; validated with 8 additional
+  emulator assertions (self-approval rejected, email-spoofing on the
+  denormalized `clinics.email` field rejected, missing license rejected,
+  admin approve/reject succeeds) on top of the original 23.
+- **No more user-facing "username" field anywhere** (real app or
+  artifact) — the public booking-link slug is auto-derived from the
+  Gmail address's local part (`generateUniqueSlugFromEmail()` /
+  the artifact's matching `uniqueSlugFromEmail()`), retried with a
+  numeric suffix on collision, exactly mirroring how the real backend
+  already treated slug vs. login-identifier as separate concepts.
+- **Admin dashboard** (`/admin`) gained a "طلبات التسجيل المعلَّقة" section:
+  each pending clinic shows its license image, email, and
+  Approve/Reject buttons (`adminSetClinicStatus()`). The demo artifact's
+  new `view-admin` screen (reachable only via the admin email on the
+  unified account screen, password `admin1234` — clearly a demo
+  credential, never the user's real email) mirrors this, and also gates
+  the patient directory + public booking link so a still-pending or
+  rejected clinic is invisible to مراجع until approved
+  (`directoryClinics()` / `renderPublicBooking()` now check
+  `status === "approved"`).
+- **Real bug caught by testing, not just building**: a JS operator-
+  precedence slip in the artifact's file-type check
+  (`!x.indexOf(...) === 0` instead of `x.indexOf(...) !== 0`) would have
+  let every license upload through regardless of file type — caught by
+  re-reading the diff before testing, fixed before it ever ran in a
+  browser.
+- **Real failure-path verified, not just the happy path**: attempted an
+  actual signup against the live project while Storage was still
+  disabled (see below) — `registerClinic()`'s existing
+  create-then-cleanup-on-failure logic correctly deleted the orphaned
+  Auth account and left no stray Firestore docs, confirmed by listing
+  users/clinics via the Admin SDK straight after. Also caught and fixed a
+  copy-paste gap: `firestore.indexes.json` needed a new
+  `clinics(status, createdAt)` composite index for the pending-list query
+  — added alongside the existing appointment indexes (same
+  not-yet-deployed status as those, see below).
+- **Known gap, blocking live license uploads until resolved**: Firebase
+  Storage has never been "gotten started" for `mawid-app-d1d03` — same
+  one-time-console-activation pattern as Firestore/Auth earlier, confirmed
+  by both a direct GCS bucket check (404, bucket doesn't exist) and the
+  Firebase Storage Management API (403, "Cloud Storage for Firebase API
+  has not been used in project ... before or it is disabled"). Needs the
+  user to open Firebase console → Build → Storage → Get started once;
+  `storage.rules` is written and ready (root of repo) but not yet
+  deployed — same direct-API-bypass approach as `firestore.rules` will
+  work once Storage itself exists. Until then, a real signup attempt
+  against the live project fails at the license-upload step (verified
+  this fails cleanly, see above) — the demo artifact's simulated version
+  (data-URL, no real Storage) is unaffected and fully working.
 - **Android/iOS app id finalized as `com.mawid.clinic`** (reverse-DNS, both
   platforms) — the earlier `MH_Mawid` was invalid (no dot separator) and
   told to the user directly rather than silently substituted. No native

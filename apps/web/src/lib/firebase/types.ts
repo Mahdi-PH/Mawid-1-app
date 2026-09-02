@@ -24,11 +24,20 @@ export interface UserDoc {
   createdAt: Timestamp;
 }
 
+/** A clinic's registration/verification state. New signups always start
+ *  "pending" — there is no client-side path to "approved" (see
+ *  firestore.rules' clinics update rule, which locks this field to
+ *  admin-only writes) since approval has to mean something. */
+export type ClinicStatus = "pending" | "approved" | "rejected";
+
 /** clinics/{slug} — slug is both the document id and the public booking
  *  username, e.g. #book/alnoor-demo in the artifact's link scheme. */
 export interface ClinicDoc {
   slug: string;
   ownerUid: string;
+  /** Denormalized from users/{ownerUid}.email so the admin pending-review
+   *  list doesn't need a lookup per row. */
+  email: string;
   clinicName: string;
   doctorName: string;
   specialty: string;
@@ -40,6 +49,10 @@ export interface ClinicDoc {
   slotMin: 5 | 10 | 15 | 20;
   breakStart: string | null;
   breakEnd: string | null;
+  status: ClinicStatus;
+  /** Storage download URL for the uploaded business license (clinic or
+   *  beauty-center registration document) — see lib/firebase/storage.ts. */
+  licenseImageUrl: string;
   createdAt: Timestamp;
 }
 

@@ -48,3 +48,15 @@ export async function isAdminUser(user: User | null): Promise<boolean> {
   const token = await user.getIdTokenResult(true);
   return token.claims.admin === true;
 }
+
+/** The one address /signup treats as "this is the admin, try signing in"
+ *  rather than "this is a new clinic, run the signup flow". Not a secret
+ *  and not itself a security boundary — it's a UX routing hint only. The
+ *  real gate is always isAdminUser() above (the unforgeable custom claim),
+ *  so even a signup attempt using this exact email can't grant admin
+ *  access: Firebase Auth already rejects a second account on the same
+ *  address, and the claim is only ever set by scripts/seed-admin.mjs. */
+export function isConfiguredAdminEmail(email: string): boolean {
+  const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
+  return !!adminEmail && email.trim().toLowerCase() === adminEmail.trim().toLowerCase();
+}

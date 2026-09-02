@@ -11,15 +11,15 @@ import {
   query,
   runTransaction,
   serverTimestamp,
-  setDoc,
   updateDoc,
   where,
 } from "firebase/firestore";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth, db } from "./config";
 import { generateDaySlots, resolveSlotEndTime } from "./slotEngine";
+import { uploadLicenseImage } from "./storage";
 import { OCCUPYING_STATUSES } from "./types";
-import type { AppointmentDoc, AppointmentStatus, ClinicDoc, UserDoc } from "./types";
+import type { AppointmentDoc, AppointmentStatus, ClinicDoc, ClinicStatus, UserDoc } from "./types";
 
 export class SlugTakenError extends Error {
   constructor(slug: string) {
@@ -47,33 +47,72 @@ export class ScheduleConflictError extends Error {
 export interface RegisterClinicInput {
   email: string;
   password: string;
-  slug: string;
   clinicName: string;
-  doctorName: string;
-  specialty: string;
-  gov: string | null;
-  district: string | null;
-  street: string | null;
-  workStart: string;
-  workEnd: string;
-  slotMin: 5 | 10 | 15 | 20;
+  /** The business-license image file, straight from a file input —
+   *  registerClinic() uploads it itself (via storage.ts) once the Auth
+   *  account it just created gives it a uid to upload under. */
+  licenseImageFile: File;
+  /** Public booking-link slug. Omit to auto-generate one from the email's
+   *  local part (see generateUniqueSlugFromEmail) — there is no
+   *  user-facing "username" field in the signup form by design. */
+  slug?: string;
+  doctorName?: string;
+  specialty?: string;
+  gov?: string | null;
+  district?: string | null;
+  street?: string | null;
+  workStart?: string;
+  workEnd?: string;
+  slotMin?: 5 | 10 | 15 | 20;
   breakStart?: string | null;
   breakEnd?: string | null;
 }
 
+export async function isSlugAvailable(slug: string): Promise<boolean> {
+  const snap = await getDoc(doc(db, "clinics", slug));
+  return !snap.exists();
+}
+
+function slugBaseFromEmail(email: string): string {
+  const local = (email.split("@")[0] ?? "").toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return local.length >= 3 ? local.slice(0, 32) : `${local || "clinic"}-account`;
+}
+
+/** Derives the public booking-link slug from the clinic's Gmail address
+ *  (the only identifier the signup form actually collects) rather than a
+ *  separate username field, retrying with a numeric suffix on collision.
+ *  This is a best-effort pre-check for a good default; the real
+ *  uniqueness guarantee is the transaction inside registerClinic(). */
+export async function generateUniqueSlugFromEmail(email: string): Promise<string> {
+  const base = slugBaseFromEmail(email);
+  let candidate = base;
+  for (let n = 2; n <= 50; n++) {
+    if (await isSlugAvailable(candidate)) return candidate;
+    candidate = `${base}-${n}`.slice(0, 32);
+  }
+  throw new Error("Could not find an available booking-link slug for this email.");
+}
+
 /** Creates the Auth account, then atomically claims the slug + writes the
- *  users/clinics docs in one transaction. If the slug turns out to be taken
- *  (lost a race, or the caller skipped the availability check), the
- *  just-created Auth account is deleted so it isn't left orphaned. */
+ *  users/clinics docs in one transaction, with status "pending" — every
+ *  new clinic/beauty-center needs admin approval (see the dashboard's
+ *  approve/reject buttons) before it's a real, live listing. If the slug
+ *  turns out to be taken (lost a race, or the caller skipped the
+ *  availability check), the just-created Auth account is deleted so it
+ *  isn't left orphaned. */
 export async function registerClinic(input: RegisterClinicInput): Promise<void> {
   const cred = await createUserWithEmailAndPassword(auth, input.email, input.password);
   const uid = cred.user.uid;
 
   try {
+    const [slug, licenseImageUrl] = await Promise.all([
+      input.slug ?? generateUniqueSlugFromEmail(input.email),
+      uploadLicenseImage(uid, input.licenseImageFile),
+    ]);
     await runTransaction(db, async (tx) => {
-      const clinicRef = doc(db, "clinics", input.slug);
+      const clinicRef = doc(db, "clinics", slug);
       const existing = await tx.get(clinicRef);
-      if (existing.exists()) throw new SlugTakenError(input.slug);
+      if (existing.exists()) throw new SlugTakenError(slug);
 
       const userRef = doc(db, "users", uid);
       const userDoc: Omit<UserDoc, "createdAt"> & { createdAt: unknown } = {
@@ -84,19 +123,22 @@ export async function registerClinic(input: RegisterClinicInput): Promise<void> 
         createdAt: serverTimestamp(),
       };
       const clinicDoc: Omit<ClinicDoc, "createdAt"> & { createdAt: unknown } = {
-        slug: input.slug,
+        slug,
         ownerUid: uid,
+        email: input.email,
         clinicName: input.clinicName,
-        doctorName: input.doctorName,
-        specialty: input.specialty,
-        gov: input.gov,
-        district: input.district,
-        street: input.street,
-        workStart: input.workStart,
-        workEnd: input.workEnd,
-        slotMin: input.slotMin,
+        doctorName: input.doctorName || "الطبيب المناوب",
+        specialty: input.specialty || "عيادة عامة",
+        gov: input.gov ?? null,
+        district: input.district ?? null,
+        street: input.street ?? null,
+        workStart: input.workStart || "09:00",
+        workEnd: input.workEnd || "17:00",
+        slotMin: input.slotMin || 15,
         breakStart: input.breakStart ?? null,
         breakEnd: input.breakEnd ?? null,
+        status: "pending",
+        licenseImageUrl,
         createdAt: serverTimestamp(),
       };
       tx.set(userRef, userDoc);
@@ -106,11 +148,6 @@ export async function registerClinic(input: RegisterClinicInput): Promise<void> 
     await cred.user.delete().catch(() => {});
     throw err;
   }
-}
-
-export async function isSlugAvailable(slug: string): Promise<boolean> {
-  const snap = await getDoc(doc(db, "clinics", slug));
-  return !snap.exists();
 }
 
 // ---------------------------------------------------------------------
@@ -287,4 +324,16 @@ export async function adminGetStats(): Promise<{ userCount: number; appointmentC
     getCountFromServer(collection(db, "appointments")),
   ]);
   return { userCount: users.data().count, appointmentCount: appts.data().count };
+}
+
+export async function adminListPendingClinics(): Promise<ClinicDoc[]> {
+  const q = query(collection(db, "clinics"), where("status", "==", "pending"), orderBy("createdAt", "desc"));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => d.data() as ClinicDoc);
+}
+
+/** Approve/reject a pending signup. firestore.rules only lets admin move
+ *  status away from "pending" — a clinic can never do this to itself. */
+export async function adminSetClinicStatus(slug: string, status: ClinicStatus): Promise<void> {
+  await updateDoc(doc(db, "clinics", slug), { status });
 }

@@ -4,8 +4,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { adminGetStats, adminListUsers } from "../../lib/firebase/firestore";
-import type { UserDoc } from "../../lib/firebase/types";
+import {
+  adminGetStats,
+  adminListPendingClinics,
+  adminListUsers,
+  adminSetClinicStatus,
+} from "../../lib/firebase/firestore";
+import type { ClinicDoc, UserDoc } from "../../lib/firebase/types";
 
 function formatDate(ts: UserDoc["createdAt"]): string {
   if (!ts) return "—";
@@ -15,22 +20,35 @@ function formatDate(ts: UserDoc["createdAt"]): string {
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<{ userCount: number; appointmentCount: number } | null>(null);
   const [users, setUsers] = useState<UserDoc[]>([]);
+  const [pending, setPending] = useState<ClinicDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [busySlug, setBusySlug] = useState<string | null>(null);
+
+  async function reload() {
+    const [s, u, p] = await Promise.all([adminGetStats(), adminListUsers(), adminListPendingClinics()]);
+    setStats(s);
+    setUsers(u);
+    setPending(p);
+  }
 
   useEffect(() => {
-    (async () => {
-      try {
-        const [s, u] = await Promise.all([adminGetStats(), adminListUsers()]);
-        setStats(s);
-        setUsers(u);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setLoading(false);
-      }
-    })();
+    reload()
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setLoading(false));
   }, []);
+
+  async function handleDecision(slug: string, status: "approved" | "rejected") {
+    setBusySlug(slug);
+    try {
+      await adminSetClinicStatus(slug, status);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusySlug(null);
+    }
+  }
 
   if (loading) return <p className="text-gray-500">جارٍ التحميل…</p>;
   if (error) return <p className="text-red-600">{error}</p>;
@@ -40,6 +58,58 @@ export default function AdminDashboardPage() {
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard label="إجمالي المستخدمين" value={stats?.userCount ?? 0} />
         <StatCard label="إجمالي الحجوزات" value={stats?.appointmentCount ?? 0} />
+        <StatCard label="طلبات بانتظار المراجعة" value={pending.length} />
+      </div>
+
+      <div className="rounded-xl border bg-white">
+        <div className="border-b px-4 py-3 font-bold">طلبات التسجيل المعلَّقة</div>
+        {pending.length === 0 ? (
+          <p className="px-4 py-6 text-center text-gray-400">لا توجد طلبات معلَّقة حالياً.</p>
+        ) : (
+          <ul className="divide-y">
+            {pending.map((c) => (
+              <li key={c.slug} className="flex flex-wrap items-center gap-4 px-4 py-3">
+                <a
+                  href={c.licenseImageUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="shrink-0"
+                  title="عرض صورة الإجازة بالحجم الكامل"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={c.licenseImageUrl}
+                    alt={`إجازة ${c.clinicName}`}
+                    className="h-16 w-16 rounded-lg border object-cover"
+                  />
+                </a>
+                <div className="min-w-[10rem] flex-1">
+                  <div className="font-bold">{c.clinicName}</div>
+                  <div className="text-sm text-gray-500" dir="ltr">
+                    {c.email}
+                  </div>
+                  <div className="text-xs text-gray-400">رابط الحجز: /{c.slug}</div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleDecision(c.slug, "approved")}
+                    disabled={busySlug === c.slug}
+                    className="rounded-lg bg-brand-600 px-4 py-1.5 text-sm font-bold text-white disabled:opacity-60"
+                  >
+                    موافقة
+                  </button>
+                  <button
+                    onClick={() => handleDecision(c.slug, "rejected")}
+                    disabled={busySlug === c.slug}
+                    className="rounded-lg border border-red-300 px-4 py-1.5 text-sm font-bold text-red-600 disabled:opacity-60"
+                  >
+                    رفض
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className="rounded-xl border bg-white">

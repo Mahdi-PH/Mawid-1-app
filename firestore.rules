@@ -8,9 +8,13 @@ rules_version = '2';
 // document:
 //   - admin:   full read/write everywhere (claim set only by the seed
 //              script / Admin SDK, see scripts/seed-admin.mjs).
-//   - clinic:  a signed-in clinic account; can manage only the clinic
-//              document it owns (ownerUid == its uid) and that clinic's
-//              own appointments.
+//   - clinic:  a signed-in clinic/beauty-center account; can manage only
+//              the clinic document it owns (ownerUid == its uid) and that
+//              clinic's own appointments. Every new signup starts
+//              clinics/{slug}.status == "pending" with a license image on
+//              file; only admin (via the dashboard's approve/reject
+//              buttons) can move it to "approved"/"rejected" — a clinic
+//              can never write its own approval status.
 //   - patient: any signed-in user (including anonymous — patients never
 //              create a password account in this app, see
 //              lib/firebase/auth.ts ensureSignedIn()) who can read/write
@@ -96,12 +100,30 @@ service cloud.firestore {
 
       // Same charset as the demo artifact's username field, so a slug
       // chosen there stays valid here too: letters, digits, _ and -.
+      // Every new clinic/beauty-center starts "pending" with a license
+      // image on file — there is no client-side path to "approved",
+      // enforced below in the update rule, not here.
       allow create: if isSignedIn()
                     && slug.matches('^[A-Za-z0-9_-]{3,32}$')
                     && request.resource.data.ownerUid == request.auth.uid
+                    // email is denormalized for the admin dashboard's
+                    // pending-list; must match the account's own verified
+                    // address, not an arbitrary string.
+                    && request.resource.data.email == request.auth.token.email
+                    && request.resource.data.status == "pending"
+                    && request.resource.data.licenseImageUrl is string
+                    && request.resource.data.licenseImageUrl.size() > 0
                     && !exists(/databases/$(database)/documents/clinics/$(slug));
 
-      allow update: if isAdmin() || ownsClinic(slug);
+      // The owner can edit their own profile/schedule freely, but never
+      // their own approval status — only admin (via the dashboard's
+      // approve/reject buttons) can move status out of "pending". Reading
+      // resource.data directly here (rather than calling ownsClinic(),
+      // which re-fetches the same document via get()) saves a read.
+      allow update: if isAdmin()
+                    || (isSignedIn()
+                        && resource.data.ownerUid == request.auth.uid
+                        && request.resource.data.status == resource.data.status);
       allow delete: if isAdmin();
     }
 
