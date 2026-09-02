@@ -822,13 +822,47 @@ demo artifact's `view-clinic` screen almost exactly.
   every other deploy this session. No `firestore.rules` changes were
   needed for this feature, so only Hosting was touched.
 
-## Next steps if resumed
+## Subscription screen + signup location/hours fields
 
-If the user wants signup to collect gov/district/working hours (so
-`/find`'s district search and per-clinic hours actually vary clinic to
-clinic, matching the artifact), that's a small, well-scoped addition to
-`SignupClient.tsx` — `registerClinic()` already accepts all of those
-fields, only the form UI doesn't collect them yet.
+The two remaining artifact-only pieces the user asked to close, both
+requested together right after `/clinic` shipped.
+
+- **`/subscribe`** (new): matches the artifact's subscription screen
+  field-for-field — one free-month card, price-after marked "لم يُحدَّد
+  بعد" (no invented paid tiers), a payment-account info card
+  (`910459764999`, copy button) with the same "طريقة الدفع هنا تجريبية"
+  disclaimer, then "ابدأ مجاناً" continuing to `/signup`. Purely
+  informational, like the artifact — `registerClinic()` never reads
+  anything from this page. The home page's "عيادة أو مركز تجميل" card now
+  routes here first rather than straight to `/signup`, matching the
+  artifact's own screen order (role picker → subscription → account
+  creation/login).
+- **`SignupClient.tsx` now collects gov/district/street/working-hours/
+  slot-duration** at signup time — `registerClinic()` already accepted
+  all of these (see "Real clinic dashboard" above), only the form UI
+  didn't collect them until now. Same two validation rules as the
+  artifact's own signup and `/clinic`'s settings tab: district required
+  if a governorate is typed (both free-text, no `GEO` table — matching
+  the earlier fix that made these plain inputs, not dropdowns), and the
+  work window must fit at least one slot of the chosen length. This is
+  what makes `/find`'s district search and per-clinic hours actually
+  vary clinic to clinic for every *new* signup from here on — existing
+  clinics created before this change keep whatever they had
+  (null gov/district, 09:00–17:00/15min defaults).
+- **Verified**: `tsc --noEmit`, `next build`, and local
+  Playwright screenshots of both pages (`/subscribe` and the expanded
+  `/signup` form, including the new gov/district/hours fields rendering
+  correctly with their defaults). Not re-run against the live emulator/
+  project separately — `registerClinic()`'s write path with this exact
+  field set was already exercised end-to-end live in the `/clinic`
+  dashboard's 15-assertion test above; this change only adds UI in front
+  of already-verified plumbing.
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED. No `firestore.rules` changes.
+
+## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —
 ask before building, per the artifact's "لم يُحدَّد بعد" pricing note.
+`/subscribe`'s free-month framing is the same placeholder, not a real
+decision to build billing against.

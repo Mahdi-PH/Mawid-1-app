@@ -17,12 +17,23 @@ import { registerClinic, SlugTakenError } from "../../lib/firebase/firestore";
 // final stored size — a huge original just takes longer to decode/resize.
 const MAX_LICENSE_UPLOAD_BYTES = 15 * 1024 * 1024;
 
+function toMinutes(time: string): number {
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + m;
+}
+
 export default function SignupClient() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
   const [clinicName, setClinicName] = useState("");
+  const [gov, setGov] = useState("");
+  const [district, setDistrict] = useState("");
+  const [street, setStreet] = useState("");
+  const [workStart, setWorkStart] = useState("09:00");
+  const [workEnd, setWorkEnd] = useState("17:00");
+  const [slotMin, setSlotMin] = useState<5 | 10 | 15 | 20>(15);
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -86,6 +97,11 @@ export default function SignupClient() {
     if (!licenseFile) return setError("ارفع صورة الإجازة الرسمية للعيادة أو مركز التجميل");
     if (!licenseFile.type.startsWith("image/")) return setError("صورة الإجازة يجب أن تكون ملف صورة");
     if (licenseFile.size > MAX_LICENSE_UPLOAD_BYTES) return setError("حجم صورة الإجازة يجب ألا يتجاوز 15 ميجابايت");
+    if (gov.trim() && !district.trim()) return setError("اكتب اسم الحي، أو اترك المحافظة فارغة");
+    if (!workStart || !workEnd) return setError("حدّد بداية الدوام ونهايته");
+    if (toMinutes(workEnd) - toMinutes(workStart) < slotMin) {
+      return setError("ساعات الدوام يجب أن تتسع لموعد واحد على الأقل بالمدة المختارة");
+    }
 
     setBusy(true);
     try {
@@ -94,6 +110,12 @@ export default function SignupClient() {
         password,
         clinicName: clinicName.trim(),
         licenseImageFile: licenseFile,
+        gov: gov.trim() || null,
+        district: gov.trim() ? district.trim() : null,
+        street: street.trim() || null,
+        workStart,
+        workEnd,
+        slotMin,
       });
       setPendingSubmitted(true);
     } catch (err) {
@@ -208,6 +230,74 @@ export default function SignupClient() {
               <span className="mt-1 block text-xs text-gray-400">
                 تُستخدم فقط للمراجعة من قبل الإدارة قبل تفعيل الحساب.
               </span>
+            </label>
+
+            <div className="mb-3 grid grid-cols-2 gap-3">
+              <label className="block text-sm">
+                المحافظة (اختياري)
+                <input
+                  type="text"
+                  value={gov}
+                  onChange={(e) => setGov(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2"
+                />
+              </label>
+              <label className="block text-sm">
+                الحي
+                <input
+                  type="text"
+                  value={district}
+                  onChange={(e) => setDistrict(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2"
+                />
+              </label>
+            </div>
+            <label className="mb-3 block text-sm">
+              الشارع (اختياري)
+              <input
+                type="text"
+                value={street}
+                onChange={(e) => setStreet(e.target.value)}
+                className="mt-1 w-full rounded-lg border px-3 py-2"
+              />
+            </label>
+            <p className="mb-4 -mt-2 text-xs text-gray-400">
+              كتابة المحافظة والحي تجعل عيادتك قابلة للبحث من صفحة «مراجع» أيضاً، وليس فقط عبر رابطك المباشر —
+              بعد موافقة الإدارة.
+            </p>
+
+            <div className="mb-3 grid grid-cols-2 gap-3">
+              <label className="block text-sm">
+                بداية الدوام
+                <input
+                  type="time"
+                  value={workStart}
+                  onChange={(e) => setWorkStart(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2"
+                />
+              </label>
+              <label className="block text-sm">
+                نهاية الدوام
+                <input
+                  type="time"
+                  value={workEnd}
+                  onChange={(e) => setWorkEnd(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2"
+                />
+              </label>
+            </div>
+            <label className="mb-4 block text-sm">
+              مدة الموعد الواحد
+              <select
+                value={slotMin}
+                onChange={(e) => setSlotMin(Number(e.target.value) as 5 | 10 | 15 | 20)}
+                className="mt-1 w-full rounded-lg border px-3 py-2"
+              >
+                <option value={5}>5 دقائق</option>
+                <option value={10}>10 دقائق</option>
+                <option value={15}>15 دقيقة</option>
+                <option value={20}>20 دقيقة</option>
+              </select>
             </label>
           </>
         )}

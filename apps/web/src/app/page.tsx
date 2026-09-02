@@ -7,7 +7,10 @@ import Link from "next/link";
 // pair pointing at apps/server routes that aren't hosted anywhere). مراجع
 // now routes to /find (real, Firestore-backed patient directory + booking,
 // no account) - see CLAUDE.md "Real patient-facing directory + booking
-// (apps/web/src/app/find/)" for what it does and doesn't cover.
+// (apps/web/src/app/find/)" for what it does and doesn't cover. عيادة أو
+// مركز تجميل routes through /subscribe first (the demo artifact's own
+// flow: role picker -> subscription info screen -> signup/login), not
+// straight to /signup.
 export default function Home() {
   return (
     <main
@@ -49,7 +52,7 @@ export default function Home() {
 
       <div className="grid w-full max-w-2xl grid-cols-1 gap-5 text-right sm:grid-cols-2">
         <Link
-          href="/signup"
+          href="/subscribe"
           className="flex flex-col gap-2 rounded-2xl border p-7 shadow-sm transition hover:-translate-y-0.5"
           style={{ borderColor: "#d3ece9", background: "white" }}
         >
