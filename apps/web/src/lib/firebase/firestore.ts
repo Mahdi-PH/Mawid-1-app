@@ -165,6 +165,20 @@ export async function listClinics(): Promise<ClinicDoc[]> {
   return snap.docs.map((d) => d.data() as ClinicDoc);
 }
 
+/** The patient-facing directory: single-field equality only (no orderBy),
+ *  same reasoning as adminListPendingClinics() — avoids needing a
+ *  composite index, and the result set is small enough to sort
+ *  client-side. Only "approved" clinics are ever returned; "pending"/
+ *  "rejected" stay invisible to مراجع, exactly like the admin approval
+ *  workflow intends. */
+export async function listApprovedClinics(): Promise<ClinicDoc[]> {
+  const q = query(collection(db, "clinics"), where("status", "==", "approved"));
+  const snap = await getDocs(q);
+  return snap.docs
+    .map((d) => d.data() as ClinicDoc)
+    .sort((a, b) => a.clinicName.localeCompare(b.clinicName, "ar"));
+}
+
 export interface ScheduleUpdate {
   workStart: string;
   workEnd: string;
@@ -214,6 +228,37 @@ export async function updateClinicSchedule(slug: string, patch: ScheduleUpdate):
 
 function apptId(clinicSlug: string, date: string, startTime: string) {
   return `${clinicSlug}_${date}_${startTime}`;
+}
+
+/** Per-slot availability for the patient-facing booking grid, without ever
+ *  reading another patient's name/phone. A plain query for "today's
+ *  appointments at this clinic" isn't an option for an anonymous patient —
+ *  firestore.rules only lets a signed-in visitor read an appointment doc
+ *  that's theirs, the clinic's own, admin's, or (see that rule's comment)
+ *  one that doesn't exist yet. So this checks each slot's deterministic id
+ *  individually: a doc that doesn't exist reads fine and means "free"; a
+ *  doc that exists and belongs to someone else is denied by the rules
+ *  engine itself, which this reads as "taken" rather than treating as an
+ *  error. Costs one Firestore read per slot on the grid (a few dozen at
+ *  most for a single clinic/day) - fine at this app's current scale. */
+export async function getSlotAvailability(
+  clinicSlug: string,
+  date: string,
+  startTimes: string[]
+): Promise<Record<string, boolean>> {
+  const results = await Promise.allSettled(
+    startTimes.map((startTime) => getDoc(doc(db, "appointments", apptId(clinicSlug, date, startTime))))
+  );
+  const availability: Record<string, boolean> = {};
+  results.forEach((result, i) => {
+    const startTime = startTimes[i];
+    if (result.status === "rejected") {
+      availability[startTime] = false; // permission-denied => exists, owned by someone else
+      return;
+    }
+    availability[startTime] = !result.value.exists();
+  });
+  return availability;
 }
 
 export interface BookSlotInput {
@@ -278,14 +323,18 @@ export async function listAppointmentsForClinic(clinicSlug: string, date: string
   return snap.docs.map((d) => d.data() as AppointmentDoc);
 }
 
+/** Single-field equality only (no orderBy) - same reasoning as
+ *  adminListPendingClinics(): a (patientUid, createdAt) composite index is
+ *  already declared in firestore.indexes.json, but per docs/
+ *  firebase-setup.md the service account that would deploy it lacks
+ *  datastore.indexAdmin, so it was never actually pushed live. Sorting the
+ *  small per-patient result set client-side needs zero index deployment. */
 export async function listAppointmentsForPatient(patientUid: string): Promise<AppointmentDoc[]> {
-  const q = query(
-    collection(db, "appointments"),
-    where("patientUid", "==", patientUid),
-    orderBy("createdAt", "desc")
-  );
+  const q = query(collection(db, "appointments"), where("patientUid", "==", patientUid));
   const snap = await getDocs(q);
-  return snap.docs.map((d) => d.data() as AppointmentDoc);
+  return snap.docs
+    .map((d) => d.data() as AppointmentDoc)
+    .sort((a, b) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0));
 }
 
 // ---------------------------------------------------------------------

@@ -139,9 +139,24 @@ service cloud.firestore {
     // appointments/{apptId} — apptId = `${clinicSlug}_${date}_${startTime}`.
     // ---------------------------------------------------------------
     match /appointments/{apptId} {
+      // resource == null covers the one case bookSlot()'s transaction
+      // actually needs: reading a NOT-YET-EXISTING appointment doc (the
+      // double-booking existence check) as an anonymous patient who is
+      // neither that clinic's owner nor admin. A nonexistent document has
+      // no data to protect, so this doesn't loosen access to anyone
+      // else's real booking - once the doc exists, this clause is false
+      // and the three conditions below are the only way in, same as
+      // before. Appointment ids are deterministic
+      // (`${clinicSlug}_${date}_${startTime}`) and computable from public
+      // clinic data, so without this, any other patient's slot being
+      // *taken* would be undiscoverable except by a failed create - this
+      // just lets that same fact ("is this exact id already claimed?")
+      // be checked with a plain read too, which is what a client-side
+      // transaction naturally does before writing.
       allow read: if isAdmin()
                   || (isSignedIn() && resource.data.patientUid == request.auth.uid)
-                  || ownsClinic(resource.data.clinicSlug);
+                  || ownsClinic(resource.data.clinicSlug)
+                  || (isSignedIn() && resource == null);
 
       // A patient may only ever create an appointment under their own
       // uid, for a clinic that actually exists, starting life as

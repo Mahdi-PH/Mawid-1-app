@@ -609,14 +609,120 @@ static export:
   from the repo root (needs `firebase login` or the same service-account
   key approach).
 
+## Real patient-facing directory + booking (`apps/web/src/app/find/`)
+
+The مراجع (patient) side is no longer artifact-only — `/find` is a real,
+Firestore-backed directory + booking flow in `apps/web`, built after the
+user's reaction to installing the real app and finding its home page
+still linked nowhere real (see the home-page rebrand entry above) made
+clear the demo/real gap had to close for this side too, not just
+branding. Scoped by one explicit product decision from the user:
+**patients never get an account — anonymous forever — and can only find
+clinics that are already registered** (no GPS, no manual "add a place"
+by a patient, matching the artifact's existing no-GPS decision).
+
+- **Almost the entire backend already existed** from the original
+  Firebase-track build, unused by any UI until now: `ClinicDoc` already
+  had `gov`/`district`/`workStart`/`workEnd`/`slotMin`/`breakStart`/
+  `breakEnd`; `bookSlot()`, `ensurePatientSession()`, and the
+  `appointments/{clinicSlug}_{date}_{startTime}` double-booking guard
+  were all written and covered by `firestore.rules` long before any
+  patient-facing page called them. This session added the three pages
+  that actually call them, plus two new `firestore.ts` helpers
+  (`listApprovedClinics()`, `getSlotAvailability()`) and one
+  `firestore.rules` change (below).
+- **`/find`**: lists `clinics` where `status == "approved"` only —
+  pending/rejected stay invisible, same as the artifact's directory and
+  the admin approval workflow's whole point. A single search box matches
+  clinic name + gov/district text, no separate filters, mirroring the
+  artifact's `directoryClinics()` search exactly.
+- **`/find/book?clinic=<slug>`** (query-param route, same static-export
+  reason as `/admin/user`): today's slot grid only, generated from the
+  clinic's own `workStart`/`workEnd`/`slotMin`/break via the existing
+  `slotEngine.ts` — no multi-day picker, matching the artifact. Tapping a
+  free slot opens a name+phone form; submitting calls
+  `ensurePatientSession()` then `bookSlot()`. A `SlotTakenError` (lost the
+  race to another patient) surfaces inline and re-marks that slot taken
+  rather than crashing the page.
+- **`/find/requests`** ("طلباتي"): a patient's own requests across every
+  clinic, keyed off the stable anonymous uid Firebase Auth persists in
+  that browser — no login, exactly what `firestore.rules` already scoped
+  appointment reads to.
+- **Real architecture problem solved, not just UI wiring**: an anonymous
+  patient has no way to safely know which of today's slots are already
+  taken. A broad "give me this clinic's appointments today" query is
+  correctly denied by `firestore.rules` for a random patient (those docs
+  carry another patient's name/phone), and the demo artifact never had to
+  solve this since its "occupied" map was local mock data. Two things
+  needed to change together:
+  - **`getSlotAvailability()`** checks each slot's *deterministic*
+    document id individually with a plain `getDoc()` rather than a range
+    query: a slot that's free reads back "not found" (nothing to
+    protect); a slot someone else already booked comes back
+    permission-denied *by the existing rules, unchanged* — read as
+    "taken", not treated as an error. Costs one read per slot on the grid
+    (a few dozen at most) — fine at pilot scale, same tradeoff already
+    accepted elsewhere in this track (see the license-image-size /
+    App Check notes above).
+  - **`firestore.rules`**: `bookSlot()`'s own transaction needs that same
+    kind of read — checking whether the *specific* slot a patient is
+    trying to claim already exists — for the booking itself, not just
+    the grid's dimming. The appointments `allow read` rule gained exactly
+    one clause: `|| (isSignedIn() && resource == null)`. A nonexistent
+    document has no data to leak, so this can't expose any real booking —
+    once a document exists, this clause is false and the original three
+    conditions (own booking / clinic owner / admin) are the only way in,
+    unchanged. This is the standard Firestore "check-then-write" pattern,
+    not a new door into existing data.
+  - **Not verified against a live emulator before this commit** — unlike
+    every earlier `firestore.rules` change in this project (see the 23-
+    and 8-assertion emulator runs above), this one couldn't be: the
+    Firestore emulator binary is fetched from
+    `firebase-public.firebaseio.com` at first run, which this sandbox's
+    network policy also blocks (confirmed directly — same class of block
+    as `dl.google.com` for the Android work). The `resource == null`
+    pattern is a well-documented, standard Firestore rules idiom for
+    exactly this "does this id already exist" check, and the reasoning
+    above was worked through carefully, but this still needs a real
+    booking attempt (or a session with Firebase network access) to
+    confirm before fully trusting it in production — flag this rather
+    than silently treating "compiles and reasons through cleanly" as
+    equivalent to "emulator-verified" like the rest of this project's
+    rules changes.
+- **`listAppointmentsForPatient()` had the same undeployed-index problem
+  as `adminListPendingClinics()`** before this session touched it — a
+  `(patientUid, createdAt)` composite index was already declared in
+  `firestore.indexes.json` but never deployed (same
+  `datastore.indexAdmin` permission gap noted above). Fixed the same way:
+  dropped `orderBy`, sort client-side.
+- **Not yet deployed** — this session has no Firebase service-account key
+  (same gap as the Android `assetlinks.json` follow-up above); the code
+  is committed and build-verified locally (`tsc --noEmit`, `next build`,
+  and a static-file/Playwright render check of `/` and `/find`) but the
+  live `mawid-app-d1d03` project still needs `firebase deploy --only
+  firestore:rules,hosting` once a key is available again.
+- **Deliberately out of scope for this pass**: the signup form still
+  doesn't collect `gov`/`district`/working hours (those fields exist on
+  `ClinicDoc` and default to null/09:00–17:00/15min for every real
+  signup today), so `/find`'s search-by-district only becomes useful once
+  a future pass adds those fields to `SignupClient.tsx` — not requested
+  this time, so not built speculatively.
+
 ## Next steps if resumed
 
-If the user wants the two-sided account/GPS/shareable-link feature set
-built into the *real* codebase (not just the artifact), that needs actual
-product decisions first (ask, don't assume): does a patient need an
-account eventually, or stay anonymous forever; is location GPS-only or
-also manual; do paid subscription tiers get built now or later; does a new
-clinic signup also need to appear in the public directory (currently it
-doesn't — only reachable via its direct link). Then it's a real Prisma
-migration (Clinic auth: username/password hash, subscription/plan fields,
-a `patientRequests` table) plus new Next.js routes — not a small patch.
+Two things are needed to make the `/find` work above actually live and
+verified, in order: (1) a Firebase service-account key, to deploy the
+updated `firestore.rules` and the rebuilt `apps/web/out/` to
+`mawid-app-d1d03`; (2) a real booking attempt against the live project
+right after that (anonymous, from a fresh browser/incognito session) to
+confirm the `resource == null` rules change actually behaves as reasoned
+above, since it could not be emulator-tested in this sandbox.
+
+If the user also wants signup to collect gov/district/working hours (so
+`/find`'s district search and per-clinic hours actually vary clinic to
+clinic, matching the artifact), that's a small, well-scoped addition to
+`SignupClient.tsx` — `registerClinic()` already accepts all of those
+fields, only the form UI doesn't collect them yet.
+
+Paid subscription tiers remain undecided and unbuilt, in either track —
+ask before building, per the artifact's "لم يُحدَّد بعد" pricing note.

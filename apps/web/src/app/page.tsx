@@ -4,14 +4,10 @@ import Link from "next/link";
 // artifact (see CLAUDE.md "Two-sided product direction") - logo mark,
 // wordmark, teal gradient, role cards - instead of the placeholder MVP
 // homepage this used to be (a bare "لوحة الاستقبال"/"شاشة صالة الانتظار"
-// pair pointing at apps/server routes that aren't hosted anywhere). The
-// مراجع (patient) card is intentionally disabled rather than routed to a
-// page that doesn't exist yet: only the clinic/admin side (/signup,
-// /admin) is real and live today - porting the demo's patient search +
-// booking flow into this app is a separate, larger effort (needs product
-// decisions: patient accounts vs. anonymous, GPS vs. manual location,
-// whether a new signup appears in a public directory - see CLAUDE.md
-// "Next steps if resumed").
+// pair pointing at apps/server routes that aren't hosted anywhere). مراجع
+// now routes to /find (real, Firestore-backed patient directory + booking,
+// no account) - see CLAUDE.md "Real patient-facing directory + booking
+// (apps/web/src/app/find/)" for what it does and doesn't cover.
 export default function Home() {
   return (
     <main
@@ -65,17 +61,18 @@ export default function Home() {
           </p>
         </Link>
 
-        <div
-          className="flex flex-col gap-2 rounded-2xl border p-7 opacity-60"
-          style={{ borderColor: "#e5e5e5", background: "#fafafa" }}
-          aria-disabled
+        <Link
+          href="/find"
+          className="flex flex-col gap-2 rounded-2xl border p-7 shadow-sm transition hover:-translate-y-0.5"
+          style={{ borderColor: "#d3ece9", background: "white" }}
         >
-          <h2 className="text-lg font-bold text-neutral-500">مراجع</h2>
+          <h2 className="text-lg font-bold" style={{ color: "#0F7A6C" }}>
+            مراجع
+          </h2>
           <p className="text-sm leading-7 text-neutral-500">
-            البحث عن عيادتك وحجز موعدك مباشرة — قريباً في هذا التطبيق (متاح للتجربة الآن في
-            النسخة التوضيحية).
+            ابحث عن عيادتك واطلب موعدك مباشرة — بدون تسجيل حساب.
           </p>
-        </div>
+        </Link>
       </div>
     </main>
   );
