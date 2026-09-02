@@ -282,11 +282,23 @@ Next.js/Prisma implementation is a separate, larger effort once the UX is
 approved. Current artifact URL (same URL republished on every iteration):
 `https://claude.ai/code/artifact/d8829f59-094b-4102-8744-9893d170084f`
 
+The artifact is kept deliberately in sync with every user-facing change
+made to the real app so it stays "أول شيء تجربه" for anything new — most
+recently the clinic/beauty-center relabel, the Gmail-based signup field,
+the unified admin sign-in, and the license-upload approval workflow (all
+already listed below) plus a small teal pill banner on the home screen
+("جديد — التطبيق الحقيقي أصبح مباشراً وقابلاً للتثبيت على جهازك") linking
+out to the now-live `https://mawid-app-d1d03.web.app`, added once that
+deployment shipped — since an artifact runs sandboxed and can't itself
+demonstrate a real installable PWA, this links out to the real one instead
+of faking install behavior in-artifact.
+
 What the artifact currently demonstrates end-to-end (all client-side,
 localStorage-backed, no server):
 
-1. **Home**: choose "عيادة" or "مراجع" — both role-card titles set in the
-   teal accent color (not the default near-black ink) for prominence. No
+1. **Home**: choose "عيادة أو مركز تجميل" or "مراجع" — both role-card titles
+   set in the teal accent color (not the default near-black ink) for
+   prominence. No
    pricing badges on this screen (removed per the user's ask — "أول شهر
    مجاناً" / "مجاني دائماً" now only appear where they're contextually
    relevant, e.g. the subscription screen).
