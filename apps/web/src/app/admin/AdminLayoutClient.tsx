@@ -29,8 +29,18 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
     });
   }, []);
 
+  // This effect is the ONLY place that navigates based on auth state — the
+  // login page used to also call router.replace("/admin") itself right
+  // after a successful sign-in, which raced this effect: status briefly
+  // still read "signed-out" (onAuthChange's async isAdminUser() check
+  // hadn't resolved yet) at the exact moment pathname flipped to "/admin",
+  // bouncing straight back to /admin/login before the real "ok" update
+  // ever landed — a login that visibly "worked" (network calls all
+  // succeeded) but never actually let you in. Funneling both directions
+  // through this single effect, driven only by `status`, removes the race.
   useEffect(() => {
     if (status === "signed-out" && pathname !== "/admin/login") router.replace("/admin/login");
+    if (status === "ok" && pathname === "/admin/login") router.replace("/admin");
   }, [status, pathname, router]);
 
   if (pathname === "/admin/login") return <>{children}</>;

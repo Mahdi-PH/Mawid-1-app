@@ -4,7 +4,6 @@
 // route is nested under.
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { signInWithEmail } from "../../../lib/firebase/auth";
 
 export default function AdminLoginPage() {
@@ -12,17 +11,30 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setBusy(true);
     try {
+      // No router.replace() here on success — AdminLayoutClient's own
+      // auth-state effect is the single place that navigates once it
+      // confirms (asynchronously) this user really is an admin. Racing
+      // that check with a second, independent navigation here is exactly
+      // what caused the login-that-bounces-back bug; see that file's
+      // comment.
       await signInWithEmail(email, password);
-      router.replace("/admin");
-    } catch {
-      setError("بيانات الدخول غير صحيحة.");
+    } catch (err) {
+      // Only auth/* codes (wrong password, no such user, ...) are genuinely
+      // "check your credentials" — anything else (network unreachable, a
+      // misconfigured Firebase project) is a real problem worth showing
+      // as-is rather than burying under a misleading "wrong password".
+      const code = (err as { code?: string })?.code ?? "";
+      setError(
+        code.startsWith("auth/")
+          ? "بيانات الدخول غير صحيحة."
+          : `تعذّر تسجيل الدخول: ${err instanceof Error ? err.message : String(err)}`
+      );
     } finally {
       setBusy(false);
     }

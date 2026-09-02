@@ -52,6 +52,21 @@ Spark/free plan) alongside the existing Postgres/Prisma one — nothing in
   config is a no-op in a `"use client"` file — learned by `next build`
   actually failing during prerendering, see the layout's comment) so the
   auth-gated subtree never gets statically prerendered.
+- **Real bug found and fixed by actually logging in, not just by
+  building**: right after a successful sign-in, the login page used to
+  call `router.replace("/admin")` itself, racing `AdminLayoutClient`'s own
+  `onAuthChange`-driven redirect effect — `status` was still momentarily
+  `"signed-out"` (the async `isAdminUser()` claim check hadn't resolved
+  yet) at the exact instant `pathname` flipped to `/admin`, so the layout
+  bounced straight back to `/admin/login`. Every network call had
+  genuinely succeeded (verified via request logging), so this would have
+  looked like "the login button just doesn't work" with no visible error.
+  Fixed by making the layout's effect the *only* place that navigates,
+  in both directions (`signed-out` → `/admin/login`, `ok` while on
+  `/admin/login` → `/admin`); the login page no longer navigates itself.
+  Verified fixed by an actual headless-browser login against the real
+  `mawid-app-d1d03` project (screenshot sent to the user), not just a
+  passing build.
 - **Security rules validated against the real Firestore emulator**, not
   just read-through: 23 assertions (role escalation attempts, cross-tenant
   reads/writes, double-booking, malformed/oversized input) all passed
@@ -90,12 +105,27 @@ Spark/free plan) alongside the existing Postgres/Prisma one — nothing in
   - Admin account: created and **verified** — `Mahdinaeem201@gmail.com`,
     custom claim `{admin:true}` set, matching `users/{uid}` Firestore doc
     confirmed to exist with `role:"admin"`.
-  - `apps/web/.env.local` still doesn't exist in this environment (no
-    Web app config values were provided), so `apps/web` itself still can't
-    connect yet — the deploy work above used the Admin SDK directly, which
-    doesn't need it. Whoever runs `apps/web` next needs to register a Web
-    app in the Firebase console and fill `.env.local` per
-    `.env.local.example`.
+  - **Web app registered** (`Mawid Web`, appId
+    `1:1082116408705:web:68efc55102e44885051480`) via the Firebase
+    Management API (`firebase.googleapis.com`) directly, same
+    service-account credentials — this one worked with no permission
+    issue, unlike indexes. Its config (apiKey, authDomain, etc. — not
+    secret, safe to regenerate/re-view anytime from Firebase console →
+    Project settings → Your apps) was written to `apps/web/.env.local` in
+    this environment; that file is gitignored so it did **not** persist
+    to the repo — whoever next runs `apps/web` for real either reuses this
+    same registered Web app's config (visible in the Firebase console) or
+    registers a new one, either way following `.env.local.example`.
+  - **End-to-end login verified against the real project**, not just
+    `next dev` + a build: ran the actual Next.js dev server, drove a real
+    headless-browser sign-in at `/admin/login` with the seeded admin
+    credentials (network calls routed through this sandbox's outbound
+    proxy, which a bare browser doesn't use automatically — see the
+    session transcript if this needs redoing), and confirmed the
+    dashboard renders live Firestore data (1 user, 0 appointments at the
+    time). This run is what caught and fixed the redirect race described
+    above — a bug `next build`/`tsc` alone could never have caught, since
+    it's a runtime auth-timing issue, not a type or compile error.
 - **Decided by the user**: `apps/server`/Postgres and this Firebase track
   stay permanently parallel for now (Postgres/Express for the existing
   reception/patient screens, Firebase for the admin dashboard and a future
