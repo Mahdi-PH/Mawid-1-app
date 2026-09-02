@@ -729,7 +729,75 @@ by a patient, matching the artifact's existing no-GPS decision).
   a future pass adds those fields to `SignupClient.tsx` — not requested
   this time, so not built speculatively.
 
+## Real clinic dashboard (`apps/web/src/app/clinic/`)
+
+Requested right after the `/find` work above, as part of the same "match
+the demo artifact" push: a clinic that signed up via `/signup` and got
+approved had **nowhere real to go** — `/dashboard`/`/display` are the
+unrelated Postgres/`apps/server` track (see "Deployment status" above),
+so a real Firebase clinic account was a dead end the moment it was
+approved. `/clinic` is the missing reception dashboard, mirroring the
+demo artifact's `view-clinic` screen almost exactly.
+
+- **Three tabs, one page, client-side state** (not three routes — no
+  reason to, nothing here needs to be independently linkable):
+  **الاستقبال** (today's slot grid merged with today's appointments —
+  `generateDaySlots(clinic)` + `listAppointmentsForClinic()`, a status
+  `<select>` per booked slot reusing `setAppointmentStatus()`, same
+  simple pattern `/admin/user` already used for the same job); **شاشة
+  الانتظار** (today's occupying appointments, `in_progress` shown large
+  as "الحالي", the rest as a numbered waiting list); **إعدادات الدوام**
+  (workStart/workEnd/slotMin form, wired straight to the *already-
+  existing* `updateClinicSchedule()` — its conflict-refusal logic
+  (`ScheduleConflictError`) needed zero changes, only a form in front of
+  it). The dashboard header also surfaces the clinic's own
+  `/find/book?clinic=<slug>` link with a copy button — the demo's
+  "shareable public booking link", which had nowhere to live in the real
+  app until this page existed.
+- **`getClinicByOwner(uid)`** (new, `firestore.ts`) is the one new data-
+  layer function this needed — everything else it calls
+  (`listAppointmentsForClinic`, `setAppointmentStatus`,
+  `updateClinicSchedule`) already existed, untouched, from earlier in
+  this track. No `firestore.rules` changes at all: `ownsClinic()` already
+  covered every read/write this page makes.
+- **A real, separate bug found while building this, not a hypothetical**:
+  there was no way for a *returning* clinic owner to sign back in.
+  `/signup`'s form only ever called `registerClinic()` for a non-admin
+  email — a returning owner hit `auth/email-already-in-use`, and the
+  error message even said "سجّل الدخول بدلاً من ذلك" while the form had
+  no login mode to switch to. Fixed in `SignupClient.tsx`: a
+  `clinicMode` toggle ("لديك حساب بالفعل؟ سجّل الدخول") switches the same
+  form to email+password only, calling `signInWithEmail()` then routing
+  to `/clinic` instead of `registerClinic()`.
+- **`/clinic` gates on clinic-doc status, not just auth**: signed-in but
+  `status !== "approved"` shows a plain "بانتظار موافقة الإدارة" message
+  instead of the dashboard — a pending clinic can already sign in (the
+  Auth account exists from the moment they submitted), it just isn't
+  useful yet.
+- **Verified**: `tsc --noEmit`, `next build` (static export, `/clinic`
+  compiles to `○ /clinic` like every other route), and a local
+  Playwright smoke test (visiting `/clinic` signed-out correctly
+  redirects to `/signup`; the new login/signup toggle correctly
+  shows/hides the clinic-name and license fields) — zero console errors.
+  **Not yet exercised end-to-end against the live project** (a real
+  signup → admin approval → clinic login → booking → status change → TV
+  tab loop) — that needs the same kind of admin-privileged setup/cleanup
+  the `/find` rules verification used, i.e. the service-account key
+  again. Flagging this explicitly rather than presenting local
+  verification as equivalent.
+- **Not committed/deployed yet as of writing this** — see "Next steps if
+  resumed" below for exactly what's left.
+
 ## Next steps if resumed
+
+If the `/clinic` work above hasn't been committed/pushed/deployed yet:
+commit it, then (with a fresh service-account key, since the previous
+one was deleted after the `/find` deploy) either just deploy it, or —
+better, matching this session's own standard — run a full live loop
+first (temporary real clinic signup, admin-approve it, sign in, book a
+slot as a patient, confirm it shows up and status changes work, check
+the TV tab, edit the schedule, then delete all of it) before deploying,
+the same rigor the `/find` booking-privacy rule got.
 
 If the user wants signup to collect gov/district/working hours (so
 `/find`'s district search and per-clinic hours actually vary clinic to

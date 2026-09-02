@@ -27,9 +27,15 @@ export default function SignupClient() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pendingSubmitted, setPendingSubmitted] = useState(false);
+  // "signup" (new clinic) vs "login" (returning owner, /clinic dashboard)
+  // — there was no way back into an existing account before this: the
+  // form only ever tried registerClinic(), which fails with
+  // auth/email-already-in-use for a returning owner and left them stuck.
+  const [clinicMode, setClinicMode] = useState<"signup" | "login">("signup");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isAdminEmail = useMemo(() => isConfiguredAdminEmail(email), [email]);
+  const isClinicLogin = !isAdminEmail && clinicMode === "login";
 
   async function handleAdminSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -38,6 +44,25 @@ export default function SignupClient() {
     try {
       await signInWithEmail(email, password);
       router.push("/admin");
+    } catch (err) {
+      const code = (err as { code?: string })?.code ?? "";
+      setError(
+        code.startsWith("auth/")
+          ? "بيانات الدخول غير صحيحة."
+          : `تعذّر تسجيل الدخول: ${err instanceof Error ? err.message : String(err)}`
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleClinicLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      await signInWithEmail(email, password);
+      router.push("/clinic");
     } catch (err) {
       const code = (err as { code?: string })?.code ?? "";
       setError(
@@ -104,11 +129,24 @@ export default function SignupClient() {
   return (
     <div dir="rtl" className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
       <form
-        onSubmit={isAdminEmail ? handleAdminSubmit : handleClinicSubmit}
+        onSubmit={isAdminEmail ? handleAdminSubmit : isClinicLogin ? handleClinicLogin : handleClinicSubmit}
         className="w-full max-w-sm rounded-xl border bg-white p-6 shadow-sm"
       >
         <h1 className="mb-1 text-lg font-bold text-brand-700">عيادة أو مركز تجميل</h1>
         <p className="mb-4 text-sm text-gray-500">أنشئ حساباً جديداً، أو سجّل دخولك إذا كان حسابك موجوداً.</p>
+
+        {!isAdminEmail && (
+          <button
+            type="button"
+            onClick={() => {
+              setClinicMode(clinicMode === "signup" ? "login" : "signup");
+              setError(null);
+            }}
+            className="mb-4 text-sm text-brand-600 hover:underline"
+          >
+            {clinicMode === "signup" ? "لديك حساب بالفعل؟ سجّل الدخول" : "ليس لديك حساب؟ أنشئ حساباً جديداً"}
+          </button>
+        )}
 
         <label className="mb-3 block text-sm">
           Gmail
@@ -123,7 +161,7 @@ export default function SignupClient() {
           />
         </label>
 
-        {!isAdminEmail && (
+        {!isAdminEmail && !isClinicLogin && (
           <label className="mb-3 block text-sm">
             اسم العيادة أو مركز التجميل
             <input
@@ -146,7 +184,7 @@ export default function SignupClient() {
           />
         </label>
 
-        {!isAdminEmail && (
+        {!isAdminEmail && !isClinicLogin && (
           <>
             <label className="mb-3 block text-sm">
               تأكيد كلمة المرور
@@ -181,7 +219,7 @@ export default function SignupClient() {
           disabled={busy}
           className="w-full rounded-lg bg-brand-600 py-2 font-bold text-white disabled:opacity-60"
         >
-          {busy ? "…" : isAdminEmail ? "دخول" : "إنشاء الحساب"}
+          {busy ? "…" : isAdminEmail || isClinicLogin ? "دخول" : "إنشاء الحساب"}
         </button>
       </form>
     </div>

@@ -165,6 +165,16 @@ export async function listClinics(): Promise<ClinicDoc[]> {
   return snap.docs.map((d) => d.data() as ClinicDoc);
 }
 
+/** Finds the clinic a signed-in clinic account owns — the /clinic
+ *  dashboard's entry point, same ownerUid == uid relationship
+ *  firestore.rules' ownsClinic() already checks for every write on this
+ *  page. A clinic account owns exactly one clinic doc (registerClinic()
+ *  never creates more than one per uid). */
+export async function getClinicByOwner(ownerUid: string): Promise<ClinicDoc | null> {
+  const snap = await getDocs(query(collection(db, "clinics"), where("ownerUid", "==", ownerUid)));
+  return snap.empty ? null : (snap.docs[0].data() as ClinicDoc);
+}
+
 /** The patient-facing directory: single-field equality only (no orderBy),
  *  same reasoning as adminListPendingClinics() — avoids needing a
  *  composite index, and the result set is small enough to sort
