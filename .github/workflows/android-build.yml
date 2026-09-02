@@ -58,7 +58,22 @@ jobs:
 
       - name: Decode release keystore
         if: ${{ env.HAS_RELEASE_SECRETS == 'true' }}
-        run: echo "$KEYSTORE_BASE64" | base64 -d > app/release.keystore
+        # -d -i (ignore-garbage) strips anything that isn't valid base64
+        # (stray whitespace, \r from Windows line endings, a trailing
+        # newline picked up during copy/paste into the GitHub secret) -
+        # base64 -d alone failed twice in a row here with "invalid input"
+        # even after the secret was reportedly re-copied, so this is
+        # explicit defense against that instead of relying on a perfect
+        # paste. Then verify the result actually looks like a keystore
+        # (a real one starts with the ZIP magic bytes, since modern
+        # keytool writes PKCS12) so a bad secret fails with a clear
+        # message here rather than a confusing Gradle signing error later.
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d -i > app/release.keystore
+          if [ ! -s app/release.keystore ] || ! head -c2 app/release.keystore | grep -q $'PK'; then
+            echo "::error::Decoded release.keystore is empty or not a valid keystore file - ANDROID_KEYSTORE_BASE64 secret is likely wrong (re-run: base64 -w0 mawid-release.keystore and replace the secret value exactly, no surrounding quotes)."
+            exit 1
+          fi
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
 
