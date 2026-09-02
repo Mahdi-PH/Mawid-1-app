@@ -12,7 +12,13 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ensurePatientSession } from "../../../lib/firebase/auth";
-import { bookSlot, getClinic, getSlotAvailability, SlotTakenError } from "../../../lib/firebase/firestore";
+import {
+  bookSlot,
+  getClinic,
+  getSlotAvailability,
+  isSubscriptionActive,
+  SlotTakenError,
+} from "../../../lib/firebase/firestore";
 import { generateDaySlots } from "../../../lib/firebase/slotEngine";
 import type { ClinicDoc } from "../../../lib/firebase/types";
 
@@ -64,8 +70,9 @@ function BookClinic() {
       return;
     }
     getClinic(slug).then((c) => {
-      setClinic(c && c.status === "approved" ? c : null);
-      if (c && c.status === "approved") reloadAvailability(c);
+      const live = c && c.status === "approved" && isSubscriptionActive(c);
+      setClinic(live ? c : null);
+      if (live && c) reloadAvailability(c);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);

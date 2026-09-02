@@ -11,6 +11,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  Timestamp,
   updateDoc,
   where,
 } from "firebase/firestore";
@@ -38,6 +39,35 @@ export class ScheduleConflictError extends Error {
     super(`These booked appointments fall outside the new hours: ${conflictingTimes.join(", ")}`);
     this.name = "ScheduleConflictError";
   }
+}
+
+/** One real subscription month == 30 days, counted from the moment admin
+ *  approves a clinic (not from signup — a pending clinic isn't live/usable
+ *  yet, so it shouldn't burn subscription time while waiting on review),
+ *  and renewed the same way (adminRenewSubscription()) since there's no
+ *  real payment gateway (see /subscribe) — a human admin confirms the
+ *  manual bank transfer and clicks "تجديد شهر". */
+const SUBSCRIPTION_DAYS = 30;
+/** Clinic shows an in-app warning banner (see /clinic) once its
+ *  subscription is within this many days of expiring. */
+export const SUBSCRIPTION_WARNING_DAYS = 1;
+
+function addDays(from: Date, days: number): Timestamp {
+  return Timestamp.fromDate(new Date(from.getTime() + days * 24 * 60 * 60 * 1000));
+}
+
+/** true if the clinic has never been approved yet (no subscription clock
+ *  started) or its subscription end date is still in the future. Expired
+ *  clinics are treated as invisible/inactive everywhere patient-facing. */
+export function isSubscriptionActive(clinic: Pick<ClinicDoc, "subscriptionEndsAt">): boolean {
+  if (!clinic.subscriptionEndsAt) return false;
+  return clinic.subscriptionEndsAt.toMillis() > Date.now();
+}
+
+/** Whole days left until expiry, floor()'d — negative once expired. */
+export function subscriptionDaysLeft(clinic: Pick<ClinicDoc, "subscriptionEndsAt">): number | null {
+  if (!clinic.subscriptionEndsAt) return null;
+  return Math.floor((clinic.subscriptionEndsAt.toMillis() - Date.now()) / (24 * 60 * 60 * 1000));
 }
 
 // ---------------------------------------------------------------------
@@ -140,6 +170,7 @@ export async function registerClinic(input: RegisterClinicInput): Promise<void> 
         breakEnd: input.breakEnd ?? null,
         status: "pending",
         licenseImageUrl,
+        subscriptionEndsAt: null,
         createdAt: serverTimestamp(),
       };
       tx.set(userRef, userDoc);
@@ -180,12 +211,18 @@ export async function getClinicByOwner(ownerUid: string): Promise<ClinicDoc | nu
  *  composite index, and the result set is small enough to sort
  *  client-side. Only "approved" clinics are ever returned; "pending"/
  *  "rejected" stay invisible to مراجع, exactly like the admin approval
- *  workflow intends. */
+ *  workflow intends. A clinic whose subscription has expired is filtered
+ *  out here too — per the user's explicit decision, an expired clinic
+ *  disappears from search completely, the same as a pending/rejected one,
+ *  even though its Firestore status field still literally says
+ *  "approved" (status and subscription are deliberately separate axes —
+ *  see adminRenewSubscription()). */
 export async function listApprovedClinics(): Promise<ClinicDoc[]> {
   const q = query(collection(db, "clinics"), where("status", "==", "approved"));
   const snap = await getDocs(q);
   return snap.docs
     .map((d) => d.data() as ClinicDoc)
+    .filter(isSubscriptionActive)
     .sort((a, b) => a.clinicName.localeCompare(b.clinicName, "ar"));
 }
 
@@ -290,6 +327,9 @@ export interface BookSlotInput {
 export async function bookSlot(input: BookSlotInput): Promise<void> {
   const clinic = await getClinic(input.clinicSlug);
   if (!clinic) throw new Error(`Unknown clinic "${input.clinicSlug}"`);
+  if (clinic.status !== "approved" || !isSubscriptionActive(clinic)) {
+    throw new Error(`Clinic "${input.clinicSlug}" is not currently accepting bookings.`);
+  }
   const endTime = resolveSlotEndTime(clinic, input.startTime); // throws SlotNotAvailableError if off-grid
 
   const ref = doc(db, "appointments", apptId(input.clinicSlug, input.date, input.startTime));
@@ -401,7 +441,40 @@ export async function adminListPendingClinics(): Promise<ClinicDoc[]> {
 }
 
 /** Approve/reject a pending signup. firestore.rules only lets admin move
- *  status away from "pending" — a clinic can never do this to itself. */
+ *  status away from "pending" — a clinic can never do this to itself.
+ *  Approving also starts the clinic's subscription clock — SUBSCRIPTION_DAYS
+ *  from right now — since that's the first moment the clinic is actually
+ *  live/usable; rejecting leaves subscriptionEndsAt untouched (null). */
 export async function adminSetClinicStatus(slug: string, status: ClinicStatus): Promise<void> {
-  await updateDoc(doc(db, "clinics", slug), { status });
+  const patch: { status: ClinicStatus; subscriptionEndsAt?: Timestamp } = { status };
+  if (status === "approved") {
+    patch.subscriptionEndsAt = addDays(new Date(), SUBSCRIPTION_DAYS);
+  }
+  await updateDoc(doc(db, "clinics", slug), patch);
+}
+
+/** Every clinic that has ever been approved (regardless of whether its
+ *  subscription is currently active or expired) — the admin subscription-
+ *  tracking table's data source. Unlike listApprovedClinics(), this
+ *  deliberately does NOT filter out expired ones: the whole point of this
+ *  view is to let admin see and renew clinics that ran out. */
+export async function adminListApprovedClinics(): Promise<ClinicDoc[]> {
+  const q = query(collection(db, "clinics"), where("status", "==", "approved"));
+  const snap = await getDocs(q);
+  return snap.docs
+    .map((d) => d.data() as ClinicDoc)
+    .sort((a, b) => (a.subscriptionEndsAt?.toMillis() ?? 0) - (b.subscriptionEndsAt?.toMillis() ?? 0));
+}
+
+/** Manual "تجديد شهر" admin action — there's no real payment gateway (see
+ *  /subscribe), so this is the human confirmation step after a clinic pays
+ *  via the account number shown there. Extends SUBSCRIPTION_DAYS from the
+ *  clinic's current expiry if it hasn't lapsed yet (so renewing a few days
+ *  early doesn't lose those days), or from right now if it already
+ *  expired (so a lapsed clinic doesn't get backdated free days). */
+export async function adminRenewSubscription(slug: string): Promise<void> {
+  const clinic = await getClinic(slug);
+  if (!clinic) throw new Error(`Unknown clinic "${slug}"`);
+  const base = isSubscriptionActive(clinic) ? clinic.subscriptionEndsAt!.toDate() : new Date();
+  await updateDoc(doc(db, "clinics", slug), { subscriptionEndsAt: addDays(base, SUBSCRIPTION_DAYS) });
 }

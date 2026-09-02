@@ -12,8 +12,11 @@ import { useCallback, useEffect, useState } from "react";
 import { auth } from "../../lib/firebase/config";
 import {
   getClinicByOwner,
+  isSubscriptionActive,
   listAppointmentsForClinic,
   setAppointmentStatus,
+  subscriptionDaysLeft,
+  SUBSCRIPTION_WARNING_DAYS,
   updateClinicSchedule,
   ScheduleConflictError,
 } from "../../lib/firebase/firestore";
@@ -81,6 +84,27 @@ export default function ClinicDashboardPage() {
     );
   }
 
+  // Approved but the (real, once-a-month) subscription has run out — the
+  // account is fully closed until admin manually renews it (see
+  // /admin's "تجديد شهر" button; there's no real payment gateway, so
+  // renewal is always this human confirmation step after the clinic pays
+  // via the account number shown on /subscribe).
+  if (!isSubscriptionActive(clinic)) {
+    return (
+      <div className="p-8 text-center">
+        <h1 className="mb-2 text-lg font-bold" style={{ color: "#0F7A6C" }}>
+          {clinic.clinicName}
+        </h1>
+        <p className="text-red-600">
+          انتهى اشتراكك الشهري وتم إغلاق الحساب مؤقتاً. تواصل مع الإدارة لتجديد الاشتراك.
+        </p>
+      </div>
+    );
+  }
+
+  const daysLeft = subscriptionDaysLeft(clinic);
+  const showExpiryWarning = daysLeft !== null && daysLeft <= SUBSCRIPTION_WARNING_DAYS;
+
   const bookingLink =
     typeof window !== "undefined"
       ? `${window.location.origin}/find/book?clinic=${encodeURIComponent(clinic.slug)}`
@@ -129,6 +153,14 @@ export default function ClinicDashboardPage() {
           ))}
         </div>
       </header>
+
+      {showExpiryWarning && (
+        <div className="bg-amber-50 px-6 py-2 text-center text-sm text-amber-800">
+          {daysLeft !== null && daysLeft > 0
+            ? `ينتهي اشتراكك خلال ${daysLeft === 1 ? "يوم واحد" : `${daysLeft} أيام`} — جدّد الآن لتفادي إغلاق الحساب.`
+            : "اشتراكك ينتهي اليوم — جدّد الآن لتفادي إغلاق الحساب."}
+        </div>
+      )}
 
       <main className="p-6">
         {tab === "reception" && (

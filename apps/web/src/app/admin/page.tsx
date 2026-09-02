@@ -6,11 +6,24 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   adminGetStats,
+  adminListApprovedClinics,
   adminListPendingClinics,
   adminListUsers,
+  adminRenewSubscription,
   adminSetClinicStatus,
+  subscriptionDaysLeft,
 } from "../../lib/firebase/firestore";
 import type { ClinicDoc, UserDoc } from "../../lib/firebase/types";
+
+// "الكل" has no numeric threshold, so it's kept out of the number-keyed
+// filter options below and handled as its own branch in the filter.
+const DAYS_LEFT_FILTERS = [
+  { key: "all", label: "الكل" },
+  { key: "expired", label: "منتهي" },
+  { key: "7", label: "أقل من 7 أيام" },
+  { key: "30", label: "أقل من 30 يوماً" },
+] as const;
+type DaysLeftFilter = (typeof DAYS_LEFT_FILTERS)[number]["key"];
 
 function formatDate(ts: UserDoc["createdAt"]): string {
   if (!ts) return "—";
@@ -21,16 +34,24 @@ export default function AdminDashboardPage() {
   const [stats, setStats] = useState<{ userCount: number; appointmentCount: number } | null>(null);
   const [users, setUsers] = useState<UserDoc[]>([]);
   const [pending, setPending] = useState<ClinicDoc[]>([]);
+  const [approved, setApproved] = useState<ClinicDoc[]>([]);
+  const [daysLeftFilter, setDaysLeftFilter] = useState<DaysLeftFilter>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busySlug, setBusySlug] = useState<string | null>(null);
   const [zoomedImage, setZoomedImage] = useState<{ url: string; alt: string } | null>(null);
 
   async function reload() {
-    const [s, u, p] = await Promise.all([adminGetStats(), adminListUsers(), adminListPendingClinics()]);
+    const [s, u, p, a] = await Promise.all([
+      adminGetStats(),
+      adminListUsers(),
+      adminListPendingClinics(),
+      adminListApprovedClinics(),
+    ]);
     setStats(s);
     setUsers(u);
     setPending(p);
+    setApproved(a);
   }
 
   useEffect(() => {
@@ -51,8 +72,29 @@ export default function AdminDashboardPage() {
     }
   }
 
+  async function handleRenew(slug: string) {
+    setBusySlug(slug);
+    try {
+      await adminRenewSubscription(slug);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusySlug(null);
+    }
+  }
+
   if (loading) return <p className="text-gray-500">جارٍ التحميل…</p>;
   if (error) return <p className="text-red-600">{error}</p>;
+
+  const filteredApproved = approved
+    .filter((c) => {
+      const left = subscriptionDaysLeft(c);
+      if (daysLeftFilter === "all") return true;
+      if (daysLeftFilter === "expired") return left === null || left < 0;
+      return left !== null && left >= 0 && left < Number(daysLeftFilter);
+    })
+    .sort((a, b) => (subscriptionDaysLeft(a) ?? -Infinity) - (subscriptionDaysLeft(b) ?? -Infinity));
 
   return (
     <div className="space-y-6">
@@ -124,6 +166,69 @@ export default function AdminDashboardPage() {
               </li>
             ))}
           </ul>
+        )}
+      </div>
+
+      <div className="rounded-xl border bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+          <span className="font-bold">اشتراكات العيادات</span>
+          <div className="flex flex-wrap gap-1">
+            {DAYS_LEFT_FILTERS.map((f) => (
+              <button
+                key={f.key}
+                onClick={() => setDaysLeftFilter(f.key)}
+                className={
+                  "rounded-lg px-3 py-1 text-xs font-bold " +
+                  (daysLeftFilter === f.key ? "bg-brand-500 text-white" : "text-gray-600 hover:bg-gray-100")
+                }
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {filteredApproved.length === 0 ? (
+          <p className="px-4 py-6 text-center text-gray-400">لا توجد عيادات مطابقة.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-right text-gray-500">
+                <th className="px-4 py-2 font-medium">العيادة</th>
+                <th className="px-4 py-2 font-medium">تنتهي في</th>
+                <th className="px-4 py-2 font-medium">الوقت المتبقي</th>
+                <th className="px-4 py-2 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredApproved.map((c) => {
+                const left = subscriptionDaysLeft(c);
+                const expired = left === null || left < 0;
+                return (
+                  <tr key={c.slug} className="border-b last:border-0">
+                    <td className="px-4 py-2">
+                      <div className="font-bold">{c.clinicName}</div>
+                      <div className="text-xs text-gray-400" dir="ltr">
+                        {c.email}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2">{c.subscriptionEndsAt ? formatDate(c.subscriptionEndsAt) : "—"}</td>
+                    <td className={"px-4 py-2 font-bold " + (expired ? "text-red-600" : left! <= 1 ? "text-amber-600" : "text-gray-700")}>
+                      {expired ? "منتهي" : left === 1 ? "يوم واحد" : `${left} يوماً`}
+                    </td>
+                    <td className="px-4 py-2">
+                      <button
+                        onClick={() => handleRenew(c.slug)}
+                        disabled={busySlug === c.slug}
+                        className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60"
+                      >
+                        تجديد شهر
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
 

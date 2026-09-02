@@ -53,6 +53,13 @@ export interface ClinicDoc {
   /** Storage download URL for the uploaded business license (clinic or
    *  beauty-center registration document) — see lib/firebase/storage.ts. */
   licenseImageUrl: string;
+  /** null until first approved; set to approval-time + 30 days by
+   *  adminSetClinicStatus(), extended another 30 days at a time by
+   *  adminRenewSubscription() — there's no real payment gateway (see
+   *  /subscribe), so renewal is always this manual admin action after
+   *  the clinic pays via the account number shown there. Locked to
+   *  admin-only writes in firestore.rules, same as `status`. */
+  subscriptionEndsAt: Timestamp | null;
   createdAt: Timestamp;
 }
 
