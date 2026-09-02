@@ -858,7 +858,9 @@ requested together right after `/clinic` shipped.
   dashboard's 15-assertion test above; this change only adds UI in front
   of already-verified plumbing.
 - **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
-  hosting`, verified FINALIZED. No `firestore.rules` changes.
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788379689858000`). No `firestore.rules`
+  changes.
 
 ## Next steps if resumed
 
