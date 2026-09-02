@@ -511,12 +511,20 @@ app update with no separate native release needed for content changes.
     allow-listed through the sandbox's proxy, unlike `dl.google.com`),
     resizing the existing `apps/web/public/brand/icon-1024.png` down to
     each density rather than needing Android Studio or `bubblewrap`.
-- **Two build variants**: `assembleDebug` needs zero configuration
-  (Android's own auto-generated debug keystore) and always builds — good
-  enough to sideload for testing today. `assembleRelease` only builds once
-  four `ANDROID_KEYSTORE_*` repo secrets are set (see the workflow file's
-  header comment for the exact names) — until then that job step is
-  skipped rather than failing the whole workflow.
+- **Two build variants, both confirmed working on real CI runs**:
+  `assembleDebug` needs zero configuration (Android's own auto-generated
+  debug keystore) and always builds — good enough to sideload for testing
+  today. `assembleRelease` only builds once four `ANDROID_KEYSTORE_*` repo
+  secrets are set (see the workflow file's header comment for the exact
+  names) — until then that job step is skipped rather than failing the
+  whole workflow. Getting the release build green took several rounds on
+  the user's side (a base64 secret that decoded to garbage twice in a
+  row, traced to the wrong value having been pasted into the secret
+  field — not a workflow bug) and one real bug on this side (a keystore-
+  validity check that looked for "PK" ZIP magic bytes; a PKCS12 keystore
+  actually starts with 0x30, an ASN.1 SEQUENCE tag — fixed once caught).
+  Both `assembleDebug` and `assembleRelease` have since produced real,
+  downloaded, verified artifacts (`mawid-debug-apk`, `mawid-release-apk`).
 - **Signing key**: generated once, in this session, with `keytool`
   (`CN=Mawid, O=Mawid, L=Karbala, C=IQ`, RSA 2048, 10,000-day validity,
   alias `mawid-release`) — the user explicitly asked for it to be
@@ -528,18 +536,16 @@ app update with no separate native release needed for content changes.
   `*.keystore`/`*.jks` and `android/app/release.keystore` defensively)
   along with the exact four values to paste into GitHub → repo Settings →
   Secrets and variables → Actions. Its SHA-256 certificate fingerprint is
-  also baked into `apps/web/public/.well-known/assetlinks.json` (added,
-  not yet deployed — see below).
-- **`assetlinks.json` needs a Firebase Hosting redeploy to take effect**:
-  it was added at `apps/web/public/.well-known/assetlinks.json` so Android
-  can verify this APK is authorized to open the site as a true full-screen
-  TWA (Digital Asset Links) rather than falling back to a Custom Tab with
-  a visible URL bar — the app still works either way, this only affects
-  that visual polish. This session has no Firebase service-account key
-  (it was shared once, earlier, and isn't persisted across sessions/
-  containers), so deploying it is a follow-up: rebuild
-  (`npm run build --workspace=apps/web`) and
-  `firebase deploy --only hosting` once a key is available again.
+  also baked into `apps/web/public/.well-known/assetlinks.json` (see
+  below — deployed and live).
+- **`assetlinks.json` is deployed and live**: added at
+  `apps/web/public/.well-known/assetlinks.json` so Android can verify
+  this APK is authorized to open the site as a true full-screen TWA
+  (Digital Asset Links) rather than falling back to a Custom Tab with a
+  visible URL bar. Shipped in the same Hosting deploy as the "Real
+  patient-facing directory + booking" work below, once the user shared a
+  service-account key later in this session — see that section for the
+  deploy details.
 - **Not done yet, and not attempted**: publishing to the Play Store
   (needs a $25 one-time Google Play Developer account the user would have
   to create themselves, plus a store listing, screenshots, privacy policy
@@ -674,33 +680,48 @@ by a patient, matching the artifact's existing no-GPS decision).
     conditions (own booking / clinic owner / admin) are the only way in,
     unchanged. This is the standard Firestore "check-then-write" pattern,
     not a new door into existing data.
-  - **Not verified against a live emulator before this commit** — unlike
-    every earlier `firestore.rules` change in this project (see the 23-
-    and 8-assertion emulator runs above), this one couldn't be: the
-    Firestore emulator binary is fetched from
-    `firebase-public.firebaseio.com` at first run, which this sandbox's
-    network policy also blocks (confirmed directly — same class of block
-    as `dl.google.com` for the Android work). The `resource == null`
-    pattern is a well-documented, standard Firestore rules idiom for
-    exactly this "does this id already exist" check, and the reasoning
-    above was worked through carefully, but this still needs a real
-    booking attempt (or a session with Firebase network access) to
-    confirm before fully trusting it in production — flag this rather
-    than silently treating "compiles and reasons through cleanly" as
-    equivalent to "emulator-verified" like the rest of this project's
-    rules changes.
+  - **Deployed and verified live** — the Firestore emulator still can't
+    run in this sandbox (`firebase-public.firebaseio.com` is blocked,
+    same class of block as `dl.google.com` for the Android work), but
+    once the user shared a Firebase service-account key later in this
+    session, this rule change was deployed to the real `mawid-app-d1d03`
+    project (same direct-Rules-API-bypass technique documented earlier)
+    and verified against the *live* project instead — a temporary real
+    clinic + two real anonymous Firebase Auth users, exercised through
+    Firestore's REST API directly (an ID-token-authenticated request
+    engages security rules the same way a client SDK does; the service
+    account's own OAuth token is IAM-privileged and bypasses rules
+    entirely, so it was used only for setup/cleanup, same as
+    `scripts/seed-admin.mjs`). Four assertions, all passed: (1) an
+    anonymous patient can read a not-yet-existing appointment doc — the
+    exact existence check `bookSlot()` needs — `404 NOT_FOUND`, not
+    `PERMISSION_DENIED`; (2) that same patient can create their own
+    appointment; (3) a *different* anonymous patient reading patient 1's
+    now-real appointment gets `403 PERMISSION_DENIED` — the actual PII
+    protection the rule had to preserve; (4) trying to double-book the
+    identical slot id is rejected (`409`, Firestore's own document-
+    already-exists check). All test data (clinic, appointment, both
+    anonymous accounts) was deleted immediately after and the live
+    `clinics` collection was read back empty to confirm.
 - **`listAppointmentsForPatient()` had the same undeployed-index problem
   as `adminListPendingClinics()`** before this session touched it — a
   `(patientUid, createdAt)` composite index was already declared in
   `firestore.indexes.json` but never deployed (same
   `datastore.indexAdmin` permission gap noted above). Fixed the same way:
   dropped `orderBy`, sort client-side.
-- **Not yet deployed** — this session has no Firebase service-account key
-  (same gap as the Android `assetlinks.json` follow-up above); the code
-  is committed and build-verified locally (`tsc --noEmit`, `next build`,
-  and a static-file/Playwright render check of `/` and `/find`) but the
-  live `mawid-app-d1d03` project still needs `firebase deploy --only
-  firestore:rules,hosting` once a key is available again.
+- **Deployed**: both `firestore.rules` and the rebuilt `apps/web/out/`
+  (including the home-page rebrand and `/find/**`) are live on
+  `mawid-app-d1d03` — `firebase deploy --only hosting` via the CLI with
+  the shared service-account key, verified FINALIZED by reading the
+  release back from the Hosting Management API (this sandbox still can't
+  reach `*.web.app` to browse it directly). The `assetlinks.json` from
+  the Android TWA work shipped in this same deploy too, since it was
+  already sitting in `apps/web/public/.well-known/` waiting on exactly
+  this — that earlier "needs a redeploy" gap is now also closed.
+  The service-account key itself was used only for this session, from a
+  scratch directory outside the repo, and deleted immediately after —
+  never committed, matching `.gitignore`'s existing
+  `serviceAccountKey.json`/`*firebase-adminsdk*.json` entries.
 - **Deliberately out of scope for this pass**: the signup form still
   doesn't collect `gov`/`district`/working hours (those fields exist on
   `ClinicDoc` and default to null/09:00–17:00/15min for every real
@@ -710,15 +731,7 @@ by a patient, matching the artifact's existing no-GPS decision).
 
 ## Next steps if resumed
 
-Two things are needed to make the `/find` work above actually live and
-verified, in order: (1) a Firebase service-account key, to deploy the
-updated `firestore.rules` and the rebuilt `apps/web/out/` to
-`mawid-app-d1d03`; (2) a real booking attempt against the live project
-right after that (anonymous, from a fresh browser/incognito session) to
-confirm the `resource == null` rules change actually behaves as reasoned
-above, since it could not be emulator-tested in this sandbox.
-
-If the user also wants signup to collect gov/district/working hours (so
+If the user wants signup to collect gov/district/working hours (so
 `/find`'s district search and per-clinic hours actually vary clinic to
 clinic, matching the artifact), that's a small, well-scoped addition to
 `SignupClient.tsx` — `registerClinic()` already accepts all of those
