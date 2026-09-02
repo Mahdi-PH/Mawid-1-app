@@ -38,17 +38,19 @@ so the "book with just name + phone, no account" flow from the demo
 artifact carries over unchanged while still giving Firestore a stable uid
 per device to enforce rules against.
 
-## 1. Create the Firebase project
+## 1. The Firebase project
 
-1. [console.firebase.google.com](https://console.firebase.google.com) → Add
-   project → **do not** enable Google Analytics (not needed, avoids an
-   extra product to manage).
-2. Confirm it's on the **Spark (free) plan** — this is the default for a
-   new project, nothing to opt into.
-3. Build → Firestore Database → Create database → **production mode**
-   (the shipped `firestore.rules` is the real access control, not the
-   30-day test-mode default).
-4. Build → Authentication → Get started → enable two sign-in providers:
+**Done** — the project exists: **`mawid-app-d1d03`**, pinned in
+`.firebaserc` so every `firebase` CLI command in this repo already targets
+it. Still to confirm/do once inside it (console.firebase.google.com →
+select `mawid-app-d1d03`):
+
+1. Confirm it's on the **Spark (free) plan** — the default for a new
+   project, nothing to opt into unless it was changed.
+2. Build → Firestore Database → Create database (if not already created)
+   → **production mode** (the shipped `firestore.rules` is the real
+   access control, not the 30-day test-mode default).
+3. Build → Authentication → Get started → enable two sign-in providers:
    **Email/Password** (admin + clinics) and **Anonymous** (patients).
 
 ## 2. Register your apps in the project
@@ -87,10 +89,13 @@ Android/iOS project.
 
 ## 3. Deploy security rules + indexes
 
+Project id is pinned in `.firebaserc` (`mawid-app-d1d03`), so `firebase`
+commands run from the repo root already know which project to target —
+no `firebase use --add` needed.
+
 ```bash
 npm install -g firebase-tools   # or npx firebase ...  for one-off use
-firebase login
-firebase use --add              # pick the project you just created
+firebase login                  # opens a browser — needs your Google account
 firebase deploy --only firestore:rules,firestore:indexes
 ```
 

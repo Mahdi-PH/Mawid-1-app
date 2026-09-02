@@ -18,6 +18,11 @@ Spark/free plan) alongside the existing Postgres/Prisma one — nothing in
 `apps/server` was touched, removed, or deprecated. Full detail in
 `docs/firebase-setup.md`; summary here:
 
+- **Real project exists**: `mawid-app-d1d03`, created by the user, pinned
+  in root `.firebaserc` so `firebase` CLI commands run from the repo need
+  no `firebase use --add`. Still not yet deployed to — see "Deployment
+  status of this track" below before assuming rules/admin are live.
+
 - **Schema**: `users/{uid}` (admin/clinic accounts only), `clinics/{slug}`
   (slug = doc id = public booking username), `appointments/{clinicSlug}_
   {date}_{startTime}` — the deterministic appointment id IS the
@@ -57,6 +62,17 @@ Spark/free plan) alongside the existing Postgres/Prisma one — nothing in
   daily write quota. App Check is free on Spark too; not wired up yet
   because it needs reCAPTCHA site-key setup, real friction for a
   handful-of-pilot-clinics stage. Flag it before a public launch.
+- **Deployment status of this track (as of this writing): code done,
+  emulator-tested, NOT yet live.** `firestore.rules`/`firestore.indexes.json`
+  have never been `firebase deploy`ed to the real `mawid-app-d1d03`
+  project, no admin account has been seeded there, and `apps/web` has no
+  `.env.local` (so it can't even connect — `NEXT_PUBLIC_FIREBASE_*` are
+  all unset, see `.env.local.example`). This needs the user's own Google
+  auth (`firebase login`) or a service-account key — a session here has
+  neither by default. If the user pastes/uploads a service-account key,
+  the actual `firebase deploy` + `seed-admin.mjs` run can happen directly
+  from this session; otherwise it's the 3 commands in
+  `docs/firebase-setup.md` §3–4, run by the user locally.
 - **Decided by the user**: `apps/server`/Postgres and this Firebase track
   stay permanently parallel for now (Postgres/Express for the existing
   reception/patient screens, Firebase for the admin dashboard and a future
