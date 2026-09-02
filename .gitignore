@@ -13,3 +13,12 @@ serviceAccountKey.json
 firestore-debug.log
 firebase-debug.log
 .firebase/
+
+# Android (android/ - TWA wrapper app)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/release.keystore
+*.keystore
+*.jks
