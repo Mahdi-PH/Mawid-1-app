@@ -10,3 +10,17 @@ body {
   font-family: "Tajawal", "Segoe UI", system-ui, sans-serif;
   background-color: #f7f8f9;
 }
+
+/* Respect the OS-level "reduce motion" accessibility setting — every
+   animation added for the splash screen and role-selection transition
+   (see components/SplashScreen.tsx and app/page.tsx) collapses to an
+   instant state change instead of skipping straight to unstyled content. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

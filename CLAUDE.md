@@ -956,6 +956,70 @@ dashboard.
   release `sites/mawid-app-d1d03/releases/1788418226426000`, verified
   FINALIZED) are live on `mawid-app-d1d03`.
 
+## Animations (home screen: splash + role-selection transition)
+
+Requested as a UX-polish pass on the home screen (`apps/web/src/app/
+page.tsx`) only — a first-launch welcome splash and a smoother transition
+when picking عيادة/مراجع — scoped by the user's own explicit choice
+between two suggested approaches: **pure CSS/Tailwind keyframes, no new
+npm dependency** (over adding Framer Motion), specifically so this can't
+add bundle weight or a new library to keep in sync with future Next.js
+upgrades. Home page's First Load JS grew 96.3 kB → 98 kB from this.
+
+- **Splash screen** (`components/SplashScreen.tsx`): logo fades in with a
+  light scale-up (`splash-logo-in` keyframe, `tailwind.config.js`), holds
+  ~550ms, then the whole overlay fades out (`splash-out`) to reveal the
+  real home screen underneath — plays once per browser, gated by a plain
+  `localStorage` flag (`mawid_splash_seen`) read in `page.tsx` before
+  first paint. A `showSplash: boolean | null` state (`null` = "haven't
+  checked yet") avoids two failure modes a naive version would hit: a
+  flash of the role-picker content before the splash is known to be
+  needed, and — since this is a static export with no server-rendered
+  data — a hydration mismatch from reading `localStorage` during render
+  instead of in `useEffect`. A `setTimeout` safety net
+  (`SPLASH_ANIMATION_TOTAL_MS + 500ms`) calls the same finish handler in
+  case `animationend` never fires (backgrounded tab), so a real visitor
+  can never get stuck behind it. `localStorage` access is wrapped in
+  try/catch, failing open to "already seen" — private-browsing/blocked
+  storage shows the home screen immediately rather than looping the
+  splash on every visit.
+- **Role-selection transition**: clicking either role card
+  (عيادة/مراجع) fades + slides the home screen content out
+  (`opacity-0`/`translate-y-2`, plain Tailwind `transition-all`, 220ms)
+  before navigating, instead of the previous instant hard cut to
+  `/subscribe` or `/find`. Implemented as an `onClick` handler on the
+  existing `<Link>` elements (kept as real anchors, not converted to
+  `<button>`, specifically so ctrl/cmd/middle-click "open in new tab"
+  still works) that calls `e.preventDefault()` only for a plain left
+  click, then `router.push()`s after the animation delay. The role cards
+  and the logo/heading block above them also get a one-time
+  `fade-in-up` entrance animation on mount (skipped while the splash is
+  still covering them, via the same `leavingTo`/`showSplash` state).
+- **Accessibility**: a `prefers-reduced-motion: reduce` media query
+  (`styles/globals.css`) collapses every animation/transition duration to
+  effectively 0 site-wide — not just these two — for anyone with that OS
+  setting on, rather than skipping it for just this feature.
+- **Deliberately does not touch Firebase/data loading**: both animations
+  are pure CSS/timers with no network calls of their own: the splash
+  plays before `page.tsx` has any Firestore reads to make (it doesn't
+  fetch anything), and the role-card exit only delays a client-side
+  route change by 220ms, not any data fetch on the destination page.
+- **Verified**: `tsc --noEmit` and `next build` both clean. Local
+  Playwright run against the exported `out/` directory (not just
+  `next dev`) confirmed all three behaviors on a real browser: splash
+  renders and auto-dismisses on a first visit, the role-card click
+  animates then lands on the correct route (`/find`), and a second visit
+  with the `localStorage` flag already set skips the splash entirely and
+  shows the home content immediately — screenshotted at each step.
+- **Not deployed yet** — built and verified locally only; deploy via the
+  same `firebase deploy --only hosting` flow as every other `apps/web`
+  change once the user confirms they want this pushed live.
+- **Scope note**: only the two scenarios the user asked for (splash +
+  role-selection transition) were built. Other screens (`/find`,
+  `/clinic`, `/admin`, etc.) still have no page-transition animation —
+  not requested this time, so not built speculatively, matching this
+  project's standing rule on scope.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —
