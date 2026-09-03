@@ -1666,6 +1666,53 @@ more routes:
   `sites/mawid-app-d1d03/releases/1788454593861000`). No `firestore.rules`
   changes — client-side only.
 
+### Follow-up: backdrop image was cropping its own edge icons on narrow screens
+
+Real bug reported by the user, not hypothetical: the uploaded photo's icons
+(mirror, scissors, leaves on the left; stethoscope, doctor, bottle, razor,
+calendar on the right) sit close to the image's own left/right edges, and
+the image's native 2:3 aspect ratio is *wider* than most real phone
+screens (portrait phones commonly run ~0.45–0.5). A single `object-cover`
+layer has to crop horizontally to fill a narrower viewport, cutting
+straight into those edge icons — invisible at this session's own
+1024×1536 preview aspect, but real on an actual phone. Confirmed by
+re-rendering at a genuine narrow viewport (390×844) before touching
+anything, not assumed from the report alone.
+- **No image-generation/outpainting tool exists in this session** (same
+  disclosed limitation as the earlier icon-recreation attempt), so
+  actually extending the photo's content past its real edges isn't
+  possible — "fill the screen with zero cropping" is a real contradiction
+  for a fixed-aspect-ratio photo on a variable-aspect-ratio viewport
+  unless something else fills the gap.
+- **Fixed with the standard two-layer "blurred fill behind, untouched
+  image in front" technique** (the same one Instagram/Spotify use for a
+  mismatched-aspect-ratio image) instead: `apps/web/public/brand/
+  backdrop-blur.jpg` (new, generated once via Pillow — `ImageFilter.
+  GaussianBlur(radius=40)` on the same source photo, saved at quality 70,
+  15.8KB) fills the full viewport at `object-cover` as the bottom layer;
+  blurred past the point any shape is recognizable, so whatever it crops
+  is imperceptible — confirmed by eye, no visible seam or shape in the
+  blurred file itself. The original, untouched `backdrop.jpg` sits on top
+  of it at `object-contain`, so **100% of the real photo is always fully
+  visible, never cropped**, on any viewport; the tradeoff is a thin sliver
+  of the blurred layer showing on two sides instead of the sharp photo
+  touching every edge — the honest alternative to inventing new image
+  content, not silently hidden.
+- **`components/AppBackdrop.tsx`** now renders both `<img>`s stacked in
+  the same absolutely-positioned wrapper (blur first, sharp photo second)
+  — no other page's markup needed to change, since every page already
+  just renders `<AppBackdrop />` once.
+- **Verified**: `tsc --noEmit` and `next build` both clean. Playwright
+  screenshots at three different aspect ratios against the exported
+  `out/` directory — a real narrow phone (390×844, both the intro pose and
+  the settled home screen), `/signup`, and a deliberately wide/short
+  viewport (800×500) — confirmed the full photo (every icon, both
+  corners) is visible with no cropping in all three, and the blurred fill
+  is seamless with no visible edge where it meets the sharp layer.
+- **Not yet deployed** — same standing practice: built and verified
+  locally, `firebase deploy --only hosting` still waits for the user's
+  go-ahead.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —
