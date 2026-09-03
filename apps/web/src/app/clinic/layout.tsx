@@ -9,7 +9,7 @@
 // itself right after auth resolves races this effect.
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { onAuthChange } from "../../lib/firebase/auth";
+import { consumeIntentionalSignOut, onAuthChange } from "../../lib/firebase/auth";
 import type { User } from "firebase/auth";
 
 type Status = "checking" | "signed-out" | "ok";
@@ -26,7 +26,14 @@ export default function ClinicLayout({ children }: { children: React.ReactNode }
   }, []);
 
   useEffect(() => {
-    if (status === "signed-out") router.replace("/signup");
+    if (status === "signed-out") {
+      // A deliberate sign-out (the settings tab's "تسجيل خروج من الحساب"
+      // button) should land on the home screen, not the login form — an
+      // expired/never-started session should still go to /signup. Both
+      // look identical here (auth state -> null), so the sign-out button
+      // marks itself first; see auth.ts.
+      router.replace(consumeIntentionalSignOut() ? "/" : "/signup");
+    }
   }, [status, pathname, router]);
 
   if (status === "checking") {

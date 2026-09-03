@@ -10,8 +10,10 @@
 // until now, same story as /find.
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import BackButton from "../../components/BackButton";
 import { auth } from "../../lib/firebase/config";
+import { markIntentionalSignOut, signOutUser } from "../../lib/firebase/auth";
 import {
   getClinicByOwner,
   isSubscriptionActive,
@@ -67,7 +69,11 @@ export default function ClinicDashboardPage() {
   if (clinic === null) {
     return (
       <div className="p-8 text-center">
-        <BackButton fallbackHref="/" className="mb-4 inline-block text-sm text-brand-600 hover:underline" />
+        <BackButton
+          fallbackHref="/"
+          alwaysUseFallback
+          className="mb-4 inline-block text-sm text-brand-600 hover:underline"
+        />
         <p className="text-red-600">هذا الحساب لا يملك عيادة مسجَّلة. سجّل عيادتك أولاً عبر صفحة التسجيل.</p>
       </div>
     );
@@ -130,7 +136,11 @@ export default function ClinicDashboardPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="sticky top-0 z-10 border-b bg-white px-6 py-3">
-        <BackButton fallbackHref="/" className="mb-2 block text-sm text-brand-600 hover:underline" />
+        <BackButton
+          fallbackHref="/"
+          alwaysUseFallback
+          className="mb-2 block text-sm text-brand-600 hover:underline"
+        />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="font-bold" style={{ color: "#0F7A6C" }}>
             {clinic.clinicName}
@@ -300,12 +310,30 @@ function WaitingRoomTv({ appts }: { appts: AppointmentDoc[] }) {
 const SLOT_OPTIONS: (5 | 10 | 15 | 20)[] = [5, 10, 15, 20];
 
 function SettingsTab({ clinic, onSaved }: { clinic: ClinicDoc; onSaved: (c: ClinicDoc) => void }) {
+  const router = useRouter();
   const [workStart, setWorkStart] = useState(clinic.workStart);
   const [workEnd, setWorkEnd] = useState(clinic.workEnd);
   const [slotMin, setSlotMin] = useState<5 | 10 | 15 | 20>(clinic.slotMin);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    try {
+      // Marked before signOutUser() so clinic/layout.tsx's own auth effect
+      // (which also reacts to becoming signed-out, to redirect an expired/
+      // never-started session to /signup) knows this particular sign-out
+      // was deliberate and should land on the home screen instead.
+      markIntentionalSignOut();
+      await signOutUser();
+      router.push("/");
+    } catch (err) {
+      setSigningOut(false);
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   async function handleSave() {
     setError(null);
@@ -373,6 +401,16 @@ function SettingsTab({ clinic, onSaved }: { clinic: ClinicDoc; onSaved: (c: Clin
       >
         {busy ? "جارٍ الحفظ…" : "حفظ"}
       </button>
+
+      <div className="border-t pt-4">
+        <button
+          onClick={handleSignOut}
+          disabled={signingOut}
+          className="w-full rounded-lg border border-red-300 px-4 py-2 text-red-600 hover:bg-red-50 disabled:opacity-50"
+        >
+          {signingOut ? "جارٍ تسجيل الخروج…" : "تسجيل خروج من الحساب"}
+        </button>
+      </div>
     </div>
   );
 }

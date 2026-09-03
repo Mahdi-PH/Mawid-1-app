@@ -1414,6 +1414,67 @@ at the end rather than deployed one at a time.
   `sites/mawid-app-d1d03/releases/1788445387720000`). No `firestore.rules`
   changes — this is client-side only.
 
+## Sign-out from /clinic + auth-aware home routing + back-always-home
+
+The user's own explicit "مهم جدا" (very important) request, three parts in
+one message: (1) add a sign-out button inside `/clinic`'s إعدادات الدوام
+(schedule-settings) tab; (2) `/clinic`'s back navigation must go only to the
+home screen, never literally back through the login/signup screens; (3) a
+signed-in clinic/admin clicking the home screen's center card again must
+land straight back in their own dashboard, no re-login.
+
+- **Home screen center card is now auth-aware** (`app/page.tsx`): a new
+  `onAuthChange` subscription resolves `centerHref` to `/clinic` (signed-in
+  clinic), `/admin` (the configured admin email, confirmed via
+  `isAdminUser()`'s custom-claim check), or `/signup` (signed-out) — the
+  `ROLE_CARDS` array's center entry now reads this state instead of a fixed
+  `href`. This is the only reason the home page now imports the Firebase SDK
+  at all: First Load JS grew ~98.8 kB → 271 kB. Disclosed, not hidden — the
+  tradeoff for "no re-login" is the home screen no longer being pure static
+  markup.
+- **`BackButton` gained an `alwaysUseFallback` prop** (default `false`,
+  preserving every other screen's existing `router.back()`-prefers-real-
+  history behavior) — `true` skips the history check and always navigates to
+  `fallbackHref`. Wired to `true` on `/clinic`'s two `<BackButton>` usages
+  (the no-clinic error state and the dashboard's sticky header) so back
+  navigation there always lands on `/`, never mid-way through the login/
+  signup flow the owner happened to pass through to get signed in.
+- **Sign-out button** added to `/clinic`'s settings tab (`SettingsTab`,
+  bottom of the form, styled as a destructive action) — calls
+  `signOutUser()` then navigates home.
+- **Real bug found by live E2E testing, not just code review, and fixed**:
+  a naive `handleSignOut` (`await signOutUser(); router.push("/")`) landed
+  on `/signup` instead of `/`, not `/`. Root cause: `clinic/layout.tsx`
+  already runs its own `onAuthChange` listener that redirects any
+  signed-out state to `/signup` (this is correct for an expired/never-
+  started session — the whole reason that layout effect exists) and it
+  fired in reaction to the same sign-out, racing the button's own
+  `router.push("/")`. Timing-dependent, so a reorder fix wouldn't have been
+  a real guarantee — fixed deterministically instead with a one-shot,
+  module-level flag: `markIntentionalSignOut()`/`consumeIntentionalSignOut()`
+  (new, `lib/firebase/auth.ts`). The sign-out button marks the flag
+  immediately before calling `signOutUser()`; `clinic/layout.tsx`'s
+  signed-out effect consumes it and redirects to `/` when set, `/signup`
+  otherwise — so an intentional sign-out and an expired session are told
+  apart by who caused the transition, not by which navigation call happens
+  to resolve first.
+- **Verified live against the real `mawid-app-d1d03` project**, not just
+  locally built: a real signed-up + admin-approved test clinic account
+  (created via the same Firestore-REST/service-account-JWT pattern used
+  throughout this track) was driven through a full Playwright session —
+  signed-out center card → `/signup` (correct); real login via `/signup`'s
+  login-mode toggle; signed-in center card → `/clinic` (no re-login);
+  direct `/clinic` visit while signed in renders the dashboard with no
+  login form; sign-out button visible and clickable; **lands on `/` after
+  sign-out** (the fixed behavior); center card correctly reverts to
+  `/signup` afterward. All 6 assertions passed after the fix. `tsc --noEmit`
+  and `next build` both clean. All test data (Auth user + `users/{uid}` +
+  `clinics/{slug}` docs) were read back to confirm identity, then deleted,
+  per the standing read-before-delete rule.
+- **Not yet deployed** — built and verified locally/live-tested against the
+  real project's data plane only; `firebase deploy --only hosting` still
+  needs the user's go-ahead per this session's standing practice.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

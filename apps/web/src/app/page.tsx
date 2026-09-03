@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import HomeBackdrop from "../components/HomeBackdrop";
+import { isAdminUser, isConfiguredAdminEmail, onAuthChange } from "../lib/firebase/auth";
 
 // Matches the branded two-sided home screen already iterated in the demo
 // artifact (see CLAUDE.md "Two-sided product direction") - logo mark,
@@ -45,14 +46,20 @@ type Phase = "intro" | "revealing" | "home";
 
 const ROLE_CARDS = [
   {
-    // Routes straight to account creation/login now (was /subscribe) —
-    // the subscription plan screen moved to *after* signup completes, see
-    // SignupClient.tsx's registerClinic() success handler.
+    id: "center",
+    // Default/fallback href for a not-signed-in visitor (also what static
+    // export prerenders): straight to account creation/login. Overridden
+    // per-visitor by `centerHref` state below once auth state resolves —
+    // an already-signed-in clinic account skips this and goes straight to
+    // /clinic, an admin to /admin, so the account "يبقى مفتوحاً" (stays
+    // signed in) instead of being sent back through the signup/login form
+    // it already passed.
     href: "/signup",
     title: "المركز: عيادة طبيب، مركز تجميل أو صالون حلاقة",
     desc: "سجّل مركزك لإدارة الحجوزات والاستقبال وشاشة صالة الانتظار.",
   },
   {
+    id: "find",
     href: "/find",
     title: "المراجع أو الزبون",
     desc: "ابحث عن مركزك واطلب موعدك مباشرة — بدون تسجيل حساب.",
@@ -75,8 +82,30 @@ export default function Home() {
   const [showHint, setShowHint] = useState(false);
   const [selectedHref, setSelectedHref] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
+  // Where the "المركز" card actually goes — starts at the signed-out
+  // default (/signup) and updates once auth state resolves, so an
+  // already-signed-in clinic/admin account is sent straight to its real
+  // dashboard instead of back through the login form it already passed.
+  const [centerHref, setCenterHref] = useState("/signup");
   const logoRef = useRef<HTMLSpanElement>(null);
   const decidedIntro = useRef(false);
+
+  useEffect(() => {
+    return onAuthChange(async (user) => {
+      if (!user || user.isAnonymous) {
+        // Signed out, or only a patient's anonymous session (created by
+        // ensurePatientSession() the moment they book) — neither is a
+        // clinic/admin account, so the card still goes to /signup.
+        setCenterHref("/signup");
+        return;
+      }
+      if (user.email && isConfiguredAdminEmail(user.email) && (await isAdminUser(user))) {
+        setCenterHref("/admin");
+        return;
+      }
+      setCenterHref("/clinic");
+    });
+  }, []);
 
   // Runs before the browser paints (unlike a plain useEffect, which only
   // runs after) — decides once whether this is a first visit and, if so,
@@ -254,13 +283,14 @@ export default function Home() {
         style={{ animationDelay: contentVisible && !leaving ? "120ms" : undefined }}
       >
         {ROLE_CARDS.map((card) => {
-          const isSelected = selectedHref === card.href;
+          const href = card.id === "center" ? centerHref : card.href;
+          const isSelected = selectedHref === href;
           const isDimmed = selectedHref !== null && !isSelected;
           return (
             <Link
-              key={card.href}
-              href={card.href}
-              onClick={(e) => handleRoleClick(e, card.href)}
+              key={card.id}
+              href={href}
+              onClick={(e) => handleRoleClick(e, href)}
               className={
                 "flex flex-col gap-2 rounded-2xl border p-7 shadow-sm transition-all duration-300 ease-out hover:-translate-y-0.5 " +
                 (leaving

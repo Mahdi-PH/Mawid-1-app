@@ -30,6 +30,25 @@ export async function signOutUser(): Promise<void> {
   await signOut(auth);
 }
 
+/** Set right before a deliberate sign-out action (e.g. the "تسجيل خروج من
+ *  الحساب" button on /clinic) and consumed by clinic/admin layout.tsx's own
+ *  auth-effect, which otherwise can't tell a user-initiated sign-out apart
+ *  from a session simply expiring — both look identical as an auth-state
+ *  change to `null`. Without this, that effect's own signed-out redirect
+ *  (-> /signup) races the sign-out button's own navigate-home call, and
+ *  which one wins is a timing accident, not a guarantee. A plain module-level
+ *  flag is enough: it's read once, synchronously, by the same tab that set
+ *  it, with no window for another action to land in between. */
+let intentionalSignOut = false;
+export function markIntentionalSignOut(): void {
+  intentionalSignOut = true;
+}
+export function consumeIntentionalSignOut(): boolean {
+  const was = intentionalSignOut;
+  intentionalSignOut = false;
+  return was;
+}
+
 /** Ensures the current visitor has *some* Firebase Auth identity before a
  *  patient-side write (booking, request) — signs in anonymously if needed.
  *  Safe to call on every page load; it's a no-op once a session exists. */
