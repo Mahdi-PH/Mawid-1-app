@@ -1214,8 +1214,23 @@ would have stayed blank **permanently**, matching the report precisely.
   Also confirmed the prerendered `out/index.html` now literally contains
   the role-card and wordmark text (`grep` for "عيادة أو مركز تجميل" /
   "مَوْعِد"), where before it would have contained neither.
-- **Not deployed yet** — built and verified locally only; the previous
-  release (`1788440906294000`) is still live and still has this bug.
+- **`?intro=1` added**: since `mawid_splash_seen` is a plain per-origin
+  localStorage flag, the user's own browser (already having opened the
+  live link earlier this session) would no longer see the hero pose even
+  after this fix — correct "returning visitor" behavior, but no good way
+  to actually verify the fix visually without clearing site data. Added a
+  `?intro=1` query-param bypass in the same `useLayoutEffect`: forces
+  `phase` to `"intro"` regardless of the stored flag, read directly off
+  `window.location.search` (not Next's `useSearchParams()`, to avoid
+  needing a `<Suspense>` boundary just for a debug flag). Verified with
+  Playwright: a browser with the flag already set shows the small logo on
+  a plain revisit, but the large centered pose on `?intro=1` to the same
+  origin — `https://mawid-app-d1d03.web.app/?intro=1` is now a stable link
+  for demoing/testing the first-launch effect anytime.
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788441878385000`). No `firestore.rules`
+  changes — this is client-side only.
 
 ## Next steps if resumed
 

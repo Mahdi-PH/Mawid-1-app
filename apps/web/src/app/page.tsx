@@ -83,6 +83,13 @@ export default function Home() {
   useLayoutEffect(() => {
     if (decidedIntro.current) return;
     decidedIntro.current = true;
+    // ?intro=1 forces the opening pose regardless of the "already seen"
+    // flag — a stable link for testing/demoing the first-launch effect on
+    // a browser that has already visited before, without needing to clear
+    // site data each time. Read directly off window.location rather than
+    // Next's useSearchParams() so this stays a plain effect (no <Suspense>
+    // boundary needed just for a debug flag).
+    const forceIntro = new URLSearchParams(window.location.search).get("intro") === "1";
     let seen = true;
     try {
       seen = localStorage.getItem(SPLASH_SEEN_KEY) === "1";
@@ -90,7 +97,7 @@ export default function Home() {
       // Storage blocked (private mode, etc.) — fail open to "already seen"
       // rather than replaying the opening pose on every single visit.
     }
-    if (!seen) setPhase("intro");
+    if (forceIntro || !seen) setPhase("intro");
   }, []);
 
   // FLIP transform: the logo lives in exactly one DOM spot (its normal,
