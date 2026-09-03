@@ -1174,6 +1174,49 @@ element that never unmounts.
   `sites/mawid-app-d1d03/releases/1788440906294000`). No `firestore.rules`
   changes — this is client-side only.
 
+### Real bug reported and fixed: hero logo/tap-to-continue "didn't appear at all"
+
+The user opened the live link right after the deploy above and reported
+the opening logo effect and tap-to-continue never showed up at all —
+not "plays wrong," genuinely absent. Root cause found by re-reading
+`page.tsx`, not guessed: `phase` defaulted to `null`, and the **only**
+thing that branch rendered was `<HomeBackdrop />` — no logo, no wordmark,
+no cards, nothing clickable. That `null` state is exactly what Next.js's
+static export prerenders into `index.html`, and it's also what stays on
+screen for however long it takes the client JS bundle to load, parse, and
+run the plain `useEffect` (which only fires **after** first paint) that
+decided intro-vs-home. On `localhost` that gap is imperceptible; on a
+real device/network it can easily be the difference between "briefly
+blank" and "looks broken" — and if the JS ever fails to load at all
+(flaky connection, this project's own offline-first premise), the page
+would have stayed blank **permanently**, matching the report precisely.
+
+- **Fix**: `phase` now defaults to `"home"` — the exact same fully-
+  rendered, fully-functional page (small logo, real `<Link>` cards,
+  everything visible and clickable) that gets prerendered and that a
+  slow/failed JS load now falls back to, instead of a blank shell. The
+  first-visit decision moved into a `useLayoutEffect` (runs *before* the
+  browser paints, unlike a plain `useEffect`), guarded by a `useRef` so
+  it only ever runs once — a first-time visitor still sees the big
+  centered hero pose immediately with no flash of the small logo first,
+  since both the phase decision and the FLIP transform application now
+  happen in the same pre-paint pass.
+- **Verified the fix addresses the actual failure mode, not just the
+  happy path**: three Playwright checks against the exported `out/`
+  directory — (1) `javaScriptEnabled: false` (the closest local
+  simulation of "JS never loads") still shows the full home screen, logo
+  and both role cards visible and real anchors, confirmed via screenshot;
+  (2) a screenshot taken at the earliest possible paint
+  (`waitUntil: "commit"`) already shows the large centered hero logo, not
+  a blank page; (3) the normal first-visit → tap → settle flow still
+  measures the exact same bounding boxes as before (112px centered →
+  64px header spot), confirming the fix didn't regress the feature itself.
+  Also confirmed the prerendered `out/index.html` now literally contains
+  the role-card and wordmark text (`grep` for "عيادة أو مركز تجميل" /
+  "مَوْعِد"), where before it would have contained neither.
+- **Not deployed yet** — built and verified locally only; the previous
+  release (`1788440906294000`) is still live and still has this bug.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

@@ -58,16 +58,31 @@ const ROLE_CARDS = [
 
 export default function Home() {
   const router = useRouter();
-  // null = "haven't checked localStorage yet" (renders nothing but the
-  // brand-colored background + backdrop, so there's no flash of the
-  // role-picker content before we know whether the opening pose is needed).
-  const [phase, setPhase] = useState<Phase | null>(null);
+  // Defaults to "home" — the exact same fully-rendered, fully-functional
+  // page (small logo, real <Link> cards) that static export prerenders and
+  // that a slow/failed JS load falls back to. A previous version defaulted
+  // to a `null` phase that rendered nothing but the backdrop until an
+  // ordinary useEffect (which only runs *after* first paint) decided
+  // intro-vs-home — meaning every visitor briefly saw a blank page with no
+  // logo and a dead tap gesture, and on a slow connection or a delayed
+  // hydration that window could stretch out enough to look like the
+  // feature was simply missing. See CLAUDE.md "Animations" for the
+  // user-reported bug this replaced.
+  const [phase, setPhase] = useState<Phase>("home");
   const [showHint, setShowHint] = useState(false);
   const [selectedHref, setSelectedHref] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
   const logoRef = useRef<HTMLSpanElement>(null);
+  const decidedIntro = useRef(false);
 
-  useEffect(() => {
+  // Runs before the browser paints (unlike a plain useEffect, which only
+  // runs after) — decides once whether this is a first visit and, if so,
+  // switches to "intro" in the same pre-paint pass the FLIP effect below
+  // also runs in, so a first-time visitor never sees the small "home" pose
+  // flash before the big centered one takes over.
+  useLayoutEffect(() => {
+    if (decidedIntro.current) return;
+    decidedIntro.current = true;
     let seen = true;
     try {
       seen = localStorage.getItem(SPLASH_SEEN_KEY) === "1";
@@ -75,7 +90,7 @@ export default function Home() {
       // Storage blocked (private mode, etc.) — fail open to "already seen"
       // rather than replaying the opening pose on every single visit.
     }
-    setPhase(seen ? "home" : "intro");
+    if (!seen) setPhase("intro");
   }, []);
 
   // FLIP transform: the logo lives in exactly one DOM spot (its normal,
@@ -143,14 +158,6 @@ export default function Home() {
       setLeaving(true);
       window.setTimeout(() => router.push(href), EXIT_MS);
     }, SELECT_PULSE_MS);
-  }
-
-  if (phase === null) {
-    return (
-      <main className="relative min-h-screen" style={{ background: "#F5FBF9" }}>
-        <HomeBackdrop />
-      </main>
-    );
   }
 
   const introActive = phase === "intro";
