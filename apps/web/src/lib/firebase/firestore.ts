@@ -52,6 +52,12 @@ const SUBSCRIPTION_DAYS = 30;
  *  subscription is within this many days of expiring. */
 export const SUBSCRIPTION_WARNING_DAYS = 1;
 
+/** The manual bank/wallet transfer target shown for subscription payment —
+ *  informational only, no real payment gateway. Shared by /clinic's
+ *  "خطة الاشتراك" tab (the only place it's shown after login, per the
+ *  user's explicit ask) and /subscribe's pre-signup marketing card. */
+export const SUBSCRIPTION_PAYMENT_ACCOUNT = "910459764999";
+
 function addDays(from: Date, days: number): Timestamp {
   return Timestamp.fromDate(new Date(from.getTime() + days * 24 * 60 * 60 * 1000));
 }
@@ -171,6 +177,7 @@ export async function registerClinic(input: RegisterClinicInput): Promise<{ slug
         status: "pending",
         licenseImageUrl,
         subscriptionEndsAt: null,
+        subscriptionStartedAt: null,
         createdAt: serverTimestamp(),
       };
       tx.set(userRef, userDoc);
@@ -447,9 +454,11 @@ export async function adminListPendingClinics(): Promise<ClinicDoc[]> {
  *  from right now — since that's the first moment the clinic is actually
  *  live/usable; rejecting leaves subscriptionEndsAt untouched (null). */
 export async function adminSetClinicStatus(slug: string, status: ClinicStatus): Promise<void> {
-  const patch: { status: ClinicStatus; subscriptionEndsAt?: Timestamp } = { status };
+  const patch: { status: ClinicStatus; subscriptionEndsAt?: Timestamp; subscriptionStartedAt?: Timestamp } = { status };
   if (status === "approved") {
-    patch.subscriptionEndsAt = addDays(new Date(), SUBSCRIPTION_DAYS);
+    const now = new Date();
+    patch.subscriptionStartedAt = Timestamp.fromDate(now);
+    patch.subscriptionEndsAt = addDays(now, SUBSCRIPTION_DAYS);
   }
   await updateDoc(doc(db, "clinics", slug), patch);
 }
@@ -476,6 +485,15 @@ export async function adminListApprovedClinics(): Promise<ClinicDoc[]> {
 export async function adminRenewSubscription(slug: string): Promise<void> {
   const clinic = await getClinic(slug);
   if (!clinic) throw new Error(`Unknown clinic "${slug}"`);
-  const base = isSubscriptionActive(clinic) ? clinic.subscriptionEndsAt!.toDate() : new Date();
-  await updateDoc(doc(db, "clinics", slug), { subscriptionEndsAt: addDays(base, SUBSCRIPTION_DAYS) });
+  const now = new Date();
+  const active = isSubscriptionActive(clinic);
+  const base = active ? clinic.subscriptionEndsAt!.toDate() : now;
+  await updateDoc(doc(db, "clinics", slug), {
+    subscriptionEndsAt: addDays(base, SUBSCRIPTION_DAYS),
+    // On-time renewal: the subscription is continuous, so its start date
+    // doesn't move — only the end date does. Lapsed renewal: a real gap
+    // just happened, so this is honestly a fresh period starting now,
+    // same "no backdated free days" reasoning subscriptionEndsAt uses.
+    subscriptionStartedAt: active ? clinic.subscriptionStartedAt ?? Timestamp.fromDate(now) : Timestamp.fromDate(now),
+  });
 }

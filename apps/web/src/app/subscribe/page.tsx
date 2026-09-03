@@ -1,16 +1,21 @@
 "use client";
 
-// Matches the demo artifact's subscription screen (one free-plan card,
-// price after month 1 explicitly marked "لم يُحدَّد بعد" — no invented
-// paid tiers — then a payment-account info card shown purely as
-// information for after the free month ends). There is no real payment
-// gateway, invoicing, or subscription-expiry tracking behind this in
-// either track — the account number is a manual bank/wallet transfer
-// instruction, same as the artifact, and registerClinic() doesn't read or
-// store anything from this page.
+// Matches the demo artifact's subscription screen: one free-plan card,
+// price after month 1 explicitly marked "لم يُحدَّد بعد" — no invented paid
+// tiers. The payment-account info card used to also live here, but per the
+// user's explicit ask it now shows ONLY inside /clinic's "خطة الاشتراك" tab
+// after login — this screen is pre-login/pre-approval, so a clinic that
+// hasn't signed in yet has nowhere to actually use that account number yet
+// anyway. There is no real payment gateway, invoicing, or subscription-
+// expiry tracking behind the free-plan framing on this page — that's all
+// real once a clinic is signed in (see firestore.ts's subscription
+// functions), just not shown here. registerClinic() doesn't read or store
+// anything from this page.
 //
 // This page now serves two roles (see CLAUDE.md "Signup/subscribe reorder"):
-// the home page's clinic/center card routes straight to /signup, and
+// the home page's clinic/center card routes straight to /signup (which
+// itself now shows this same free-plan info at the top of the login/signup
+// form, per the user's later "merge with the login box" request), and
 // SignupClient.tsx's registerClinic() success handler routes *here*
 // afterward with ?registered=1 — so a fresh visitor (no query params) gets
 // the original marketing framing with a "ابدأ مجاناً" continue-to-signup
@@ -18,12 +23,10 @@
 // info plus a pending-approval confirmation and a button back to the home
 // screen (see BackButton usage below), not a redundant "start free" CTA
 // for an account that already exists.
-import { Suspense, useState } from "react";
+import { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import BackButton from "../../components/BackButton";
-
-const PAYMENT_ACCOUNT = "910459764999";
 
 export default function SubscribePage() {
   return (
@@ -35,7 +38,6 @@ export default function SubscribePage() {
 
 function SubscribeContent() {
   const params = useSearchParams();
-  const [copied, setCopied] = useState(false);
   const justRegistered = params.get("registered") === "1";
   const clinicName = params.get("name");
 
@@ -71,34 +73,12 @@ function SubscribeContent() {
         </p>
       </div>
 
-      <div className="mb-6 rounded-2xl border bg-white p-6">
-        <div className="mb-2 font-bold">الدفع بعد انتهاء الشهر المجاني</div>
-        <p className="mb-3 text-sm text-gray-500">
-          عند انتهاء الفترة المجانية، تحويل قيمة الاشتراك (سيُعلن عنها لاحقاً) يكون إلى الحساب التالي:
+      {justRegistered && (
+        <p className="mb-6 text-sm text-gray-500">
+          بعد تفعيل حسابك، ستجد كل تفاصيل اشتراكك — تاريخ البداية والنهاية وحساب الدفع — داخل تبويب
+          &quot;خطة الاشتراك&quot; في لوحة عيادتك.
         </p>
-        <div className="flex items-center gap-2">
-          <input
-            readOnly
-            value={PAYMENT_ACCOUNT}
-            dir="ltr"
-            className="w-full rounded-lg border bg-gray-50 px-3 py-2 font-mono text-sm"
-          />
-          <button
-            onClick={() => {
-              navigator.clipboard?.writeText(PAYMENT_ACCOUNT);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            }}
-            className="shrink-0 rounded-lg border px-4 py-2 text-sm hover:bg-gray-50"
-          >
-            {copied ? "تم النسخ" : "نسخ"}
-          </button>
-        </div>
-        <p className="mt-3 text-xs text-gray-400">
-          سيصلك تذكير قبل انتهاء الشهر المجاني بخيارات الدفع النهائية. طريقة الدفع هنا تجريبية وقابلة للتغيير
-          لاحقاً.
-        </p>
-      </div>
+      )}
 
       {justRegistered ? (
         <Link

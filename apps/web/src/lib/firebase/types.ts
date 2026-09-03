@@ -60,6 +60,16 @@ export interface ClinicDoc {
    *  the clinic pays via the account number shown there. Locked to
    *  admin-only writes in firestore.rules, same as `status`. */
   subscriptionEndsAt: Timestamp | null;
+  /** null until first approved; set alongside subscriptionEndsAt at that
+   *  same moment. Stays unchanged across an on-time renewal (the
+   *  subscription is continuous, only its end date moves), but resets to
+   *  the renewal moment if the clinic had already lapsed (a fresh period
+   *  after a real gap) — same "on-time vs. lapsed" branch
+   *  adminRenewSubscription() already uses for subscriptionEndsAt. Powers
+   *  /clinic's "خطة الاشتراك" tab, which shows the clinic its own
+   *  start-to-end subscription window. Locked to admin-only writes in
+   *  firestore.rules, same as subscriptionEndsAt. */
+  subscriptionStartedAt: Timestamp | null;
   createdAt: Timestamp;
 }
 

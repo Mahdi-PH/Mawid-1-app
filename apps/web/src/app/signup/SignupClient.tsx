@@ -48,6 +48,14 @@ export default function SignupClient() {
 
   const isAdminEmail = useMemo(() => isConfiguredAdminEmail(email), [email]);
   const isClinicLogin = !isAdminEmail && clinicMode === "login";
+  // The free-plan subscription info shown only while actually creating a
+  // new account — a returning owner (login mode) or the admin sign-in
+  // don't need "أول شهر مجاناً" repeated at them. Per the user's explicit
+  // ask, this is now merged into the top of this same card instead of a
+  // separate /subscribe screen before it; the payment-account number moved
+  // the other direction, into /clinic's own "خطة الاشتراك" tab, since it's
+  // only useful after the account exists and is signed in.
+  const showPlanInfo = !isAdminEmail && !isClinicLogin;
 
   async function handleAdminSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -162,6 +170,19 @@ export default function SignupClient() {
         className="w-full max-w-sm rounded-xl border bg-white p-6 shadow-sm"
       >
         <BackButton fallbackHref="/" className="mb-3 block text-sm text-brand-600 hover:underline" />
+
+        {showPlanInfo && (
+          <div className="mb-4 rounded-xl border-2 bg-brand-50/40 p-4" style={{ borderColor: "#0F7A6C" }}>
+            <div className="mb-1 text-sm font-bold" style={{ color: "#0F7A6C" }}>
+              أول شهر مجاناً
+            </div>
+            <p className="text-xs leading-6 text-gray-600">
+              إدارة كاملة للحجوزات، الاستقبال، وشاشة صالة الانتظار — بلا أي رسوم خلال الشهر الأول. السعر بعد
+              الشهر الأول <span className="font-bold">لم يُحدَّد بعد</span> وسيُعلن لاحقاً.
+            </p>
+          </div>
+        )}
+
         <h1 className="mb-1 text-lg font-bold text-brand-700">المركز: عيادة طبيب، مركز تجميل أو صالون حلاقة</h1>
         <p className="mb-4 text-sm text-gray-500">أنشئ حساباً جديداً، أو سجّل دخولك إذا كان حسابك موجوداً.</p>
 

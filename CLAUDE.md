@@ -1476,6 +1476,86 @@ land straight back in their own dashboard, no re-login.
   `sites/mawid-app-d1d03/releases/1788448261711000`). No `firestore.rules`
   changes — this is client-side only.
 
+## Merge subscription-plan info into signup; payment account moves to /clinic only
+
+The user's next request, also verbatim-quoted since it specifies exact
+placement: the free-plan subscription info should merge into the top of the
+same screen as login/signup, while the payment-account-number card should
+move to live only inside the clinic dashboard after login, next to إعدادات
+الدوام, in a new tab called "خطة الاشتراك" showing the full subscription
+window (start date to end date) plus the payment account.
+
+- **`ClinicDoc` gained `subscriptionStartedAt: Timestamp | null`**
+  (`lib/firebase/types.ts`), mirroring `subscriptionEndsAt`: `null` until
+  first approved, then set by `adminSetClinicStatus()` at the same moment
+  as `subscriptionEndsAt`. `adminRenewSubscription()` keeps it unchanged on
+  an on-time renewal (the subscription is continuous, only the end date
+  moves) but resets it to the renewal moment on a lapsed renewal — the same
+  "on-time vs. lapsed" branch already used for `subscriptionEndsAt`, so a
+  renewed-after-a-gap clinic doesn't show a stale, pre-gap start date.
+  `firestore.rules` locks it exactly like `subscriptionEndsAt` (`null` on
+  self-create, unchanged-by-owner on self-update) — both deployed live and
+  verified with a dedicated live-REST test: self-create with a non-null
+  value denied (403), self-update pushing it forward denied (403), admin
+  approval sets both dates correctly.
+- **`SUBSCRIPTION_PAYMENT_ACCOUNT`** (new, exported from `firestore.ts`,
+  same value `910459764999`) is now the one shared source for the account
+  number, used only by `/clinic`'s new tab.
+- **`/clinic` gained a fourth tab, "خطة الاشتراك"** (`SubscriptionTab` in
+  `clinic/page.tsx`), next to إعدادات الدوام as asked: shows the free-plan
+  description, a بداية الاشتراك / نهاية الاشتراك date pair (formatted via
+  `toLocaleDateString("ar", …)`), days-remaining text, and the payment
+  account with a copy button — the same card content that used to live on
+  `/subscribe`, now here instead. Read-only: renewal itself stays admin-
+  only (`/admin`'s "تجديد شهر" button) — this tab is where a clinic checks
+  its own dates and where to send the transfer, not a self-service renew
+  control.
+- **`/signup`'s form card now shows the free-plan info card at its own
+  top** (`SignupClient.tsx`), merged into the same card as the email/
+  password fields rather than a separate screen before it — only while
+  actually creating a new account (`showPlanInfo = !isAdminEmail &&
+  !isClinicLogin`); a returning owner in login mode, or the admin email,
+  don't see it again.
+- **`/subscribe` lost its payment-account card entirely** — the free-plan
+  card and the post-registration pending-approval confirmation stay (still
+  reachable via `SignupClient.tsx`'s post-signup redirect and as a direct
+  marketing-page visit), but the payment card and its `PAYMENT_ACCOUNT`
+  constant were removed; the post-registration branch now points the
+  clinic at the new `/clinic` tab instead ("ستجد كل تفاصيل اشتراكك... داخل
+  تبويب «خطة الاشتراك»").
+- **Verified**: `tsc --noEmit` and `next build` both clean. A local
+  Playwright pass against the static export confirmed the plan card shows
+  at the top of `/signup` in signup mode and disappears in login mode, and
+  that `/subscribe` no longer shows the account number while still showing
+  the free-plan card. A live Playwright pass (dev server + the request-
+  interception pattern used throughout this track) against a real signed-
+  up + admin-approved test clinic on `mawid-app-d1d03` confirmed the new
+  `/clinic` tab renders real dates (start = today, end = +30 days) and the
+  payment account, screenshotted for visual confirmation. All test data
+  (Auth user + `users/{uid}` + `clinics/{slug}` docs, including a rejected
+  self-create attempt that correctly never got written) deleted after,
+  read-back-confirmed gone.
+- **Pre-existing data gap found and disclosed, not silently fixed**: a
+  one-time backfill script set `subscriptionStartedAt` on any approved
+  clinic that already had `subscriptionEndsAt` but predated this field
+  (`subscriptionStartedAt` missing entirely) — one real clinic,
+  `alkinglong1995`, got backfilled this way (`startedAt = endsAt - 30
+  days`). While running that backfill, found the user's own real test
+  clinic doc, `mahdi`, is `status: "approved"` but `subscriptionEndsAt:
+  null` — meaning `isSubscriptionActive()` currently reads it as expired,
+  so signing into that account today would show the "انتهى اشتراكك"
+  screen instead of the dashboard. This predates today's change (it's
+  from before the subscription-lifecycle feature ever shipped a real
+  `subscriptionEndsAt` for it) and is unrelated to what was asked this
+  time, so it was **not** touched — flagged here for the user to decide:
+  renew it via `/admin`'s "تجديد شهر" button, or ask for it to be fixed
+  directly.
+- **Not yet deployed to Hosting** — `firestore.rules` alone was deployed
+  live (needed to test the new field against the real project); the
+  rebuilt `apps/web/out/` with these UI changes is only committed, per this
+  session's standing practice of holding the actual `firebase deploy
+  --only hosting` for an explicit go-ahead.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

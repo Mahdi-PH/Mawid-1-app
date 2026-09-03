@@ -20,6 +20,7 @@ import {
   listAppointmentsForClinic,
   setAppointmentStatus,
   subscriptionDaysLeft,
+  SUBSCRIPTION_PAYMENT_ACCOUNT,
   SUBSCRIPTION_WARNING_DAYS,
   updateClinicSchedule,
   ScheduleConflictError,
@@ -42,7 +43,7 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-type Tab = "reception" | "tv" | "settings";
+type Tab = "reception" | "tv" | "settings" | "subscription";
 
 export default function ClinicDashboardPage() {
   const [clinic, setClinic] = useState<ClinicDoc | null | undefined>(undefined);
@@ -166,6 +167,7 @@ export default function ClinicDashboardPage() {
               ["reception", "الاستقبال"],
               ["tv", "شاشة الانتظار"],
               ["settings", "إعدادات الدوام"],
+              ["subscription", "خطة الاشتراك"],
             ] as [Tab, string][]
           ).map(([id, label]) => (
             <button
@@ -198,6 +200,7 @@ export default function ClinicDashboardPage() {
         {tab === "settings" && (
           <SettingsTab clinic={clinic} onSaved={(c) => { setClinic(c); reloadAppts(c); }} />
         )}
+        {tab === "subscription" && <SubscriptionTab clinic={clinic} />}
         {error && <p className="mt-4 text-red-600">{error}</p>}
       </main>
     </div>
@@ -410,6 +413,80 @@ function SettingsTab({ clinic, onSaved }: { clinic: ClinicDoc; onSaved: (c: Clin
         >
           {signingOut ? "جارٍ تسجيل الخروج…" : "تسجيل خروج من الحساب"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+function formatSubscriptionDate(ts: ClinicDoc["subscriptionEndsAt"]): string {
+  if (!ts) return "—";
+  return ts.toDate().toLocaleDateString("ar", { year: "numeric", month: "long", day: "numeric" });
+}
+
+/** "خطة الاشتراك" — the subscription plan's own tab, next to إعدادات
+ *  الدوام. Shows the clinic its own start-to-end subscription window plus
+ *  the payment account number: per the user's explicit ask, the payment
+ *  account now lives ONLY here (after login), not on the pre-signup
+ *  /subscribe screen. Read-only — renewal itself stays a manual admin
+ *  action (/admin's "تجديد شهر" button) since there's no real payment
+ *  gateway; this tab is where the clinic checks its own dates and where to
+ *  send the transfer, not a self-service renew control. */
+function SubscriptionTab({ clinic }: { clinic: ClinicDoc }) {
+  const [copied, setCopied] = useState(false);
+  const daysLeft = subscriptionDaysLeft(clinic);
+
+  return (
+    <div className="mx-auto max-w-md space-y-4">
+      <div className="rounded-2xl border-2 bg-white p-6" style={{ borderColor: "#0F7A6C" }}>
+        <div className="mb-2 text-sm font-bold" style={{ color: "#0F7A6C" }}>
+          الخطة المجانية
+        </div>
+        <p className="text-sm leading-7 text-gray-600">
+          إدارة كاملة للحجوزات، الاستقبال، وشاشة صالة الانتظار. السعر بعد انتهاء الخطة المجانية{" "}
+          <span className="font-bold">لم يُحدَّد بعد</span> وسيُعلن لاحقاً.
+        </p>
+        <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+          <div className="rounded-lg bg-gray-50 p-3">
+            <div className="text-xs text-gray-400">بداية الاشتراك</div>
+            <div className="font-bold">{formatSubscriptionDate(clinic.subscriptionStartedAt)}</div>
+          </div>
+          <div className="rounded-lg bg-gray-50 p-3">
+            <div className="text-xs text-gray-400">نهاية الاشتراك</div>
+            <div className="font-bold">{formatSubscriptionDate(clinic.subscriptionEndsAt)}</div>
+          </div>
+        </div>
+        {daysLeft !== null && (
+          <p className={"mt-3 text-sm font-bold " + (daysLeft <= SUBSCRIPTION_WARNING_DAYS ? "text-amber-700" : "text-gray-500")}>
+            {daysLeft > 0 ? `متبقٍ ${daysLeft === 1 ? "يوم واحد" : `${daysLeft} أيام`} على الاشتراك.` : "اشتراكك ينتهي اليوم."}
+          </p>
+        )}
+      </div>
+
+      <div className="rounded-2xl border bg-white p-6">
+        <div className="mb-2 font-bold">الدفع بعد انتهاء الخطة المجانية</div>
+        <p className="mb-3 text-sm text-gray-500">
+          عند اقتراب موعد الانتهاء، حوّل قيمة الاشتراك (سيُعلن عنها لاحقاً) إلى الحساب التالي، ثم تواصل مع الإدارة
+          لتفعيل التجديد:
+        </p>
+        <div className="flex items-center gap-2">
+          <input
+            readOnly
+            value={SUBSCRIPTION_PAYMENT_ACCOUNT}
+            dir="ltr"
+            className="w-full rounded-lg border bg-gray-50 px-3 py-2 font-mono text-sm"
+          />
+          <button
+            onClick={() => {
+              navigator.clipboard?.writeText(SUBSCRIPTION_PAYMENT_ACCOUNT);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }}
+            className="shrink-0 rounded-lg border px-4 py-2 text-sm hover:bg-gray-50"
+          >
+            {copied ? "تم النسخ" : "نسخ"}
+          </button>
+        </div>
+        <p className="mt-3 text-xs text-gray-400">طريقة الدفع هنا تجريبية وقابلة للتغيير لاحقاً.</p>
       </div>
     </div>
   );
