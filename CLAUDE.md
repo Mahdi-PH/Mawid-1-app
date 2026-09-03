@@ -1784,8 +1784,10 @@ for, not a broader copy pass.
   Playwright screenshots against the exported `out/` directory confirmed
   both new titles render on the settled home screen and the new `<h1>`
   renders on `/signup`.
-- **Not yet deployed** — waiting on the user's go-ahead, same as every
-  other change this session.
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788464881315000`). No `firestore.rules`
+  changes — client-side only.
 
 ## Next steps if resumed
 
