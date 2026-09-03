@@ -1471,9 +1471,10 @@ land straight back in their own dashboard, no re-login.
   and `next build` both clean. All test data (Auth user + `users/{uid}` +
   `clinics/{slug}` docs) were read back to confirm identity, then deleted,
   per the standing read-before-delete rule.
-- **Not yet deployed** — built and verified locally/live-tested against the
-  real project's data plane only; `firebase deploy --only hosting` still
-  needs the user's go-ahead per this session's standing practice.
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788448261711000`). No `firestore.rules`
+  changes — this is client-side only.
 
 ## Next steps if resumed
 
