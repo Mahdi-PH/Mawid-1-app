@@ -13,6 +13,8 @@
     "@mawid/shared": "*",
     "dexie": "^4.0.8",
     "firebase": "^12.18.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "next": "14.2.35",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

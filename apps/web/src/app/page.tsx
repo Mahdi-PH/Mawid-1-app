@@ -45,14 +45,17 @@ type Phase = "intro" | "revealing" | "home";
 
 const ROLE_CARDS = [
   {
-    href: "/subscribe",
-    title: "عيادة أو مركز تجميل",
-    desc: "سجّل عيادتك أو مركز التجميل لإدارة الحجوزات والاستقبال وشاشة صالة الانتظار.",
+    // Routes straight to account creation/login now (was /subscribe) —
+    // the subscription plan screen moved to *after* signup completes, see
+    // SignupClient.tsx's registerClinic() success handler.
+    href: "/signup",
+    title: "المركز: عيادة طبيب، مركز تجميل أو صالون حلاقة",
+    desc: "سجّل مركزك لإدارة الحجوزات والاستقبال وشاشة صالة الانتظار.",
   },
   {
     href: "/find",
-    title: "مراجع",
-    desc: "ابحث عن عيادتك واطلب موعدك مباشرة — بدون تسجيل حساب.",
+    title: "المراجع أو الزبون",
+    desc: "ابحث عن مركزك واطلب موعدك مباشرة — بدون تسجيل حساب.",
   },
 ] as const;
 

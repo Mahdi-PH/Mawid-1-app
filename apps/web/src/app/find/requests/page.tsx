@@ -7,7 +7,7 @@
 // exactly what firestore.rules already scopes appointment reads to for a
 // non-clinic, non-admin visitor.
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import BackButton from "../../../components/BackButton";
 import { ensurePatientSession } from "../../../lib/firebase/auth";
 import { listAppointmentsForPatient } from "../../../lib/firebase/firestore";
 import type { AppointmentDoc, AppointmentStatus } from "../../../lib/firebase/types";
@@ -35,9 +35,7 @@ export default function MyRequestsPage() {
 
   return (
     <main dir="rtl" className="mx-auto max-w-2xl p-6">
-      <Link href="/find" className="text-sm text-brand-600 hover:underline">
-        ‹ رجوع للبحث
-      </Link>
+      <BackButton fallbackHref="/find" label="رجوع للبحث" />
       <h1 className="mb-6 mt-3 text-xl font-bold" style={{ color: "#0F7A6C" }}>
         طلباتي
       </h1>

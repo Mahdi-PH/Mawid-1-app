@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { listApprovedClinics } from "../../lib/firebase/firestore";
 import type { ClinicDoc } from "../../lib/firebase/types";
+import BackButton from "../../components/BackButton";
 
 export default function FindClinicPage() {
   const [clinics, setClinics] = useState<ClinicDoc[]>([]);
@@ -37,9 +38,10 @@ export default function FindClinicPage() {
 
   return (
     <main dir="rtl" className="mx-auto max-w-2xl p-6">
+      <BackButton fallbackHref="/" className="mb-3 block text-sm text-brand-600 hover:underline" />
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-bold" style={{ color: "#0F7A6C" }}>
-          ابحث عن عيادتك
+          ابحث عن مركزك
         </h1>
         <Link href="/find/requests" className="text-sm text-brand-600 hover:underline">
           طلباتي

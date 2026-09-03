@@ -1309,6 +1309,110 @@ for review before deploying.
   `https://mawid-app-d1d03.web.app/?intro=1` to see the opening pose
   regardless of any browser's stored "already seen" flag.
 
+## Category renames, signup/subscribe reorder, global back button, auto-PDF
+
+Four ordered steps the user asked for together, confirmed via
+`AskUserQuestion` to run in the order given (1→2→3→4) and be reviewed once
+at the end rather than deployed one at a time.
+
+1. **Renamed the two role cards** (home page + `SignupClient.tsx`'s own
+   heading + its gov/district helper text): "مراجع" → "المراجع أو الزبون";
+   "عيادة أو مركز تجميل" → "المركز: عيادة طبيب، مركز تجميل أو صالون حلاقة"
+   — broadening scope from clinics/beauty-centers only to also cover barber
+   shops, since the new label explicitly lists "صالون حلاقة".
+2. **Reordered signup ahead of the subscription screen**: the home page's
+   center card now routes straight to `/signup` (was `/subscribe`).
+   `registerClinic()` now returns `{ slug }` (was `Promise<void>`) so the
+   caller has it; on success, `SignupClient.tsx` navigates to
+   `/subscribe?registered=1&slug=...&name=...` instead of showing its old
+   inline `pendingSubmitted` confirmation state (removed entirely — dead
+   code once the redirect replaced it). `/subscribe` now serves two roles
+   off that query flag: a fresh visitor (no query) sees the original
+   marketing framing with "ابدأ مجاناً" → `/signup`; someone who just
+   registered sees the same plan/payment info plus a green pending-approval
+   confirmation banner and a "العودة إلى الواجهة الرئيسية" button instead
+   of a redundant "start free" CTA for an account that already exists.
+3. **`components/BackButton.tsx`** (new): a small shared client component —
+   `router.back()` when real browser history exists (so it returns to
+   wherever the visitor actually came from), falling back to a given
+   `fallbackHref` only when there isn't any (a fresh tab, a bookmarked deep
+   link, or the installed PWA's own launch screen). Wired into every
+   screen in the app: `/subscribe`, `/signup`, `/find`, `/find/book` (both
+   its not-found and normal branches), `/find/requests`, `/clinic` (all
+   four states — loading was left alone since it's instantaneous, but
+   no-clinic/pending-or-rejected/expired/the main dashboard all got one),
+   and `admin/layout.tsx`'s shared header (covers both `/admin` and
+   `/admin/user` from one place — `/admin/user`'s own more-specific
+   "‹ رجوع لكل المستخدمين" link was removed as a now-redundant duplicate,
+   since `router.back()` already lands back on `/admin` from there
+   naturally). The home page (`/`) deliberately has none — it's the app's
+   own root, nothing to go back to. `/clinic`'s "pending" branch — the
+   account's own pending-approval screen — gets a real, prominent
+   full-width "العودة إلى الواجهة الرئيسية" button (not the subtle
+   top-of-page link every other screen gets), per the user's explicit ask
+   for exactly that button on exactly that screen; the "expired
+   subscription" branch got the same treatment for consistency, since it's
+   the same shape of "account not currently usable" screen.
+   - **Deliberately out of scope**: `/dashboard` and `/display` (the
+     legacy `apps/server`/Postgres-track kiosk pages — see "Deployment
+     status" above; not hosted anywhere, only reachable by a direct URL
+     today, no longer linked from anywhere in the live Firebase-track UI)
+     were left untouched rather than modified speculatively.
+4. **Auto-saved local PDF backup on signup** (`lib/pdf/saveAccountPdf.ts`,
+   new): right after `registerClinic()` succeeds, before navigating to
+   `/subscribe`, the clinic's just-submitted data (name, email, gov/
+   district/street, hours, slot duration, registration date, booking link)
+   is saved as a local PDF download — a `jsPDF`/`html2canvas`-based
+   pipeline: jsPDF's own `text()` doesn't shape Arabic (letters render
+   disconnected/reversed, since Arabic needs contextual glyph joining that
+   only a real text-layout engine does), so the data is rendered as an
+   off-screen HTML table first, rasterized with `html2canvas` (the browser
+   shapes the Arabic correctly for free), and that image is embedded into
+   a one-page A4 PDF. Wrapped in its own try/catch — a failure here (e.g.
+   a browser blocking the download) is logged but never blocks the signup
+   itself, which has already succeeded by the time this runs.
+   - **New dependencies**: `jspdf` + `html2canvas` — the first genuine
+     exception to this project's established "no new library" defaults
+     for UI polish (see the earlier "Animations" sections), because there
+     is no reasonable native-browser way to write an arbitrary structured
+     PDF file; `window.print()` requires the user to explicitly choose
+     "save as PDF" in a system dialog, not the automatic save the user
+     asked for.
+   - **Real bug caught and fixed by rendering the actual output, not just
+     the intermediate step**: the first version embedded the captured
+     canvas as a PNG (`canvas.toDataURL("image/png")` + `addImage(...,
+     "PNG", ...)`), which produced a **5.6 MB PDF from a 143 KB source
+     image** — jsPDF stores an added PNG's raw pixel data rather than
+     re-deflating it. Caught by actually saving the generated file and
+     checking its size (not assumed from the small captured-image size),
+     then fixed by switching to `canvas.toDataURL("image/jpeg", 0.92)` +
+     `addImage(..., "JPEG", ...)` — the standard fix for this exact
+     `html2canvas`+`jsPDF` combination, which brought the same content
+     down to 106 KB with no visible quality loss for flat text-on-white
+     content like this table.
+- **Verified**: `tsc --noEmit` and `next build` both clean. Playwright
+  against the exported `out/` directory confirmed, without touching
+  Firebase: the new labels render on the home page and `/signup`; clicking
+  the center card routes straight to `/signup` (not `/subscribe`);
+  `/signup`'s back button returns to `/`; `/find` has a working back
+  button; `/subscribe` with no query still shows "ابدأ مجاناً"; `/subscribe
+  ?registered=1&name=...` shows the pending-approval banner and the
+  "العودة إلى الواجهة الرئيسية" button with the "ابدأ مجاناً" CTA gone
+  entirely. The PDF pipeline was verified in isolation (a standalone test
+  harness running the identical `html2canvas`+`jsPDF` code against the
+  actual installed package files, not a mock) — confirmed a real file
+  downloads, inspected its actual byte size before and after the JPEG
+  fix, and visually confirmed the captured Arabic table (the exact image
+  embedded in the PDF) shapes and aligns correctly, RTL columns included.
+  **Not independently verified against a live Firebase session**: the
+  `/clinic` and `/admin` back-button placements (both require a real
+  signed-in session to reach) were checked by reading the diff, not by
+  driving a real login in this pass — flagged here rather than silently
+  presented as fully tested.
+- **Not deployed yet** — built and verified locally only, pending the
+  user's single end-of-batch review (per their explicit choice to review
+  once at the end rather than after each step).
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

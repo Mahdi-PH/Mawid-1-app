@@ -8,6 +8,7 @@
 // Firebase env values are baked in at build time instead of missing).
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import BackButton from "../../components/BackButton";
 import { onAuthChange, isAdminUser } from "../../lib/firebase/auth";
 import type { User } from "firebase/auth";
 
@@ -67,6 +68,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div dir="rtl" className="min-h-screen bg-gray-50">
       <header className="border-b bg-white px-6 py-4">
+        <BackButton
+          fallbackHref={pathname === "/admin" ? "/" : "/admin"}
+          className="mb-2 block text-sm text-brand-600 hover:underline"
+        />
         <h1 className="text-lg font-bold text-brand-700">لوحة تحكم المدير — موعد</h1>
       </header>
       <main className="p-6">{children}</main>

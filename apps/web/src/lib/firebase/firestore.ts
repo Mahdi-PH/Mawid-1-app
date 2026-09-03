@@ -131,7 +131,7 @@ export async function generateUniqueSlugFromEmail(email: string): Promise<string
  *  turns out to be taken (lost a race, or the caller skipped the
  *  availability check), the just-created Auth account is deleted so it
  *  isn't left orphaned. */
-export async function registerClinic(input: RegisterClinicInput): Promise<void> {
+export async function registerClinic(input: RegisterClinicInput): Promise<{ slug: string }> {
   const cred = await createUserWithEmailAndPassword(auth, input.email, input.password);
   const uid = cred.user.uid;
 
@@ -176,6 +176,7 @@ export async function registerClinic(input: RegisterClinicInput): Promise<void> 
       tx.set(userRef, userDoc);
       tx.set(clinicRef, clinicDoc);
     });
+    return { slug };
   } catch (err) {
     await cred.user.delete().catch(() => {});
     throw err;

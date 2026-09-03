@@ -11,6 +11,8 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { isConfiguredAdminEmail, signInWithEmail } from "../../lib/firebase/auth";
 import { registerClinic, SlugTakenError } from "../../lib/firebase/firestore";
+import { saveSignupAccountPdf } from "../../lib/pdf/saveAccountPdf";
+import BackButton from "../../components/BackButton";
 
 // Sanity cap on the raw upload before client-side compression kicks in
 // (see registerClinic() -> compressLicenseImageToDataUrl()), not the
@@ -37,7 +39,6 @@ export default function SignupClient() {
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [pendingSubmitted, setPendingSubmitted] = useState(false);
   // "signup" (new clinic) vs "login" (returning owner, /clinic dashboard)
   // — there was no way back into an existing account before this: the
   // form only ever tried registerClinic(), which fails with
@@ -105,7 +106,7 @@ export default function SignupClient() {
 
     setBusy(true);
     try {
-      await registerClinic({
+      const { slug } = await registerClinic({
         email: email.trim(),
         password,
         clinicName: clinicName.trim(),
@@ -117,7 +118,27 @@ export default function SignupClient() {
         workEnd,
         slotMin,
       });
-      setPendingSubmitted(true);
+      // Auto-save a local PDF backup of exactly what was submitted, right
+      // after the account is created — a professional safeguard against
+      // losing this data, per the user's explicit ask. Best-effort: a
+      // failure here (e.g. a browser blocking the download) must never
+      // block the signup itself, which already succeeded.
+      try {
+        await saveSignupAccountPdf({
+          clinicName: clinicName.trim(),
+          email: email.trim(),
+          gov: gov.trim() || null,
+          district: gov.trim() ? district.trim() : null,
+          street: street.trim() || null,
+          workStart,
+          workEnd,
+          slotMin,
+          bookingSlug: slug,
+        });
+      } catch (pdfErr) {
+        console.error("saveSignupAccountPdf failed (non-fatal):", pdfErr);
+      }
+      router.push(`/subscribe?registered=1&slug=${encodeURIComponent(slug)}&name=${encodeURIComponent(clinicName.trim())}`);
     } catch (err) {
       if (err instanceof SlugTakenError) {
         setError("تعذّر إنشاء رابط حجز فريد لهذا البريد — حاول مرة أخرى.");
@@ -134,27 +155,14 @@ export default function SignupClient() {
     }
   }
 
-  if (pendingSubmitted) {
-    return (
-      <div dir="rtl" className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
-        <div className="w-full max-w-sm rounded-xl border bg-white p-6 text-center shadow-sm">
-          <h1 className="mb-2 text-lg font-bold text-brand-700">تم إرسال طلبك</h1>
-          <p className="text-sm text-gray-600">
-            طلب تسجيل &quot;{clinicName}&quot; قيد المراجعة من قبل الإدارة، وسيتم تفعيل حسابك بعد الموافقة على
-            الإجازة المرفوعة.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div dir="rtl" className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
       <form
         onSubmit={isAdminEmail ? handleAdminSubmit : isClinicLogin ? handleClinicLogin : handleClinicSubmit}
         className="w-full max-w-sm rounded-xl border bg-white p-6 shadow-sm"
       >
-        <h1 className="mb-1 text-lg font-bold text-brand-700">عيادة أو مركز تجميل</h1>
+        <BackButton fallbackHref="/" className="mb-3 block text-sm text-brand-600 hover:underline" />
+        <h1 className="mb-1 text-lg font-bold text-brand-700">المركز: عيادة طبيب، مركز تجميل أو صالون حلاقة</h1>
         <p className="mb-4 text-sm text-gray-500">أنشئ حساباً جديداً، أو سجّل دخولك إذا كان حسابك موجوداً.</p>
 
         {!isAdminEmail && (
@@ -262,7 +270,8 @@ export default function SignupClient() {
               />
             </label>
             <p className="mb-4 -mt-2 text-xs text-gray-400">
-              كتابة المحافظة والحي تجعل عيادتك قابلة للبحث من صفحة «مراجع» أيضاً، وليس فقط عبر رابطك المباشر —
+              كتابة المحافظة والحي تجعل عيادتك قابلة للبحث من صفحة «المراجع أو الزبون» أيضاً، وليس فقط عبر رابطك
+              المباشر —
               بعد موافقة الإدارة.
             </p>
 

@@ -10,7 +10,7 @@
 // front of it.
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import Link from "next/link";
+import BackButton from "../../../components/BackButton";
 import { ensurePatientSession } from "../../../lib/firebase/auth";
 import {
   bookSlot,
@@ -112,9 +112,7 @@ function BookClinic() {
     return (
       <main dir="rtl" className="mx-auto max-w-md p-6 text-center">
         <p className="text-red-600">هذه العيادة غير موجودة أو غير متاحة للحجز حالياً.</p>
-        <Link href="/find" className="mt-4 inline-block text-brand-600 hover:underline">
-          ‹ رجوع للبحث
-        </Link>
+        <BackButton fallbackHref="/find" label="رجوع للبحث" className="mt-4 inline-block text-brand-600 hover:underline" />
       </main>
     );
   }
@@ -125,9 +123,7 @@ function BookClinic() {
 
   return (
     <main dir="rtl" className="mx-auto max-w-2xl p-6">
-      <Link href="/find" className="text-sm text-brand-600 hover:underline">
-        ‹ رجوع للبحث
-      </Link>
+      <BackButton fallbackHref="/find" label="رجوع للبحث" />
 
       <h1 className="mt-3 text-xl font-bold" style={{ color: "#0F7A6C" }}>
         {clinic.clinicName}

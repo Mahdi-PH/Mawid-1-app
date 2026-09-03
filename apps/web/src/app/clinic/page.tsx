@@ -9,6 +9,8 @@
 // setAppointmentStatus, updateClinicSchedule) with no UI in front of them
 // until now, same story as /find.
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import BackButton from "../../components/BackButton";
 import { auth } from "../../lib/firebase/config";
 import {
   getClinicByOwner,
@@ -64,22 +66,33 @@ export default function ClinicDashboardPage() {
   }
   if (clinic === null) {
     return (
-      <p className="p-8 text-center text-red-600">
-        هذا الحساب لا يملك عيادة مسجَّلة. سجّل عيادتك أولاً عبر صفحة التسجيل.
-      </p>
+      <div className="p-8 text-center">
+        <BackButton fallbackHref="/" className="mb-4 inline-block text-sm text-brand-600 hover:underline" />
+        <p className="text-red-600">هذا الحساب لا يملك عيادة مسجَّلة. سجّل عيادتك أولاً عبر صفحة التسجيل.</p>
+      </div>
     );
   }
   if (clinic.status !== "approved") {
+    // The "pending" case is the account's own pending-approval screen —
+    // gets a real, prominent "رجوع إلى الواجهة الرئيسية" button (not just
+    // the subtle top-of-page link every other screen gets), per the
+    // user's explicit ask for exactly this on the pending-approval screen.
     return (
-      <div className="p-8 text-center">
+      <div className="mx-auto max-w-sm p-8 text-center">
         <h1 className="mb-2 text-lg font-bold" style={{ color: "#0F7A6C" }}>
           {clinic.clinicName}
         </h1>
-        <p className="text-gray-600">
+        <p className="mb-6 text-gray-600">
           {clinic.status === "pending"
             ? "طلب تسجيلك قيد المراجعة من قبل الإدارة — سيتفعّل حسابك بعد الموافقة على الإجازة المرفوعة."
             : "تعذّر تفعيل هذا الحساب. تواصل مع الإدارة لمزيد من التفاصيل."}
         </p>
+        <Link
+          href="/"
+          className="inline-block w-full rounded-lg bg-brand-500 py-3 text-center font-bold text-white hover:bg-brand-600"
+        >
+          العودة إلى الواجهة الرئيسية
+        </Link>
       </div>
     );
   }
@@ -91,13 +104,17 @@ export default function ClinicDashboardPage() {
   // via the account number shown on /subscribe).
   if (!isSubscriptionActive(clinic)) {
     return (
-      <div className="p-8 text-center">
+      <div className="mx-auto max-w-sm p-8 text-center">
         <h1 className="mb-2 text-lg font-bold" style={{ color: "#0F7A6C" }}>
           {clinic.clinicName}
         </h1>
-        <p className="text-red-600">
-          انتهى اشتراكك الشهري وتم إغلاق الحساب مؤقتاً. تواصل مع الإدارة لتجديد الاشتراك.
-        </p>
+        <p className="mb-6 text-red-600">انتهى اشتراكك الشهري وتم إغلاق الحساب مؤقتاً. تواصل مع الإدارة لتجديد الاشتراك.</p>
+        <Link
+          href="/"
+          className="inline-block w-full rounded-lg bg-brand-500 py-3 text-center font-bold text-white hover:bg-brand-600"
+        >
+          العودة إلى الواجهة الرئيسية
+        </Link>
       </div>
     );
   }
@@ -113,6 +130,7 @@ export default function ClinicDashboardPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="sticky top-0 z-10 border-b bg-white px-6 py-3">
+        <BackButton fallbackHref="/" className="mb-2 block text-sm text-brand-600 hover:underline" />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="font-bold" style={{ color: "#0F7A6C" }}>
             {clinic.clinicName}

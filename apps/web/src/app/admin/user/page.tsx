@@ -7,7 +7,6 @@
 // page reading the id from the query string sidesteps that entirely.
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import Link from "next/link";
 import {
   adminGetUser,
   adminListAppointmentsForUser,
@@ -78,10 +77,9 @@ function AdminUserDetail() {
 
   return (
     <div className="space-y-6">
-      <Link href="/admin" className="text-sm text-brand-600 hover:underline">
-        ‹ رجوع لكل المستخدمين
-      </Link>
-
+      {/* Back navigation for /admin/* is provided once by admin/layout.tsx's
+          shared header (BackButton, fallback "/admin") rather than
+          duplicated here. */}
       <div className="rounded-xl border bg-white p-4">
         <div className="text-lg font-bold">{user.displayName}</div>
         <div className="text-sm text-gray-500" dir="ltr">
