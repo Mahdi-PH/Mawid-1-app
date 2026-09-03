@@ -1907,9 +1907,10 @@ both fixed together:
   fresh ordinary browser tab (no standalone override) still shows the
   intro on its own first visit exactly as before — confirming the fix
   didn't regress the pre-existing regular-browser behavior.
-- **Not yet deployed** — same standing practice: built and verified
-  locally, `firebase deploy --only hosting` still waits for the user's
-  go-ahead.
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788475335856000`). No `firestore.rules`
+  changes — client-side only.
 
 ## Next steps if resumed
 
