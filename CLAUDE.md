@@ -1232,6 +1232,58 @@ would have stayed blank **permanently**, matching the report precisely.
   `sites/mawid-app-d1d03/releases/1788441878385000`). No `firestore.rules`
   changes — this is client-side only.
 
+### Follow-up: reference-image backdrop redesign (as vector icons, not the photo), indefinite intro hold
+
+The user uploaded a reference image (a beauty/clinic-tools frame — brush,
+comb, mirror, scissors, razor, lotion bottle, calendar, leaves — over a
+cream-to-teal gradient) and asked for it as the app's permanent
+background, with the comb swapped for a stethoscope, colors pulled
+toward the brand teal and gradient, brightness reduced, and the intro
+hold made indefinite (no auto-timer — only a tap advances it).
+
+- **The uploaded photo itself was not embedded** — disclosed to the user
+  upfront, not silently substituted: this session has no image-generation
+  or inpainting tool, so literally removing the comb and painting in a
+  stethoscope inside their raster file wasn't possible. Recreated the
+  same composition instead as clean line-icons in the app's own existing
+  visual language (matching the logo mark's stroke style) — arguably the
+  better technical fit too, since a fixed-aspect-ratio JPEG with its own
+  cream background wouldn't blend into this app's actual `#F5FBF9`
+  background or scale cleanly across the very different phone viewport
+  sizes this app runs on, where an SVG scales natively with no seam.
+- **`components/HomeBackdrop.tsx`** rebuilt around one `viewBox="0 0 400
+  800"` SVG (`preserveAspectRatio="xMidYMid slice"`) scattering six
+  hand-drawn line icons around the edges — brush (top-left), a
+  stethoscope (top-right, replacing the reference's comb), a hand mirror
+  (mid-left), a lotion/pump bottle (mid-right), scissors (lower-left), a
+  calendar with a confirmation checkmark (bottom-right) — plus two small
+  leaf accents, all sharing one `linearGradient` (`#17A892` →`#0A5A4F`,
+  the exact brand teal) at low opacity (0.16) for "قريبة من لون الشعار" +
+  "تخفف السطوع قليلا". The previous dot-grid/blobs/watermark design was
+  replaced entirely, not layered underneath, per the user's ask that this
+  become *the* background — a soft cream-to-teal gradient wash (radial +
+  linear, both under 12% opacity) replaces the old flat blob glows,
+  echoing the reference image's own background tone. Still rendered
+  exactly once, unconditionally, never remounted by any `page.tsx` phase
+  change, so it stays "الخلفية الدائمة والمستمرة" through intro,
+  revealing, and home alike, same as before.
+- **Intro hold is now indefinite**: removed `INTRO_AUTO_MS` and its
+  `setTimeout` entirely from `app/page.tsx` — the big centered logo now
+  holds until the visitor taps, with no auto-advance, per "الانتقال منها
+  فقط بعد الضغط على الشاشة". The "المس الشاشة للمتابعة" hint still fades
+  in after `HINT_DELAY_MS` (650ms) so the gesture stays discoverable.
+- **Verified**: `tsc --noEmit` and `next build` both clean (home page:
+  98.7 kB → 99.2 kB, still negligible). A Playwright run against the
+  exported `out/` directory confirmed the logo bounding box is still
+  exactly 112×112px centered after waiting 3.7s with no tap (well past
+  the old 2.2s auto-timer) — genuinely never auto-advances now — and
+  still settles to 64×64px in the header spot correctly after a tap.
+  Screenshots of both the intro pose and the settled home screen (with
+  the new icon backdrop) were sent to the user for review before
+  deploying, per their explicit ask for a preview first.
+- **Not deployed yet** — built and verified locally only, pending the
+  user's reaction to the preview screenshots.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

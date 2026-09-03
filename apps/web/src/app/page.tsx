@@ -22,17 +22,17 @@ import HomeBackdrop from "../components/HomeBackdrop";
 // persistent backdrop, then glides back into its normal small header spot
 // (a FLIP-style shared-element transform on the SAME logo element — see
 // the useLayoutEffect below — not a separate splash component crossfading
-// into a different one), triggered by either a tap anywhere or a short
-// auto-timer; a two-stage "pick, then leave" transition on the role cards;
-// and a static decorative backdrop (HomeBackdrop) that never remounts
-// across any of these phases, so it stays visually constant the whole
-// time. All pure CSS/Tailwind — no animation library was added, per the
-// user's explicit choice — and none of it touches Firebase or any data
-// fetch, so none of it can slow down anything this page actually depends
-// on.
+// into a different one). This pose holds indefinitely — no auto-timer —
+// and only a tap anywhere on the screen advances it, per the user's
+// explicit ask; a two-stage "pick, then leave" transition on the role
+// cards; and a static decorative backdrop (HomeBackdrop) that never
+// remounts across any of these phases, so it stays visually constant the
+// whole time. All pure CSS/Tailwind — no animation library was added, per
+// the user's explicit choice — and none of it touches Firebase or any
+// data fetch, so none of it can slow down anything this page actually
+// depends on.
 const SPLASH_SEEN_KEY = "mawid_splash_seen";
 const HERO_SIZE_PX = 112; // the logo's size while it's the big, centered "opening" mark
-const INTRO_AUTO_MS = 2200; // auto-continues even if the visitor never taps
 const REVEAL_MS = 650; // how long the logo takes to glide back into its header spot
 const HINT_DELAY_MS = 650; // delay before the "tap to continue" hint fades in
 // Two-stage exit on the role cards: the clicked card briefly "pops"
@@ -125,13 +125,11 @@ export default function Home() {
 
   useEffect(() => {
     if (phase !== "intro") return;
+    // No auto-continue timer here on purpose — the opening pose holds
+    // indefinitely and only a tap advances it, per the user's explicit
+    // ask ("الانتقال منها فقط بعد الضغط على الشاشة").
     const hint = window.setTimeout(() => setShowHint(true), HINT_DELAY_MS);
-    const auto = window.setTimeout(beginReveal, INTRO_AUTO_MS);
-    return () => {
-      window.clearTimeout(hint);
-      window.clearTimeout(auto);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => window.clearTimeout(hint);
   }, [phase]);
 
   function beginReveal() {
