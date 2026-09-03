@@ -11,6 +11,7 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import BackButton from "../../../components/BackButton";
+import AppBackdrop from "../../../components/AppBackdrop";
 import { ensurePatientSession } from "../../../lib/firebase/auth";
 import {
   bookSlot,
@@ -28,7 +29,14 @@ function todayISO(): string {
 
 export default function BookClinicPage() {
   return (
-    <Suspense fallback={<p className="p-6 text-gray-500">جارٍ التحميل…</p>}>
+    <Suspense
+      fallback={
+        <div className="relative min-h-screen">
+          <AppBackdrop />
+          <p className="relative p-6 text-gray-500">جارٍ التحميل…</p>
+        </div>
+      }
+    >
       <BookClinic />
     </Suspense>
   );
@@ -110,19 +118,29 @@ function BookClinic() {
 
   if (!slug || clinic === null) {
     return (
-      <main dir="rtl" className="mx-auto max-w-md p-6 text-center">
-        <p className="text-red-600">هذه العيادة غير موجودة أو غير متاحة للحجز حالياً.</p>
-        <BackButton fallbackHref="/find" label="رجوع للبحث" className="mt-4 inline-block text-brand-600 hover:underline" />
+      <main dir="rtl" className="relative min-h-screen mx-auto max-w-md p-6 text-center">
+        <AppBackdrop />
+        <div className="relative">
+          <p className="text-red-600">هذه العيادة غير موجودة أو غير متاحة للحجز حالياً.</p>
+          <BackButton fallbackHref="/find" label="رجوع للبحث" className="mt-4 inline-block text-brand-600 hover:underline" />
+        </div>
       </main>
     );
   }
 
   if (clinic === undefined) {
-    return <p className="p-6 text-gray-500">جارٍ التحميل…</p>;
+    return (
+      <div className="relative min-h-screen">
+        <AppBackdrop />
+        <p className="relative p-6 text-gray-500">جارٍ التحميل…</p>
+      </div>
+    );
   }
 
   return (
-    <main dir="rtl" className="mx-auto max-w-2xl p-6">
+    <main dir="rtl" className="relative min-h-screen mx-auto max-w-2xl p-6">
+      <AppBackdrop />
+      <div className="relative">
       <BackButton fallbackHref="/find" label="رجوع للبحث" />
 
       <h1 className="mt-3 text-xl font-bold" style={{ color: "#0F7A6C" }}>
@@ -203,6 +221,7 @@ function BookClinic() {
           </button>
         </div>
       )}
+      </div>
     </main>
   );
 }

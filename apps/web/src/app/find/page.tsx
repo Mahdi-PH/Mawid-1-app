@@ -13,6 +13,7 @@ import Link from "next/link";
 import { listApprovedClinics } from "../../lib/firebase/firestore";
 import type { ClinicDoc } from "../../lib/firebase/types";
 import BackButton from "../../components/BackButton";
+import AppBackdrop from "../../components/AppBackdrop";
 
 export default function FindClinicPage() {
   const [clinics, setClinics] = useState<ClinicDoc[]>([]);
@@ -37,7 +38,9 @@ export default function FindClinicPage() {
   }, [clinics, q]);
 
   return (
-    <main dir="rtl" className="mx-auto max-w-2xl p-6">
+    <main dir="rtl" className="relative min-h-screen mx-auto max-w-2xl p-6">
+      <AppBackdrop />
+      <div className="relative">
       <BackButton fallbackHref="/" className="mb-3 block text-sm text-brand-600 hover:underline" />
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-bold" style={{ color: "#0F7A6C" }}>
@@ -77,6 +80,7 @@ export default function FindClinicPage() {
             </div>
           </Link>
         ))}
+      </div>
       </div>
     </main>
   );

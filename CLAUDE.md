@@ -1622,6 +1622,50 @@ open — "في كل مراحل التطبيق" (at every stage of the app).
   practice. No `firestore.rules` changes needed either way — this is
   client-side only.
 
+### Follow-up: extended to /find (المراجع) and /admin too
+
+Immediately after seeing the four screenshots above (home, subscribe,
+signup, clinic-settings), the user clarified they meant literally every
+screen, including the patient-facing directory and the admin dashboard —
+not just the clinic-side journey. Same component, same per-page fix, four
+more routes:
+
+- **`/admin`**: added once at `admin/layout.tsx` rather than per-page,
+  since it already wraps both `/admin` and `/admin/user` with one shared
+  shell — covers the "checking"/"not-admin" branches and the real
+  dashboard (stats, pending-approvals, subscriptions table, users table)
+  from a single edit. `header` and `main` (both plain, non-positioned
+  elements before this) needed `relative` added, same rule as everywhere
+  else.
+- **`/find`, `/find/book`, `/find/requests`**: same `relative` wrapper +
+  `AppBackdrop` pattern as the clinic-side pages, applied to every return
+  branch (not-found, loading, and the main content) in each file. These
+  three also needed `min-h-screen` added to their outer `<main>` (none of
+  them had it before) — without it the backdrop only covered the height of
+  the actual content, leaving plain white space below on a short page;
+  caught by an actual screenshot showing exactly that, not assumed.
+- **Verified**: `tsc --noEmit` and `next build` both clean. Local
+  Playwright screenshots of `/find` and `/find/requests` against the
+  static export confirmed the backdrop now fills the full viewport. Live
+  verification of `/admin` needed a throwaway admin identity — the real
+  admin account's password isn't available to this session, so a
+  temporary Auth user was created with the `admin` custom claim set
+  directly via the Identity Toolkit admin API (not the real
+  `scripts/seed-admin.mjs` flow), and `NEXT_PUBLIC_ADMIN_EMAIL` was
+  pointed at it for one local dev-server run so `/signup`'s existing
+  admin-login branch would route to it. Confirmed the dashboard renders
+  correctly over the backdrop with real (the user's own) data visible —
+  screenshotted, then the temp account was deleted and confirmed gone via
+  a lookup call, and `.env.local` was restored to the real admin address.
+  A first attempt at this test wrongly looked like the admin-email check
+  was broken (kept landing back on the clinic-signup form) — root-caused
+  to the test script itself filling the email field before React had
+  finished hydrating the page, not an app bug; fixed by waiting for
+  hydration before interacting, noted here so it isn't mistaken for a real
+  bug later.
+- **Not yet deployed** — same standing practice: built and live-tested,
+  `firebase deploy --only hosting` waits for the user's go-ahead.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —
