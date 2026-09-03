@@ -862,6 +862,100 @@ requested together right after `/clinic` shipped.
   `sites/mawid-app-d1d03/releases/1788379689858000`). No `firestore.rules`
   changes.
 
+## Real clinic subscription lifecycle
+
+Requested right after the above: a real one-month subscription clock per
+clinic, an in-app warning the day before it ends, automatic account
+closure once it does, and an admin-only way to see/filter remaining time
+per clinic. Scoped by 4 confirmed decisions (all the recommended option,
+given this project has no email/SMS service of any kind): warnings are
+an **in-app banner only** (shown on `/clinic`, not a real email/SMS);
+renewal is a **manual "تجديد شهر" button in the admin dashboard** (no
+real payment gateway exists — same disclosed limitation as `/subscribe`'s
+static payment-account info card); an expired clinic **disappears
+completely from `/find` and its direct booking link**, not just its own
+dashboard.
+
+- **`ClinicDoc.subscriptionEndsAt: Timestamp | null`** (new field,
+  `lib/firebase/types.ts`) — `null` until first approved. One real
+  subscription month is `SUBSCRIPTION_DAYS = 30` (`firestore.ts`), a
+  plain constant, not a config value — matches every other "not
+  configurable yet" decision already made in this track (slot durations,
+  pricing).
+  - **The 30-day clock starts at admin-approval time, not signup time**
+    — a pending clinic isn't live/usable yet, so it shouldn't burn
+    subscription time while waiting on review. This is an inferred
+    default, not one of the 4 things explicitly confirmed with the user
+    — flagged here in case they want it to start at signup instead.
+  - `adminSetClinicStatus(slug, "approved")` sets `subscriptionEndsAt` to
+    now + 30 days; rejecting leaves it untouched (`null`).
+  - `adminRenewSubscription(slug)` (new) is the "تجديد شهر" button's
+    handler — extends 30 days from the *current* `subscriptionEndsAt` if
+    it hasn't lapsed yet (so renewing a few days early doesn't lose those
+    days), or from right now if it already expired (so a lapsed clinic
+    doesn't get backdated free days).
+  - `isSubscriptionActive()` / `subscriptionDaysLeft()` (new, exported
+    from `firestore.ts` — pure functions over a `ClinicDoc`, no network
+    call) are the one shared definition of "active"/"days left" used by
+    every surface below, so patient-facing filtering, the dashboard gate,
+    and the admin table can't drift out of sync with each other.
+- **`/clinic` (the dashboard)**: gates on `isSubscriptionActive(clinic)`
+  in addition to the existing `status === "approved"` gate — an expired
+  clinic sees a plain "انتهى اشتراكك الشهري وتم إغلاق الحساب مؤقتاً"
+  message instead of the dashboard, same shape as the existing
+  pending-approval message. While still active, an amber banner appears
+  at the top of every tab once `subscriptionDaysLeft() <=
+  SUBSCRIPTION_WARNING_DAYS` (1 day) — "ينتهي اشتراكك خلال يوم واحد —
+  جدّد الآن لتفادي إغلاق الحساب" (or the exact day count if resumed later
+  with a longer warning window).
+- **Patient-facing disappearance**: `listApprovedClinics()` (the `/find`
+  directory) now filters out any clinic that fails
+  `isSubscriptionActive()`, even though its Firestore `status` field
+  still literally says `"approved"` — status and subscription are
+  deliberately separate axes, not one field doing two jobs.
+  `/find/book?clinic=<slug>` (the direct booking link) gained the same
+  check, so an old shared link to an expired clinic falls back to "هذه
+  العيادة غير موجودة أو غير متاحة للحجز حالياً" instead of still
+  rendering a bookable grid. `bookSlot()` itself also refuses (defense in
+  depth, same "cheap check that doesn't stop a determined attacker but
+  rejects the obvious case" posture as the rest of this Spark-plan,
+  no-App-Check track) rather than relying on the UI gate alone.
+- **`/admin`**: new "اشتراكات العيادات" table below the pending-approvals
+  list — every approved clinic (`adminListApprovedClinics()`, new,
+  deliberately does NOT filter out expired ones, unlike
+  `listApprovedClinics()` — the whole point of this view is to see and
+  renew the expired ones), sorted soonest-to-expire first, showing its
+  expiry date, remaining days (red "منتهي" once past, amber inside the
+  1-day warning window), and a "تجديد شهر" button calling
+  `adminRenewSubscription()`. A filter row above the table
+  (الكل/منتهي/أقل من 7 أيام/أقل من 30 يوماً) answers the "طريقة للفلترة
+  حسب عدد الأيام المتبقية" ask — client-side filtering over the already-
+  fetched small list, no new query/index needed.
+- **`firestore.rules`**: `clinics/{slug}`'s `create` rule now also
+  requires `subscriptionEndsAt == null` (a clinic can't set its own
+  subscription on signup); the owner branch of `update` now also requires
+  `subscriptionEndsAt` stays unchanged — locked to admin-only writes,
+  exactly the same pattern already used for `status`, extended to cover
+  this field too. No new collections, no new composite indexes.
+- **Verified before deploying**: `tsc --noEmit` and `next build` both
+  clean. A dedicated live E2E script (`verify-subscription-rules.mjs`,
+  same ID-token-authenticated-REST pattern as the `/clinic` dashboard's
+  15-assertion test earlier in this file) ran 6 assertions against the
+  real `mawid-app-d1d03` project, all passed: a clinic can self-create
+  with `subscriptionEndsAt == null`; self-creating with a non-null value
+  is denied (403); admin approving + setting the field succeeds; the
+  clinic owner cannot push their own `subscriptionEndsAt` forward (403);
+  admin's renew-equivalent update succeeds and actually persists. All
+  test data deleted after; the live `clinics` collection was read back
+  showing only the user's own real clinic doc (`mahdi`), confirming no
+  leftover test data — read before touching anything, per the standing
+  rule from the earlier admin-doc-deletion incident.
+- **Deployed**: both `firestore.rules` (direct Rules API technique,
+  ruleset `projects/mawid-app-d1d03/rulesets/795f4557-45ce-4f66-a143-d2a22abd5e0e`)
+  and the rebuilt `apps/web/out/` (via `firebase deploy --only hosting`,
+  release `sites/mawid-app-d1d03/releases/1788418226426000`, verified
+  FINALIZED) are live on `mawid-app-d1d03`.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —
