@@ -28,9 +28,9 @@ export default function HomeBackdrop() {
       <div
         className="absolute inset-0"
         style={{
-          backgroundImage: "radial-gradient(rgba(15,122,108,0.5) 1px, transparent 1px)",
-          backgroundSize: "26px 26px",
-          opacity: 0.05,
+          backgroundImage: "radial-gradient(rgba(15,122,108,0.6) 1.5px, transparent 1.5px)",
+          backgroundSize: "34px 34px",
+          opacity: 0.15,
         }}
       />
       <div
