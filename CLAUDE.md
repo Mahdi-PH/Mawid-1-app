@@ -1409,9 +1409,10 @@ at the end rather than deployed one at a time.
   signed-in session to reach) were checked by reading the diff, not by
   driving a real login in this pass — flagged here rather than silently
   presented as fully tested.
-- **Not deployed yet** — built and verified locally only, pending the
-  user's single end-of-batch review (per their explicit choice to review
-  once at the end rather than after each step).
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788445387720000`). No `firestore.rules`
+  changes — this is client-side only.
 
 ## Next steps if resumed
 
