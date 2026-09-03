@@ -1284,6 +1284,27 @@ hold made indefinite (no auto-timer — only a tap advances it).
 - **Not deployed yet** — built and verified locally only, pending the
   user's reaction to the preview screenshots.
 
+### Follow-up: use the actual uploaded photo, unedited
+
+After seeing the vector-icon recreation, the user asked to use their
+original uploaded reference image directly instead — unedited (comb and
+all, original pastel colors), just placed in the same persistent-backdrop
+role. Simple swap: `HomeBackdrop.tsx` now renders `public/brand/
+backdrop-tools.jpg` (the uploaded file, saved as-is — 1024×1536, 43KB,
+already well-compressed, no further processing needed) as a plain `<img
+object-cover>` filling the same `absolute inset-0` layer the SVG icons
+occupied, instead of drawing anything. Nothing else changed — same
+persistent single-instance-across-every-phase placement, same intro/
+tap-to-continue behavior. Verified: `tsc --noEmit` and `next build` both
+clean, the image confirmed present in `out/brand/backdrop-tools.jpg`, and
+a fresh Playwright pass confirmed the intro still holds indefinitely
+(3.2s wait, no auto-advance) and the settled home screen renders fully
+legible over the image (light center where the logo/cards sit, original
+tool illustrations visible at the edges). Screenshots sent to the user
+for review before deploying.
+- **Not deployed yet** — built and verified locally only, pending the
+  user's reaction.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —
