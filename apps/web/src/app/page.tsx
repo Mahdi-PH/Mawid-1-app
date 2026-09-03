@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import SplashScreen, { SPLASH_ANIMATION_TOTAL_MS } from "../components/SplashScreen";
+import HomeBackdrop from "../components/HomeBackdrop";
 
 // Matches the branded two-sided home screen already iterated in the demo
 // artifact (see CLAUDE.md "Two-sided product direction") - logo mark,
@@ -17,16 +18,23 @@ import SplashScreen, { SPLASH_ANIMATION_TOTAL_MS } from "../components/SplashScr
 // flow: role picker -> subscription info screen -> signup/login), not
 // straight to /signup.
 //
-// Two animations were added here (see CLAUDE.md "Animations"): a one-time
-// welcome splash (SplashScreen) on this browser's first-ever visit, and a
-// short fade/slide-out on the role cards themselves before navigating away,
-// so the screen change doesn't feel like an instant hard cut. Both are pure
-// CSS/Tailwind (tailwind.config.js keyframes) — no animation library was
-// added, per the user's explicit choice — and neither touches Firebase or
-// any data fetch, so they can't slow down anything this page actually
-// depends on.
+// Animations added here (see CLAUDE.md "Animations"): a one-time welcome
+// splash (SplashScreen) on this browser's first-ever visit, a two-stage
+// "pick, then leave" transition on the role cards (a quick selection pop
+// on the chosen card, then the whole screen fades/settles away together)
+// instead of an instant hard cut, and a static decorative backdrop
+// (HomeBackdrop) that stays visually constant behind every phase this
+// screen goes through. All pure CSS/Tailwind (tailwind.config.js
+// keyframes) — no animation library was added, per the user's explicit
+// choice — and none of it touches Firebase or any data fetch, so none of
+// it can slow down anything this page actually depends on.
 const SPLASH_SEEN_KEY = "mawid_splash_seen";
-const EXIT_ANIMATION_MS = 220;
+// Two-stage exit, deliberately longer/more distinctive than a plain
+// instant cut per the user's follow-up ask: the clicked card briefly
+// "pops" (SELECT_PULSE_MS) to confirm the choice, then the whole screen
+// fades/settles away together (EXIT_MS) before the route actually changes.
+const SELECT_PULSE_MS = 160;
+const EXIT_MS = 380;
 
 export default function Home() {
   const router = useRouter();
@@ -34,7 +42,10 @@ export default function Home() {
   // brand-colored background, so there's no flash of the role-picker
   // content before we know whether the splash should play first).
   const [showSplash, setShowSplash] = useState<boolean | null>(null);
-  const [leavingTo, setLeavingTo] = useState<string | null>(null);
+  // Which card the user picked (drives the immediate "pop" + dimming the
+  // other card), and whether the full-screen fade-out phase has started.
+  const [selectedHref, setSelectedHref] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
     let seen = true;
@@ -72,30 +83,36 @@ export default function Home() {
   // tab") is left alone so the cards stay real, fully-functional links.
   function handleRoleClick(e: React.MouseEvent<HTMLAnchorElement>, href: string) {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
-    if (leavingTo) {
-      e.preventDefault();
-      return; // already navigating
-    }
     e.preventDefault();
-    setLeavingTo(href);
-    window.setTimeout(() => router.push(href), EXIT_ANIMATION_MS);
+    if (selectedHref) return; // already navigating
+    setSelectedHref(href);
+    window.setTimeout(() => {
+      setLeaving(true);
+      window.setTimeout(() => router.push(href), EXIT_MS);
+    }, SELECT_PULSE_MS);
   }
 
   if (showSplash === null) {
-    return <main className="min-h-screen" style={{ background: "#F5FBF9" }} />;
+    return (
+      <main className="relative min-h-screen" style={{ background: "#F5FBF9" }}>
+        <HomeBackdrop />
+      </main>
+    );
   }
 
   return (
     <main
-      className="flex min-h-screen flex-col items-center justify-center gap-10 p-8 text-center"
+      className="relative flex min-h-screen flex-col items-center justify-center gap-10 p-8 text-center"
       style={{ background: "#F5FBF9" }}
     >
+      <HomeBackdrop />
+
       {showSplash && <SplashScreen onFinish={finishSplash} />}
 
       <div
         className={
-          "flex flex-col items-center gap-3 transition-opacity duration-200 " +
-          (leavingTo ? "opacity-0" : "animate-fade-in-up")
+          "relative flex flex-col items-center gap-3 transition-all duration-300 ease-out " +
+          (leaving ? "-translate-y-2 opacity-0" : "animate-fade-in-up")
         }
       >
         <span className="block h-16 w-16 overflow-hidden rounded-2xl shadow-lg">
@@ -132,38 +149,53 @@ export default function Home() {
 
       <div
         className={
-          "grid w-full max-w-2xl grid-cols-1 gap-5 text-right transition-all duration-200 ease-out sm:grid-cols-2 " +
-          (leavingTo ? "translate-y-2 opacity-0" : "animate-fade-in-up")
+          "relative grid w-full max-w-2xl grid-cols-1 gap-5 text-right sm:grid-cols-2 " +
+          (leaving ? "" : "animate-fade-in-up")
         }
-        style={{ animationDelay: leavingTo ? undefined : "80ms" }}
+        style={{ animationDelay: leaving ? undefined : "80ms" }}
       >
-        <Link
-          href="/subscribe"
-          onClick={(e) => handleRoleClick(e, "/subscribe")}
-          className="flex flex-col gap-2 rounded-2xl border p-7 shadow-sm transition hover:-translate-y-0.5"
-          style={{ borderColor: "#d3ece9", background: "white" }}
-        >
-          <h2 className="text-lg font-bold" style={{ color: "#0F7A6C" }}>
-            عيادة أو مركز تجميل
-          </h2>
-          <p className="text-sm leading-7 text-neutral-500">
-            سجّل عيادتك أو مركز التجميل لإدارة الحجوزات والاستقبال وشاشة صالة الانتظار.
-          </p>
-        </Link>
-
-        <Link
-          href="/find"
-          onClick={(e) => handleRoleClick(e, "/find")}
-          className="flex flex-col gap-2 rounded-2xl border p-7 shadow-sm transition hover:-translate-y-0.5"
-          style={{ borderColor: "#d3ece9", background: "white" }}
-        >
-          <h2 className="text-lg font-bold" style={{ color: "#0F7A6C" }}>
-            مراجع
-          </h2>
-          <p className="text-sm leading-7 text-neutral-500">
-            ابحث عن عيادتك واطلب موعدك مباشرة — بدون تسجيل حساب.
-          </p>
-        </Link>
+        {(
+          [
+            {
+              href: "/subscribe",
+              title: "عيادة أو مركز تجميل",
+              desc: "سجّل عيادتك أو مركز التجميل لإدارة الحجوزات والاستقبال وشاشة صالة الانتظار.",
+              delay: 0,
+            },
+            {
+              href: "/find",
+              title: "مراجع",
+              desc: "ابحث عن عيادتك واطلب موعدك مباشرة — بدون تسجيل حساب.",
+              delay: 60,
+            },
+          ] as const
+        ).map((card) => {
+          const isSelected = selectedHref === card.href;
+          const isDimmed = selectedHref !== null && !isSelected;
+          return (
+            <Link
+              key={card.href}
+              href={card.href}
+              onClick={(e) => handleRoleClick(e, card.href)}
+              className={
+                "flex flex-col gap-2 rounded-2xl border p-7 shadow-sm transition-all duration-300 ease-out hover:-translate-y-0.5 " +
+                (leaving
+                  ? "translate-y-3 scale-95 opacity-0"
+                  : isSelected
+                    ? "scale-[1.03] shadow-lg ring-2 ring-brand-500"
+                    : isDimmed
+                      ? "scale-95 opacity-50"
+                      : "")
+              }
+              style={{ borderColor: "#d3ece9", background: "white" }}
+            >
+              <h2 className="text-lg font-bold" style={{ color: "#0F7A6C" }}>
+                {card.title}
+              </h2>
+              <p className="text-sm leading-7 text-neutral-500">{card.desc}</p>
+            </Link>
+          );
+        })}
       </div>
     </main>
   );

@@ -1021,6 +1021,75 @@ upgrades. Home page's First Load JS grew 96.3 kB → 98 kB from this.
   not requested this time, so not built speculatively, matching this
   project's standing rule on scope.
 
+### Follow-up: more distinctive motion, longer duration, persistent backdrop
+
+The user asked for a more premium/distinctive version of the above (still
+CSS/Tailwind only, no library) — clearer, longer-held motion on both the
+splash and the role-selection transition, plus light decorative graphics
+on the home screen that stay visually constant through every phase that
+screen goes through.
+
+- **Splash** (`components/SplashScreen.tsx`) is now a multi-stage
+  sequence instead of a plain fade+scale: the logo bounces in with a
+  slight overshoot (`splash-logo-in`, `cubic-bezier(0.34,1.56,0.64,1)`,
+  650ms) behind a soft pulsing teal halo ring (`splash-ring`, one pulse,
+  1300ms), the wordmark settles in 180ms later, three small loading dots
+  pulse underneath once everything's settled, the whole sequence holds
+  for 500ms after entrance completes, then fades out over 420ms — total
+  ≈1.58s, up from the original ≈0.9s-delay/350ms-fade (which also had a
+  latent timing bug: the old fade-out delay was actually *shorter* than
+  the logo's own entrance animation, so the two could visually overlap;
+  fixed by computing the exit delay as `max(logo entrance, wordmark
+  entrance) + hold`, not a fixed constant). `SPLASH_ANIMATION_TOTAL_MS`
+  (used by `page.tsx`'s safety-net timer) is derived from these same
+  constants so the two files can't drift out of sync.
+- **Role-selection transition** (`app/page.tsx`) is now two stages
+  instead of one: clicking a card first gives it a visible "selection
+  pop" (scales up slightly, gains a teal ring + shadow) while the
+  *other* card dims (`opacity-50 scale-95`) — clear, immediate feedback
+  on which one was picked — then after 160ms the whole screen (both
+  cards + header) fades/settles away together over 380ms before the
+  route actually changes. Total delay before navigation: 540ms, up from
+  220ms. Still only intercepts a plain left-click (`e.button===0`, no
+  modifier keys) so ctrl/cmd/middle-click "open in new tab" keeps working
+  on the real `<Link>` elements underneath.
+- **`components/HomeBackdrop.tsx`** (new): a light, static (never
+  animated — "ثابتة") decorative layer behind the home screen's content —
+  two soft blurred teal glows (echoing the logo's own radial gradient)
+  and a large, very-low-opacity (5%) copy of the actual brand mark as a
+  corner watermark, reusing existing colors/shapes rather than inventing
+  new imagery. Rendered once, unconditionally in `page.tsx` — not tied to
+  `showSplash`/`leaving` state — so it stays visually constant behind the
+  splash (hidden under its opaque overlay while that plays), the
+  role-picker content, and the exit transition alike.
+  - **Real stacking-context bug caught before shipping, not after**: the
+    first version used Tailwind's `-z-10` utility on the backdrop to push
+    it behind the two content blocks. It rendered completely invisible —
+    verified by sampling actual pixel colors in a Playwright screenshot
+    (exact match to the flat background color, not just "faint"), then
+    by dumping computed styles (`position`, `z-index`, `opacity` were all
+    correct). Root cause: `main` is only `position: relative` with no
+    `z-index` of its own, so it never becomes a stacking context — a
+    negative-z-index child escapes to whatever ancestor *does* form one
+    and paints behind `main`'s own background, not behind its content.
+    Fixed by dropping the negative z-index entirely: the backdrop stays
+    `position: absolute` with `z-index: auto`, and the two content blocks
+    got `relative` added — both are now "positioned" elements in the same
+    paint layer, ordered by plain DOM order (backdrop first → painted
+    first/behind), which needs no stacking-context bookkeeping on `main`
+    at all. Confirmed fixed the same way it was caught: computed-style
+    dump plus a real pixel sample showing the backdrop's actual color in
+    the screenshot, not just "no console error."
+- **Verified**: `tsc --noEmit` and `next build` both clean (home page's
+  First Load JS: 98 kB → 98.4 kB, still negligible). A local Playwright
+  run against the exported `out/` directory screenshotted every stage —
+  splash mid-entrance, splash mid-hold with dots visible, home revealed
+  with the backdrop actually rendering, the selection-pop + dimmed-other-
+  card state, and mid-fade-out with the backdrop staying stable
+  underneath — plus the same functional assertions as before (splash
+  plays once, correct route after the full transition).
+- **Not deployed yet** — built and verified locally only.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —
