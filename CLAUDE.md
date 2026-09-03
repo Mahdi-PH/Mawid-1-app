@@ -1163,7 +1163,16 @@ element that never unmounts.
   localStorage gate from the original splash feature still applies here
   unchanged) — plus the existing role-card pop/dim/fade selection
   transition confirmed still working unmodified alongside all of this.
-- **Not deployed yet** — built and verified locally only.
+- **Dot-grid tuning, shown to the user before deploying**: the initial
+  5%-opacity/26px grid was nearly invisible at real viewing size (only
+  clear under 4x zoom) — sent the user a screenshot (plus a zoomed crop)
+  before publishing, per their explicit ask to see it first. They asked
+  for it bigger and more visible; bumped to 34px spacing, 1.5px dots,
+  15% opacity, sent a second screenshot, then deployed once approved.
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788440906294000`). No `firestore.rules`
+  changes — this is client-side only.
 
 ## Next steps if resumed
 
