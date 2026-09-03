@@ -1302,8 +1302,12 @@ a fresh Playwright pass confirmed the intro still holds indefinitely
 legible over the image (light center where the logo/cards sit, original
 tool illustrations visible at the edges). Screenshots sent to the user
 for review before deploying.
-- **Not deployed yet** — built and verified locally only, pending the
-  user's reaction.
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788443502285000`). No `firestore.rules`
+  changes — this is client-side only. Test with
+  `https://mawid-app-d1d03.web.app/?intro=1` to see the opening pose
+  regardless of any browser's stored "already seen" flag.
 
 ## Next steps if resumed
 
