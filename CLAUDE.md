@@ -1760,6 +1760,33 @@ i.e. fix this at the source image, not in code.
   the next deploy, or want the current (still edge-cropping-on-narrow-
   phones) image shipped as-is in the meantime.
 
+## Home-screen role card titles reworded (more professional/modern copy)
+
+The user (referring to the app as "MH_Mawid", an earlier package-name
+idea already superseded by `com.mawid.clinic` — not a rename, just how
+they referred to the project) asked for the two role-card titles to read
+more professionally:
+- "المركز: عيادة طبيب، مركز تجميل أو صالون حلاقة" → "إدارة المراكز (عيادات،
+  مراكز تجميل وصالونات)"
+- "المراجع أو الزبون" → "البحث عن خدمة أو حجز موعد"
+
+Updated in all three places these strings actually appear in `apps/web`
+(found via a repo-wide grep, not assumed): `app/page.tsx`'s `ROLE_CARDS`
+array (both titles), `signup/SignupClient.tsx`'s own `<h1>` (mirrors the
+center-card title, per the existing pattern of the signup form restating
+the card's title), and a text reference to the old "المراجع أو الزبون"
+label inside `SignupClient.tsx`'s gov/district helper copy ("… تجعل
+عيادتك قابلة للبحث من صفحة «X» أيضاً…") — updated to name the new title so
+it still points at the right screen. The demo artifact, descriptions, and
+every other screen were left untouched — only these two titles were asked
+for, not a broader copy pass.
+- **Verified**: `tsc --noEmit` and `next build` both clean. Local
+  Playwright screenshots against the exported `out/` directory confirmed
+  both new titles render on the settled home screen and the new `<h1>`
+  renders on `/signup`.
+- **Not yet deployed** — waiting on the user's go-ahead, same as every
+  other change this session.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

@@ -57,13 +57,13 @@ const ROLE_CARDS = [
     // signed in) instead of being sent back through the signup/login form
     // it already passed.
     href: "/signup",
-    title: "المركز: عيادة طبيب، مركز تجميل أو صالون حلاقة",
+    title: "إدارة المراكز (عيادات، مراكز تجميل وصالونات)",
     desc: "سجّل مركزك لإدارة الحجوزات والاستقبال وشاشة صالة الانتظار.",
   },
   {
     id: "find",
     href: "/find",
-    title: "المراجع أو الزبون",
+    title: "البحث عن خدمة أو حجز موعد",
     desc: "ابحث عن مركزك واطلب موعدك مباشرة — بدون تسجيل حساب.",
   },
 ] as const;

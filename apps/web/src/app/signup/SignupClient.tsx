@@ -185,7 +185,7 @@ export default function SignupClient() {
           </div>
         )}
 
-        <h1 className="mb-1 text-lg font-bold text-brand-700">المركز: عيادة طبيب، مركز تجميل أو صالون حلاقة</h1>
+        <h1 className="mb-1 text-lg font-bold text-brand-700">إدارة المراكز (عيادات، مراكز تجميل وصالونات)</h1>
         <p className="mb-4 text-sm text-gray-500">أنشئ حساباً جديداً، أو سجّل دخولك إذا كان حسابك موجوداً.</p>
 
         {!isAdminEmail && (
@@ -293,8 +293,8 @@ export default function SignupClient() {
               />
             </label>
             <p className="mb-4 -mt-2 text-xs text-gray-400">
-              كتابة المحافظة والحي تجعل عيادتك قابلة للبحث من صفحة «المراجع أو الزبون» أيضاً، وليس فقط عبر رابطك
-              المباشر —
+              كتابة المحافظة والحي تجعل عيادتك قابلة للبحث من صفحة «البحث عن خدمة أو حجز موعد» أيضاً، وليس فقط عبر
+              رابطك المباشر —
               بعد موافقة الإدارة.
             </p>
 
