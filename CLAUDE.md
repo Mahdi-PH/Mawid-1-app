@@ -1088,7 +1088,10 @@ screen goes through.
   card state, and mid-fade-out with the backdrop staying stable
   underneath — plus the same functional assertions as before (splash
   plays once, correct route after the full transition).
-- **Not deployed yet** — built and verified locally only.
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788439588017000`). No `firestore.rules`
+  changes — this is client-side only.
 
 ## Next steps if resumed
 
