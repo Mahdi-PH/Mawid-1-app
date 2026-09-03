@@ -10,7 +10,13 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import BackButton from "../../components/BackButton";
 import AppBackdrop from "../../components/AppBackdrop";
-import { onAuthChange, isAdminUser } from "../../lib/firebase/auth";
+import {
+  consumeIntentionalSignOut,
+  isAdminUser,
+  markIntentionalSignOut,
+  onAuthChange,
+  signOutUser,
+} from "../../lib/firebase/auth";
 import type { User } from "firebase/auth";
 
 type Status = "checking" | "signed-out" | "not-admin" | "ok";
@@ -47,9 +53,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   // actually let you in. Funneling navigation through this single effect,
   // driven only by `status`, removes the race.
   useEffect(() => {
-    if (status === "signed-out" && pathname !== "/admin/login") router.replace("/signup");
+    if (status === "signed-out" && pathname !== "/admin/login") {
+      // A deliberate sign-out (the header's own "تسجيل خروج" button) should
+      // land on the home screen, not the login form — an expired/never-
+      // started session should still go to /signup. Both look identical
+      // here (auth state -> null), so the sign-out button marks itself
+      // first; see auth.ts and the identical pattern already used for
+      // /clinic's own sign-out.
+      router.replace(consumeIntentionalSignOut() ? "/" : "/signup");
+    }
     if (status === "ok" && pathname === "/admin/login") router.replace("/admin");
   }, [status, pathname, router]);
+
+  async function handleSignOut() {
+    markIntentionalSignOut();
+    await signOutUser();
+  }
 
   if (pathname === "/admin/login") return <>{children}</>;
 
@@ -78,10 +97,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div dir="rtl" className="relative min-h-screen bg-gray-50">
       <AppBackdrop />
       <header className="relative border-b bg-white px-6 py-4">
-        <BackButton
-          fallbackHref={pathname === "/admin" ? "/" : "/admin"}
-          className="mb-2 block text-sm text-brand-600 hover:underline"
-        />
+        <div className="mb-2 flex items-center justify-between">
+          <BackButton
+            fallbackHref={pathname === "/admin" ? "/" : "/admin"}
+            className="block text-sm text-brand-600 hover:underline"
+          />
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="text-sm text-red-600 hover:underline"
+          >
+            تسجيل خروج
+          </button>
+        </div>
         <h1 className="text-lg font-bold text-brand-700">لوحة تحكم المدير — موعد</h1>
       </header>
       <main className="relative p-6">{children}</main>

@@ -1789,6 +1789,67 @@ for, not a broader copy pass.
   `sites/mawid-app-d1d03/releases/1788464881315000`). No `firestore.rules`
   changes — client-side only.
 
+## Admin sign-out + delete-account, and a real live-data cleanup
+
+The user asked for three things together: (1) a sign-out button on the
+admin dashboard that lands on the home screen; (2) a way to delete
+unwanted accounts, including ones rejected at signup; (3) as an immediate
+action, delete every account in the live project except their own admin
+account.
+
+- **Admin sign-out** (`admin/layout.tsx`): a "تسجيل خروج" button in the
+  header, reusing the exact `markIntentionalSignOut()`/
+  `consumeIntentionalSignOut()` mechanism already built for `/clinic`'s own
+  sign-out (see that section above) — `admin/layout.tsx`'s signed-out
+  effect already redirects to `/signup` for an expired/never-started
+  session, which would otherwise race a deliberate sign-out's own
+  navigate-home call. Same fix, same reason, second call site.
+- **No `firestore.rules` changes needed for delete** — `users/{uid}` and
+  `clinics/{slug}` already had `allow delete: if isAdmin();` from when
+  those rules were first written, just never exposed anywhere in the UI.
+- **`adminDeleteClinicAccount()`** (new, `firestore.ts`) deletes a
+  clinic's `clinics/{slug}` doc and its owning `users/{uid}` doc together
+  in one `writeBatch`, so the pair can never go out of sync. Does **not**
+  delete the underlying Firebase Auth account — that needs Admin SDK
+  privileges no client legitimately holds, including this dashboard
+  itself; disclosed in the code comment rather than silently implied to
+  be a full account wipe. The account is still functionally dead once
+  these two docs are gone, since every real feature depends on the
+  clinics doc existing (`getClinicByOwner()`, `ownsClinic()`).
+- **`adminListRejectedClinics()`** (new) plus a new "الحسابات المرفوضة"
+  section on `/admin` — rejected signups previously had **no admin-side
+  view at all**: a rejected clinic just vanished from every filtered list,
+  leaving the doc orphaned in Firestore with nothing pointing at it. Now
+  shown with its own delete button, same as the pending list and the
+  approved/subscriptions table (both gained a "حذف" button too) — a
+  confirm() dialog gates every delete click, since this is irreversible.
+- **Verified live** against a temporary admin-claim test identity (the
+  real admin password isn't available to this session) plus one
+  throwaway rejected test clinic: sign-out correctly lands on `/`, the
+  rejected clinic showed up in the new section, clicking "حذف نهائياً"
+  removed it (confirmed against live Firestore directly, not just the
+  UI), and the confirm dialog showed the right clinic name/email. Test
+  identities deleted after.
+- **The live cleanup itself**: read back the full `clinics`/`users`
+  collections first (per this session's standing read-before-delete
+  rule), listed all 5 non-admin accounts by slug/uid/email, then deleted
+  each one's `clinics` doc, `users` doc, **and** its Firebase Auth account
+  (via the same service-account-JWT REST technique used throughout this
+  session — a one-time script, not the dashboard's own delete button,
+  since only that technique can also remove the Auth login, not just the
+  Firestore docs) — `alkinglong1995`, `mahady`, `mahdi`, `mmmm`, `riaddd`.
+  Verified after: `clinics` collection empty, `users` collection contains
+  only the admin doc, and an Auth lookup on all 5 deleted uids returns
+  nothing. The admin account (`Mahdinaeem201@gmail.com`) was never
+  touched — hardcoded as a named exclusion in the cleanup script with an
+  explicit abort-if-matched safety check, not just "everyone except
+  admin" computed dynamically. This part is already live (it operated
+  directly on Firestore/Auth, not through a Hosting deploy).
+- **Not yet deployed to Hosting** — the sign-out button and delete-account
+  UI are only committed; `firebase deploy --only hosting` still waits for
+  the user's go-ahead, same standing practice as every other change this
+  session. No `firestore.rules` changes needed either way.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

@@ -5,9 +5,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
+  adminDeleteClinicAccount,
   adminGetStats,
   adminListApprovedClinics,
   adminListPendingClinics,
+  adminListRejectedClinics,
   adminListUsers,
   adminRenewSubscription,
   adminSetClinicStatus,
@@ -35,6 +37,7 @@ export default function AdminDashboardPage() {
   const [users, setUsers] = useState<UserDoc[]>([]);
   const [pending, setPending] = useState<ClinicDoc[]>([]);
   const [approved, setApproved] = useState<ClinicDoc[]>([]);
+  const [rejected, setRejected] = useState<ClinicDoc[]>([]);
   const [daysLeftFilter, setDaysLeftFilter] = useState<DaysLeftFilter>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,16 +45,18 @@ export default function AdminDashboardPage() {
   const [zoomedImage, setZoomedImage] = useState<{ url: string; alt: string } | null>(null);
 
   async function reload() {
-    const [s, u, p, a] = await Promise.all([
+    const [s, u, p, a, r] = await Promise.all([
       adminGetStats(),
       adminListUsers(),
       adminListPendingClinics(),
       adminListApprovedClinics(),
+      adminListRejectedClinics(),
     ]);
     setStats(s);
     setUsers(u);
     setPending(p);
     setApproved(a);
+    setRejected(r);
   }
 
   useEffect(() => {
@@ -84,6 +89,25 @@ export default function AdminDashboardPage() {
     }
   }
 
+  async function handleDelete(clinic: ClinicDoc) {
+    if (
+      !window.confirm(
+        `حذف حساب "${clinic.clinicName}" (${clinic.email}) نهائياً؟ هذا الإجراء لا يمكن التراجع عنه.`
+      )
+    ) {
+      return;
+    }
+    setBusySlug(clinic.slug);
+    try {
+      await adminDeleteClinicAccount(clinic);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusySlug(null);
+    }
+  }
+
   if (loading) return <p className="text-gray-500">جارٍ التحميل…</p>;
   if (error) return <p className="text-red-600">{error}</p>;
 
@@ -102,6 +126,7 @@ export default function AdminDashboardPage() {
         <StatCard label="إجمالي المستخدمين" value={stats?.userCount ?? 0} />
         <StatCard label="إجمالي الحجوزات" value={stats?.appointmentCount ?? 0} />
         <StatCard label="طلبات بانتظار المراجعة" value={pending.length} />
+        <StatCard label="حسابات مرفوضة" value={rejected.length} />
       </div>
 
       {zoomedImage && (
@@ -162,6 +187,14 @@ export default function AdminDashboardPage() {
                   >
                     رفض
                   </button>
+                  <button
+                    onClick={() => handleDelete(c)}
+                    disabled={busySlug === c.slug}
+                    className="rounded-lg px-3 py-1.5 text-sm text-red-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
+                    title="حذف الحساب نهائياً"
+                  >
+                    حذف
+                  </button>
                 </div>
               </li>
             ))}
@@ -216,19 +249,55 @@ export default function AdminDashboardPage() {
                       {expired ? "منتهي" : left === 1 ? "يوم واحد" : `${left} يوماً`}
                     </td>
                     <td className="px-4 py-2">
-                      <button
-                        onClick={() => handleRenew(c.slug)}
-                        disabled={busySlug === c.slug}
-                        className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60"
-                      >
-                        تجديد شهر
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleRenew(c.slug)}
+                          disabled={busySlug === c.slug}
+                          className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60"
+                        >
+                          تجديد شهر
+                        </button>
+                        <button
+                          onClick={() => handleDelete(c)}
+                          disabled={busySlug === c.slug}
+                          className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-bold text-red-600 disabled:opacity-60"
+                        >
+                          حذف
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+        )}
+      </div>
+
+      <div className="rounded-xl border bg-white">
+        <div className="border-b px-4 py-3 font-bold">الحسابات المرفوضة</div>
+        {rejected.length === 0 ? (
+          <p className="px-4 py-6 text-center text-gray-400">لا توجد حسابات مرفوضة.</p>
+        ) : (
+          <ul className="divide-y">
+            {rejected.map((c) => (
+              <li key={c.slug} className="flex flex-wrap items-center gap-4 px-4 py-3">
+                <div className="min-w-[10rem] flex-1">
+                  <div className="font-bold">{c.clinicName}</div>
+                  <div className="text-sm text-gray-500" dir="ltr">
+                    {c.email}
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleDelete(c)}
+                  disabled={busySlug === c.slug}
+                  className="rounded-lg border border-red-300 px-4 py-1.5 text-sm font-bold text-red-600 disabled:opacity-60"
+                >
+                  حذف نهائياً
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 

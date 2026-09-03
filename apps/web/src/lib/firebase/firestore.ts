@@ -14,6 +14,7 @@ import {
   Timestamp,
   updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth, db } from "./config";
@@ -474,6 +475,37 @@ export async function adminListApprovedClinics(): Promise<ClinicDoc[]> {
   return snap.docs
     .map((d) => d.data() as ClinicDoc)
     .sort((a, b) => (a.subscriptionEndsAt?.toMillis() ?? 0) - (b.subscriptionEndsAt?.toMillis() ?? 0));
+}
+
+/** Every clinic signup admin has rejected — previously had no admin-side
+ *  view at all (a rejected clinic just vanished from every other filtered
+ *  list, leaving the doc orphaned in Firestore with nothing pointing at
+ *  it). Same no-orderBy/sort-client-side reasoning as the other admin
+ *  list functions here — avoids needing a composite index for a small
+ *  result set. */
+export async function adminListRejectedClinics(): Promise<ClinicDoc[]> {
+  const q = query(collection(db, "clinics"), where("status", "==", "rejected"));
+  const snap = await getDocs(q);
+  return snap.docs
+    .map((d) => d.data() as ClinicDoc)
+    .sort((a, b) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0));
+}
+
+/** Permanently deletes a clinic account: both its clinics/{slug} doc and
+ *  the owning users/{uid} doc, in one atomic batch so the two can never
+ *  go out of sync (a lone orphaned clinics doc with no matching users doc,
+ *  or vice versa, would confuse every other admin/list function here that
+ *  assumes the pair always exists together — exactly how registerClinic()
+ *  creates them). Does NOT delete the underlying Firebase Auth account —
+ *  that needs Admin SDK privileges no client (this admin dashboard
+ *  included) legitimately holds; deleting these two docs still leaves the
+ *  account functionally dead, since every real feature (getClinicByOwner,
+ *  ownsClinic() in firestore.rules) depends on the clinics doc existing. */
+export async function adminDeleteClinicAccount(clinic: Pick<ClinicDoc, "slug" | "ownerUid">): Promise<void> {
+  const batch = writeBatch(db);
+  batch.delete(doc(db, "clinics", clinic.slug));
+  batch.delete(doc(db, "users", clinic.ownerUid));
+  await batch.commit();
 }
 
 /** Manual "تجديد شهر" admin action — there's no real payment gateway (see
