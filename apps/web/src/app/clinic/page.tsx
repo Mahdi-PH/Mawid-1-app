@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import BackButton from "../../components/BackButton";
+import AppBackdrop from "../../components/AppBackdrop";
 import { auth } from "../../lib/firebase/config";
 import { markIntentionalSignOut, signOutUser } from "../../lib/firebase/auth";
 import {
@@ -65,17 +66,25 @@ export default function ClinicDashboardPage() {
   }, [reloadAppts]);
 
   if (clinic === undefined) {
-    return <p className="p-8 text-center text-gray-500">جارٍ التحميل…</p>;
+    return (
+      <div className="relative min-h-screen">
+        <AppBackdrop />
+        <p className="relative p-8 text-center text-gray-500">جارٍ التحميل…</p>
+      </div>
+    );
   }
   if (clinic === null) {
     return (
-      <div className="p-8 text-center">
-        <BackButton
-          fallbackHref="/"
-          alwaysUseFallback
-          className="mb-4 inline-block text-sm text-brand-600 hover:underline"
-        />
-        <p className="text-red-600">هذا الحساب لا يملك عيادة مسجَّلة. سجّل عيادتك أولاً عبر صفحة التسجيل.</p>
+      <div className="relative min-h-screen">
+        <AppBackdrop />
+        <div className="relative p-8 text-center">
+          <BackButton
+            fallbackHref="/"
+            alwaysUseFallback
+            className="mb-4 inline-block text-sm text-brand-600 hover:underline"
+          />
+          <p className="text-red-600">هذا الحساب لا يملك عيادة مسجَّلة. سجّل عيادتك أولاً عبر صفحة التسجيل.</p>
+        </div>
       </div>
     );
   }
@@ -85,21 +94,24 @@ export default function ClinicDashboardPage() {
     // the subtle top-of-page link every other screen gets), per the
     // user's explicit ask for exactly this on the pending-approval screen.
     return (
-      <div className="mx-auto max-w-sm p-8 text-center">
-        <h1 className="mb-2 text-lg font-bold" style={{ color: "#0F7A6C" }}>
-          {clinic.clinicName}
-        </h1>
-        <p className="mb-6 text-gray-600">
-          {clinic.status === "pending"
-            ? "طلب تسجيلك قيد المراجعة من قبل الإدارة — سيتفعّل حسابك بعد الموافقة على الإجازة المرفوعة."
-            : "تعذّر تفعيل هذا الحساب. تواصل مع الإدارة لمزيد من التفاصيل."}
-        </p>
-        <Link
-          href="/"
-          className="inline-block w-full rounded-lg bg-brand-500 py-3 text-center font-bold text-white hover:bg-brand-600"
-        >
-          العودة إلى الواجهة الرئيسية
-        </Link>
+      <div className="relative min-h-screen">
+        <AppBackdrop />
+        <div className="relative mx-auto max-w-sm p-8 text-center">
+          <h1 className="mb-2 text-lg font-bold" style={{ color: "#0F7A6C" }}>
+            {clinic.clinicName}
+          </h1>
+          <p className="mb-6 text-gray-600">
+            {clinic.status === "pending"
+              ? "طلب تسجيلك قيد المراجعة من قبل الإدارة — سيتفعّل حسابك بعد الموافقة على الإجازة المرفوعة."
+              : "تعذّر تفعيل هذا الحساب. تواصل مع الإدارة لمزيد من التفاصيل."}
+          </p>
+          <Link
+            href="/"
+            className="inline-block w-full rounded-lg bg-brand-500 py-3 text-center font-bold text-white hover:bg-brand-600"
+          >
+            العودة إلى الواجهة الرئيسية
+          </Link>
+        </div>
       </div>
     );
   }
@@ -108,20 +120,23 @@ export default function ClinicDashboardPage() {
   // account is fully closed until admin manually renews it (see
   // /admin's "تجديد شهر" button; there's no real payment gateway, so
   // renewal is always this human confirmation step after the clinic pays
-  // via the account number shown on /subscribe).
+  // via the account number shown on /clinic's own "خطة الاشتراك" tab).
   if (!isSubscriptionActive(clinic)) {
     return (
-      <div className="mx-auto max-w-sm p-8 text-center">
-        <h1 className="mb-2 text-lg font-bold" style={{ color: "#0F7A6C" }}>
-          {clinic.clinicName}
-        </h1>
-        <p className="mb-6 text-red-600">انتهى اشتراكك الشهري وتم إغلاق الحساب مؤقتاً. تواصل مع الإدارة لتجديد الاشتراك.</p>
-        <Link
-          href="/"
-          className="inline-block w-full rounded-lg bg-brand-500 py-3 text-center font-bold text-white hover:bg-brand-600"
-        >
-          العودة إلى الواجهة الرئيسية
-        </Link>
+      <div className="relative min-h-screen">
+        <AppBackdrop />
+        <div className="relative mx-auto max-w-sm p-8 text-center">
+          <h1 className="mb-2 text-lg font-bold" style={{ color: "#0F7A6C" }}>
+            {clinic.clinicName}
+          </h1>
+          <p className="mb-6 text-red-600">انتهى اشتراكك الشهري وتم إغلاق الحساب مؤقتاً. تواصل مع الإدارة لتجديد الاشتراك.</p>
+          <Link
+            href="/"
+            className="inline-block w-full rounded-lg bg-brand-500 py-3 text-center font-bold text-white hover:bg-brand-600"
+          >
+            العودة إلى الواجهة الرئيسية
+          </Link>
+        </div>
       </div>
     );
   }
@@ -135,7 +150,8 @@ export default function ClinicDashboardPage() {
       : "";
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="relative min-h-screen bg-gray-50">
+      <AppBackdrop />
       <header className="sticky top-0 z-10 border-b bg-white px-6 py-3">
         <BackButton
           fallbackHref="/"
@@ -185,14 +201,14 @@ export default function ClinicDashboardPage() {
       </header>
 
       {showExpiryWarning && (
-        <div className="bg-amber-50 px-6 py-2 text-center text-sm text-amber-800">
+        <div className="relative bg-amber-50 px-6 py-2 text-center text-sm text-amber-800">
           {daysLeft !== null && daysLeft > 0
             ? `ينتهي اشتراكك خلال ${daysLeft === 1 ? "يوم واحد" : `${daysLeft} أيام`} — جدّد الآن لتفادي إغلاق الحساب.`
             : "اشتراكك ينتهي اليوم — جدّد الآن لتفادي إغلاق الحساب."}
         </div>
       )}
 
-      <main className="p-6">
+      <main className="relative p-6">
         {tab === "reception" && (
           <ReceptionTab clinic={clinic} appts={appts} onChanged={() => reloadAppts(clinic)} />
         )}

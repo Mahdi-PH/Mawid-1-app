@@ -13,6 +13,7 @@ import { isConfiguredAdminEmail, signInWithEmail } from "../../lib/firebase/auth
 import { registerClinic, SlugTakenError } from "../../lib/firebase/firestore";
 import { saveSignupAccountPdf } from "../../lib/pdf/saveAccountPdf";
 import BackButton from "../../components/BackButton";
+import AppBackdrop from "../../components/AppBackdrop";
 
 // Sanity cap on the raw upload before client-side compression kicks in
 // (see registerClinic() -> compressLicenseImageToDataUrl()), not the
@@ -164,10 +165,11 @@ export default function SignupClient() {
   }
 
   return (
-    <div dir="rtl" className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
+    <div dir="rtl" className="relative flex min-h-screen items-center justify-center bg-gray-50 p-6">
+      <AppBackdrop />
       <form
         onSubmit={isAdminEmail ? handleAdminSubmit : isClinicLogin ? handleClinicLogin : handleClinicSubmit}
-        className="w-full max-w-sm rounded-xl border bg-white p-6 shadow-sm"
+        className="relative w-full max-w-sm rounded-xl border bg-white p-6 shadow-sm"
       >
         <BackButton fallbackHref="/" className="mb-3 block text-sm text-brand-600 hover:underline" />
 

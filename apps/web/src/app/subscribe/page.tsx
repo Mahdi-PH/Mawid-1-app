@@ -27,6 +27,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import BackButton from "../../components/BackButton";
+import AppBackdrop from "../../components/AppBackdrop";
 
 export default function SubscribePage() {
   return (
@@ -42,7 +43,13 @@ function SubscribeContent() {
   const clinicName = params.get("name");
 
   return (
-    <main dir="rtl" className="mx-auto max-w-md p-6" style={{ background: "#F5FBF9", minHeight: "100vh" }}>
+    <main
+      dir="rtl"
+      className="relative mx-auto max-w-md p-6"
+      style={{ background: "#F5FBF9", minHeight: "100vh" }}
+    >
+      <AppBackdrop />
+      <div className="relative">
       <BackButton fallbackHref="/" />
 
       <h1 className="mb-1 mt-3 text-xl font-bold" style={{ color: "#0F7A6C" }}>
@@ -95,6 +102,7 @@ function SubscribeContent() {
           ابدأ مجاناً
         </Link>
       )}
+      </div>
     </main>
   );
 }

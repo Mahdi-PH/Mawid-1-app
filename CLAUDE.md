@@ -1556,6 +1556,72 @@ window (start date to end date) plus the payment account.
   verified FINALIZED (release
   `sites/mawid-app-d1d03/releases/1788451037891000`).
 
+## App-wide backdrop: new reference photo, extended beyond the home screen
+
+The user uploaded a new reference photo (soft cream-to-teal gradient with
+translucent line-art icons — stethoscope, doctor, hand mirror, scissors, a
+straight razor, a lotion bottle, a calendar with a confirmation checkmark,
+leaf accents) and asked for two things: (1) replace the home screen's
+existing backdrop photo with this new one, keeping every other detail as
+is; (2) extend that same persistent backdrop beyond the home screen, so it
+shows during clinic/center account creation and while that account stays
+open — "في كل مراحل التطبيق" (at every stage of the app).
+
+- **New image**: `apps/web/public/brand/backdrop.jpg` (1024×1536, 44KB,
+  already well-compressed — no further processing needed), replacing the
+  old `backdrop-tools.jpg`. Saved under a new filename rather than
+  overwriting the old one, specifically so the PWA service worker's
+  cache-first asset strategy can't ever serve a stale cached copy under a
+  URL that used to mean something else — a fresh filename is always a
+  cache miss, guaranteeing the new image loads immediately for every
+  visitor rather than depending on the SW's own background-refresh timing.
+- **`components/HomeBackdrop.tsx` renamed to `components/AppBackdrop.tsx`**
+  (same rendering — one absolutely-positioned, non-animated `<img
+  object-cover>` layer, `pointer-events-none`, `aria-hidden`) to reflect
+  that it's no longer home-only. Same component, now imported by four
+  pages instead of one.
+- **Scope of "every stage"**: interpreted as the concrete stages the user
+  actually named — home, `/subscribe`, `/signup` (creating a center
+  account), and `/clinic` in all of its states (loading, no-clinic,
+  pending/rejected, expired-subscription, and the full signed-in
+  dashboard) — not literally every route in the app (e.g. `/admin`,
+  `/find`, the legacy `/dashboard`/`/display`). This was a deliberate,
+  disclosed scoping decision, not an oversight — flagged in the reply to
+  the user in case they actually meant literally every screen.
+- **The same stacking-context rule from the home screen's own backdrop
+  bug had to be reapplied on every new page it touches, not just copy-
+  pasted**: a `position: absolute` backdrop only paints in front of
+  sibling content that is ALSO a "positioned" element (i.e. has its own
+  `position` other than `static`) — per CSS's stacking rules, all
+  non-positioned siblings paint before all `z-index:auto` positioned
+  siblings, regardless of DOM order between the two groups. So on every
+  page, the backdrop's own parent got `relative`, and the parent's other
+  top-level content sibling(s) also got `relative` added (e.g. `/signup`'s
+  `<form>`, `/subscribe`'s single wrapped content `<div>`, `/clinic`'s
+  `<main>` and its amber expiry-warning banner) — `/clinic`'s `<header>`
+  needed no extra class since it's already `sticky` (itself a "positioned"
+  value). Getting this wrong silently makes the backdrop invisible or, if
+  it went the other way, would have made it cover the real content —
+  exactly the class of bug CLAUDE.md's home-screen backdrop section
+  already documents catching once before.
+- **Verified**: `tsc --noEmit` and `next build` both clean. A local
+  Playwright pass against the static export screenshotted the home
+  screen's intro pose, the settled home screen, `/subscribe`, and
+  `/signup` — backdrop visible and correct on all four, nothing occluded.
+  A live Playwright pass (dev server + the request-interception pattern
+  used throughout this track) against a real signed-up + admin-approved
+  test clinic on `mawid-app-d1d03` confirmed `/clinic`'s reception,
+  settings, and subscription tabs all render the backdrop correctly
+  behind their cards, with the sticky header and every card still fully
+  legible — screenshotted for visual confirmation. Test data (Auth user +
+  `users/{uid}` + `clinics/{slug}` docs) deleted after, read-back-
+  confirmed gone.
+- **Not yet deployed to Hosting** — built and verified locally/live-tested
+  against the real project's data plane only; `firebase deploy --only
+  hosting` still needs the user's go-ahead per this session's standing
+  practice. No `firestore.rules` changes needed either way — this is
+  client-side only.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

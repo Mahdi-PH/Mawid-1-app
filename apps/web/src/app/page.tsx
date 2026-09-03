@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import HomeBackdrop from "../components/HomeBackdrop";
+import AppBackdrop from "../components/AppBackdrop";
 import { isAdminUser, isConfiguredAdminEmail, onAuthChange } from "../lib/firebase/auth";
 
 // Matches the branded two-sided home screen already iterated in the demo
@@ -26,9 +26,11 @@ import { isAdminUser, isConfiguredAdminEmail, onAuthChange } from "../lib/fireba
 // into a different one). This pose holds indefinitely — no auto-timer —
 // and only a tap anywhere on the screen advances it, per the user's
 // explicit ask; a two-stage "pick, then leave" transition on the role
-// cards; and a static decorative backdrop (HomeBackdrop) that never
-// remounts across any of these phases, so it stays visually constant the
-// whole time. All pure CSS/Tailwind — no animation library was added, per
+// cards; and a static decorative backdrop (AppBackdrop, also rendered on
+// /subscribe, /signup, and /clinic — see that component's own comment)
+// that never remounts across any of these phases, so it stays visually
+// constant the whole time. All pure CSS/Tailwind — no animation library was
+// added, per
 // the user's explicit choice — and none of it touches Firebase or any
 // data fetch, so none of it can slow down anything this page actually
 // depends on.
@@ -206,7 +208,7 @@ export default function Home() {
       style={{ background: "#F5FBF9" }}
       onClick={introActive ? beginReveal : undefined}
     >
-      <HomeBackdrop />
+      <AppBackdrop />
 
       {/* animate-hero-ring's own keyframes bake in translate(-50%,-50%)
           for centering (see tailwind.config.js), so no separate translate
