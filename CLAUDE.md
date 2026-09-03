@@ -1912,6 +1912,46 @@ both fixed together:
   `sites/mawid-app-d1d03/releases/1788475335856000`). No `firestore.rules`
   changes — client-side only.
 
+### Follow-up: intro must show on EVERY launch of the installed app, not just once
+
+The user reported the fix above still wasn't enough (most likely the
+already-installed-app-caches-its-old-start_url caveat from that section),
+and — framed as "مهم جدا" (very important) — asked for a stronger,
+simpler guarantee: the installed app (Android APK, or Safari's "Add to
+Home Screen") should show the tap-to-continue intro on **every single
+launch**, not just the first. This removes the ambiguity of the previous
+once-per-install fix entirely, since there's no persisted flag left for
+an old install to have gotten wrong.
+
+- **`app/page.tsx`**: the `isStandaloneDisplay()` check (already added for
+  the previous fix) now short-circuits straight to `setPhase("intro")`
+  with no localStorage read at all when running standalone — and
+  `beginReveal()`'s completion handler skips writing any "seen" flag in
+  that same case. A regular (non-standalone) browser tab is deliberately
+  untouched: it still shows the intro once via the original
+  `mawid_splash_seen` flag, since the user's ask was specifically about
+  the installed app, not ordinary browsing.
+- **`SPLASH_SEEN_KEY_STANDALONE`** (the separate per-standalone-launch
+  flag added for the previous, once-only fix) is now dead code and was
+  removed — there's nothing left to persist once "every launch" replaced
+  "first launch only" for standalone mode.
+- **No Android rebuild needed**: the TWA/APK has no embedded content of
+  its own — it just displays whatever is live at
+  `https://mawid-app-d1d03.web.app`, so this Hosting deploy alone is
+  enough for the existing, already-built release APK (from the earlier
+  successful GitHub Actions run) to pick up the new behavior on its next
+  launch.
+- **Verified**: `tsc --noEmit` and `next build` both clean. A Playwright
+  test against the exported `out/` directory drove three consecutive
+  simulated standalone launches (with `mawid_splash_seen` pre-set, as if
+  from earlier ordinary browsing, and each launch tapped through like a
+  real user) and confirmed the intro hint appeared every single time; a
+  parallel regular-browser-tab context confirmed the pre-existing
+  once-only behavior there is unchanged (visible on visit 1, gone on
+  visit 2).
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED. No `firestore.rules` changes.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —
