@@ -1011,9 +1011,10 @@ upgrades. Home page's First Load JS grew 96.3 kB → 98 kB from this.
   animates then lands on the correct route (`/find`), and a second visit
   with the `localStorage` flag already set skips the splash entirely and
   shows the home content immediately — screenshotted at each step.
-- **Not deployed yet** — built and verified locally only; deploy via the
-  same `firebase deploy --only hosting` flow as every other `apps/web`
-  change once the user confirms they want this pushed live.
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788434644646000`). No `firestore.rules`
+  changes — this is client-side only.
 - **Scope note**: only the two scenarios the user asked for (splash +
   role-selection transition) were built. Other screens (`/find`,
   `/clinic`, `/admin`, etc.) still have no page-transition animation —
