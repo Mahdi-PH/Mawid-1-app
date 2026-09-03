@@ -1713,6 +1713,53 @@ anything, not assumed from the report alone.
   locally, `firebase deploy --only hosting` still waits for the user's
   go-ahead.
 
+### Follow-up: reverted to a single layer; dimension guidance for the next image
+
+The user asked to go back to one layer (no blurred-fill asset/second
+`<img>`) and instead wanted to know what image dimensions would let a
+*single* `object-cover` layer avoid cropping the icons on a real phone —
+i.e. fix this at the source image, not in code.
+
+- **`AppBackdrop.tsx` reverted to a single `<img object-cover>`** (same
+  shape as the original implementation); `backdrop-blur.jpg` deleted as
+  now-unused, since nothing references it anymore — unlike `storage.rules`
+  (kept for a plausible future Blaze upgrade), there's no future use for
+  this specific asset once the two-layer approach was abandoned.
+- **The dimension guidance given to the user**, for whoever re-exports
+  `backdrop.jpg` next (in Canva or elsewhere): `object-cover` only avoids
+  cropping content that sits within the *narrower* of the image's two
+  aspect-ratio comparisons against the viewport — concretely, if the
+  image's own aspect ratio (width÷height) is **less than or equal to**
+  every real phone viewport it will render on, `cover` always crops
+  top/bottom only, never left/right, since a "taller" image only has
+  vertical excess to trim once scaled to the viewport's width. Real phone
+  portrait aspect ratios run roughly 0.45 (many tall Android phones) to
+  ~0.56 (iPhone SE/8-shaped, the "widest" common case) — so designing at
+  or below the narrow end removes the exact failure mode reported (icons
+  sitting close to the left/right edges getting cut).
+  - **Recommended canvas: 1080×2400 px** (a 9:20 ratio, 0.45) — a standard
+    tall-phone reference resolution, at or narrower than virtually every
+    real device this PWA will be opened on.
+  - **Keep every icon/shape inside a safe zone**, not just horizontally:
+    leave at least ~10–15% margin free of essential content on *all four*
+    edges, not only left/right — some vertical cropping still happens on
+    a phone wider than 0.45 (e.g. an iPhone SE at 0.56 would crop ~20% off
+    the top+bottom combined at this canvas size), and Canva's own "resize
+    to fit" tooling doesn't know where your icons are, so the margin has
+    to be designed in, not left to the export step.
+  - The old `backdrop.jpg` (1024×1536, aspect 0.667) is *wider* than
+    every real phone viewport, which is exactly why `cover` had to crop
+    left/right into the edge icons instead of top/bottom — the same photo
+    re-exported at the recommended ratio, with its existing icon layout
+    just pulled a bit further from the edges, would fix this without
+    changing anything else about the artwork.
+- **Verified**: `tsc --noEmit` and `next build` both clean after the
+  revert.
+- **Not yet deployed** — waiting on the user's go-ahead, same as before;
+  also waiting on whether they supply a re-exported `backdrop.jpg` before
+  the next deploy, or want the current (still edge-cropping-on-narrow-
+  phones) image shipped as-is in the meantime.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

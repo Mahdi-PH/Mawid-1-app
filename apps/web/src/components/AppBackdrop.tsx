@@ -1,29 +1,20 @@
 // Light, static (non-animated) decorative background — the app's uploaded
 // reference photo (icons: stethoscope, doctor, hand mirror, scissors,
 // razor, lotion bottle, a calendar with a confirmation checkmark, over a
-// cream-to-teal gradient), spanning every stage of the app (home,
+// cream-to-teal gradient) rendered once per page with object-fit: cover so
+// it fills any phone viewport without distortion, cropping only the outer
+// edges rather than stretching. Spans every stage of the app (home,
 // /subscribe, /signup, /clinic, /find, /admin — each of those pages
 // renders this same component, see its own file for how it's wired into
 // that page's stacking).
 //
-// Two-layer fill, not a single object-cover <img>: the uploaded photo's
-// icons sit close to its own left/right edges, and the photo's 2:3 aspect
-// ratio is wider than most real phone screens — a single object-cover
-// layer has to crop those edges to fill a narrower viewport, cutting into
-// exactly those icons (reported by the user after the first version
-// shipped). Fixed with the standard "blurred fill behind, untouched image
-// in front" technique (the same one Instagram/Spotify use for a
-// mismatched-aspect-ratio image): a heavily Gaussian-blurred copy of the
-// SAME photo (backdrop-blur.jpg, generated once via Pillow — see the
-// session notes for the exact command) fills the full viewport with
-// object-cover; blurred past the point any shape is recognizable, so
-// whatever it crops is imperceptible. The real, original photo sits on
-// top of it at object-contain, so 100% of its actual content is always
-// visible, never cropped, regardless of viewport aspect ratio — the
-// tradeoff is a thin sliver of the blurred layer showing on two sides
-// instead of the sharp photo touching every edge, which is the honest
-// alternative to inventing new image content this session has no tool to
-// generate.
+// Single layer by the user's explicit choice, after trying a two-layer
+// blurred-fill-behind fix for the image's own edge icons getting cropped
+// on narrow phones (see CLAUDE.md) — the user preferred to solve that by
+// re-exporting the source photo at phone-safe dimensions instead of
+// carrying the extra blurred asset/layer indefinitely. Whoever supplies
+// the next backdrop.jpg should follow CLAUDE.md's dimension/safe-margin
+// guidance so this single `object-cover` layer doesn't crop into it again.
 export default function AppBackdrop() {
   return (
     // No negative z-index here on purpose: the parent must be `position:
@@ -40,9 +31,7 @@ export default function AppBackdrop() {
     // renders this component follows that same two-part rule.
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/brand/backdrop-blur.jpg" alt="" className="absolute inset-0 h-full w-full object-cover" />
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/brand/backdrop.jpg" alt="" className="absolute inset-0 h-full w-full object-contain" />
+      <img src="/brand/backdrop.jpg" alt="" className="absolute inset-0 h-full w-full object-cover" />
     </div>
   );
 }
