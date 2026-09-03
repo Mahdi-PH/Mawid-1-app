@@ -1550,11 +1550,11 @@ window (start date to end date) plus the payment account.
   time, so it was **not** touched — flagged here for the user to decide:
   renew it via `/admin`'s "تجديد شهر" button, or ask for it to be fixed
   directly.
-- **Not yet deployed to Hosting** — `firestore.rules` alone was deployed
-  live (needed to test the new field against the real project); the
-  rebuilt `apps/web/out/` with these UI changes is only committed, per this
-  session's standing practice of holding the actual `firebase deploy
-  --only hosting` for an explicit go-ahead.
+- **Deployed**: `firestore.rules` was deployed live first (needed to test
+  the new field against the real project); the rebuilt `apps/web/out/`
+  with these UI changes followed via `firebase deploy --only hosting`,
+  verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788451037891000`).
 
 ## Next steps if resumed
 
