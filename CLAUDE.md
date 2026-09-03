@@ -1845,10 +1845,10 @@ account.
   explicit abort-if-matched safety check, not just "everyone except
   admin" computed dynamically. This part is already live (it operated
   directly on Firestore/Auth, not through a Hosting deploy).
-- **Not yet deployed to Hosting** — the sign-out button and delete-account
-  UI are only committed; `firebase deploy --only hosting` still waits for
-  the user's go-ahead, same standing practice as every other change this
-  session. No `firestore.rules` changes needed either way.
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788474652274000`). No `firestore.rules`
+  changes needed.
 
 ## Next steps if resumed
 
