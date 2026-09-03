@@ -28,6 +28,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # needed to publish/update the android-latest release below
     defaults:
       run:
         working-directory: android
@@ -94,3 +96,27 @@ jobs:
         with:
           name: mawid-release-apk
           path: android/app/build/outputs/apk/release/app-release.apk
+
+      # Actions artifacts (uploaded above) expire (~90 days) and can only be
+      # downloaded by someone logged into GitHub via the workflow run page -
+      # inconvenient to keep re-sharing. This publishes the same APK(s) to
+      # one stable, rolling GitHub Release instead, so there's always a
+      # single permanent link. Also the only way to actually get this file
+      # to the user at all from a Claude Code session: this sandbox's
+      # network policy blocks the Azure Blob Storage host Actions artifact
+      # downloads redirect to, but not github.com's own Releases feature.
+      - name: Publish APK(s) to the stable "android-latest" release
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete android-latest --yes --cleanup-tag 2>/dev/null || true
+          ASSETS=()
+          [ -f android/app/build/outputs/apk/debug/app-debug.apk ] && \
+            ASSETS+=("android/app/build/outputs/apk/debug/app-debug.apk#mawid-debug.apk")
+          [ -f android/app/build/outputs/apk/release/app-release.apk ] && \
+            ASSETS+=("android/app/build/outputs/apk/release/app-release.apk#mawid-release.apk")
+          gh release create android-latest "${ASSETS[@]}" \
+            --title "Mawid Android APK (latest)" \
+            --target "${GITHUB_SHA}" \
+            --notes "Auto-published by the Android Build workflow from commit ${GITHUB_SHA}. This TWA just displays https://mawid-app-d1d03.web.app, so a web-only change doesn't need a rebuild - only changes under android/** or to this workflow do. mawid-release.apk is the signed build for real installs (only present once the ANDROID_KEYSTORE_* secrets are set); mawid-debug.apk always builds and is fine for quick sideload testing."
