@@ -1616,11 +1616,9 @@ open — "في كل مراحل التطبيق" (at every stage of the app).
   legible — screenshotted for visual confirmation. Test data (Auth user +
   `users/{uid}` + `clinics/{slug}` docs) deleted after, read-back-
   confirmed gone.
-- **Not yet deployed to Hosting** — built and verified locally/live-tested
-  against the real project's data plane only; `firebase deploy --only
-  hosting` still needs the user's go-ahead per this session's standing
-  practice. No `firestore.rules` changes needed either way — this is
-  client-side only.
+- **Deployed together with the /find + /admin follow-up below**, in one
+  Hosting release, once the user asked for both — see that section for
+  the release id.
 
 ### Follow-up: extended to /find (المراجع) and /admin too
 
@@ -1663,8 +1661,10 @@ more routes:
   finished hydrating the page, not an app bug; fixed by waiting for
   hydration before interacting, noted here so it isn't mistaken for a real
   bug later.
-- **Not yet deployed** — same standing practice: built and live-tested,
-  `firebase deploy --only hosting` waits for the user's go-ahead.
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788454593861000`). No `firestore.rules`
+  changes — client-side only.
 
 ## Next steps if resumed
 
