@@ -1950,7 +1950,9 @@ an old install to have gotten wrong.
   once-only behavior there is unchanged (visible on visit 1, gone on
   visit 2).
 - **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
-  hosting`, verified FINALIZED. No `firestore.rules` changes.
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788476006737000`). No `firestore.rules`
+  changes.
 
 ## Next steps if resumed
 
