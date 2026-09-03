@@ -2,7 +2,7 @@
   "name": "موعد — إدارة حجوزات العيادات",
   "short_name": "موعد",
   "description": "نظام حجوزات عيادات يعمل بدون إنترنت، للاستقبال وشاشة صالة الانتظار.",
-  "start_url": "/dashboard",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",

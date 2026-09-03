@@ -4,7 +4,7 @@
 // offline-first before this file existed (see src/lib/offline - IndexedDB +
 // sync queue). The two layers are independent on purpose: this file can be
 // deleted without breaking data offline-first, and vice versa.
-const CACHE_VERSION = "mawid-shell-v1";
+const CACHE_VERSION = "mawid-shell-v2";
 
 const APP_SHELL = [
   "/",
@@ -52,7 +52,7 @@ self.addEventListener("fetch", (event) => {
           caches.open(CACHE_VERSION).then((cache) => cache.put(req, copy));
           return res;
         })
-        .catch(() => caches.match(req).then((res) => res || caches.match("/dashboard")))
+        .catch(() => caches.match(req).then((res) => res || caches.match("/")))
     );
     return;
   }

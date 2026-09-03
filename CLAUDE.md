@@ -1850,6 +1850,67 @@ account.
   `sites/mawid-app-d1d03/releases/1788474652274000`). No `firestore.rules`
   changes needed.
 
+## Real bug: installed app never showed the tap-to-continue intro
+
+The user reported that after installing the app, the "اضغط للاستمرار"
+(tap-to-continue) intro screen — the one that should appear before the
+home screen — never showed up. Two independent real bugs, found by
+reading the actual manifest/service-worker/page code rather than guessing,
+both fixed together:
+
+1. **`manifest.webmanifest`'s `start_url` was still `/dashboard`** — a
+   stale leftover from the original pre-rebrand MVP homepage that was
+   never updated when `/` became the real branded home screen (see
+   "Real bug the user caught by actually opening the installed app" much
+   earlier in this file, which fixed the *content* of `/` but missed that
+   the manifest still pointed installs at the old route). Any PWA
+   installed via a browser's own "Add to Home Screen"/"Install app" flow
+   (this app's iOS path, per the user's own earlier choice) launches
+   straight at `/dashboard`, skipping `/` — and with it, all of the
+   intro/tap-to-continue logic, which only exists on `/`'s `page.tsx` —
+   entirely. Fixed: `start_url` now `/`.
+   - The Android TWA/APK was unaffected — `android/app/src/main/res/
+     values/strings.xml`'s own `launch_url` was already correctly
+     `https://mawid-app-d1d03.web.app/`, independent of the web manifest,
+     confirmed by reading it before assuming this bug was universal.
+   - `sw.js`'s offline navigation fallback had the exact same stale
+     assumption (`caches.match("/dashboard")` when a page fetch fails
+     offline) — fixed to `caches.match("/")` for the same reason, and
+     `CACHE_VERSION` bumped (`v1` -> `v2`) so every installed client picks
+     up both fixes on its next online check rather than serving a stale
+     cached shell indefinitely.
+2. **Even with `start_url` fixed, a browser that had ever opened the site
+   in a regular tab before installing would still skip the intro on the
+   installed app's first real launch** — `mawid_splash_seen` in
+   localStorage is shared across every context on the same origin
+   (regular tab, "Add to Home Screen" PWA, and — on Android — the TWA
+   APK too), so a flag set by earlier ordinary browsing (which is how
+   this project has been tested and demoed throughout this whole
+   session) would already read "seen" the moment the freshly-installed
+   app first launched, even though that's genuinely the app's own first
+   launch. Fixed in `app/page.tsx`: a new `isStandaloneDisplay()` check
+   (`display-mode: standalone` media query, falling back to iOS Safari's
+   older `navigator.standalone`) picks a **separate** localStorage key
+   (`mawid_splash_seen_standalone`) whenever running as the installed
+   app, so "first time as an installed app" and "first time as a browser
+   tab" are two independent first visits — exactly matching what someone
+   who just installed the app expects, without touching the existing
+   regular-browser-tab behavior at all.
+- **Verified**: `tsc --noEmit` and `next build` both clean. A Playwright
+  test against the exported `out/` directory simulated the exact reported
+  scenario — a browser context with `mawid_splash_seen` already set (as
+  if from earlier ordinary browsing) plus `matchMedia('(display-mode:
+  standalone)')` forced to `true` (as a real installed-app launch would
+  report) — and confirmed the intro hint now shows on that first
+  standalone launch; a second simulated standalone launch (after tapping
+  through the first, persisting its own flag) correctly skips it; and a
+  fresh ordinary browser tab (no standalone override) still shows the
+  intro on its own first visit exactly as before — confirming the fix
+  didn't regress the pre-existing regular-browser behavior.
+- **Not yet deployed** — same standing practice: built and verified
+  locally, `firebase deploy --only hosting` still waits for the user's
+  go-ahead.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

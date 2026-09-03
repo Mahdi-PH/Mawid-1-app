@@ -35,6 +35,18 @@ import { isAdminUser, isConfiguredAdminEmail, onAuthChange } from "../lib/fireba
 // data fetch, so none of it can slow down anything this page actually
 // depends on.
 const SPLASH_SEEN_KEY = "mawid_splash_seen";
+// A separate key for the installed-app (standalone) launch context — see
+// isStandaloneDisplay() below. Without this split, someone who had ever
+// opened the site in a regular browser tab (as everyone testing this
+// project inevitably has) would install the PWA and never see the intro
+// pose at all: the "already seen" flag from the browser-tab visit is the
+// same localStorage origin the installed app reads, so it would read
+// "seen" on its very first real launch — reported by the user exactly
+// this way ("لم تظهر نافذة اضغط للاستمرار" after installing). Keying
+// standalone launches to their own flag makes "first time as an installed
+// app" and "first time as a browser tab" two independent first visits,
+// which is what a user who just installed the app actually expects.
+const SPLASH_SEEN_KEY_STANDALONE = "mawid_splash_seen_standalone";
 const HERO_SIZE_PX = 112; // the logo's size while it's the big, centered "opening" mark
 const REVEAL_MS = 650; // how long the logo takes to glide back into its header spot
 const HINT_DELAY_MS = 650; // delay before the "tap to continue" hint fades in
@@ -45,6 +57,24 @@ const SELECT_PULSE_MS = 160;
 const EXIT_MS = 380;
 
 type Phase = "intro" | "revealing" | "home";
+
+/** True when running as the installed PWA (Android/desktop's standard
+ *  `display-mode: standalone` media feature, or iOS Safari's older
+ *  nonstandard `navigator.standalone` for "Add to Home Screen" — no
+ *  single check covers both). Wrapped in try/catch since matchMedia can
+ *  throw in some restricted embed contexts; fails closed to "not
+ *  standalone" (the safer default: worst case a returning installed-app
+ *  user sees the intro once more, not a regular browser tab wrongly
+ *  treated as the installed app). */
+function isStandaloneDisplay(): boolean {
+  try {
+    if (window.matchMedia?.("(display-mode: standalone)").matches) return true;
+    if ((window.navigator as unknown as { standalone?: boolean }).standalone) return true;
+  } catch {
+    // fall through to false
+  }
+  return false;
+}
 
 const ROLE_CARDS = [
   {
@@ -124,9 +154,10 @@ export default function Home() {
     // Next's useSearchParams() so this stays a plain effect (no <Suspense>
     // boundary needed just for a debug flag).
     const forceIntro = new URLSearchParams(window.location.search).get("intro") === "1";
+    const seenKey = isStandaloneDisplay() ? SPLASH_SEEN_KEY_STANDALONE : SPLASH_SEEN_KEY;
     let seen = true;
     try {
-      seen = localStorage.getItem(SPLASH_SEEN_KEY) === "1";
+      seen = localStorage.getItem(seenKey) === "1";
     } catch {
       // Storage blocked (private mode, etc.) — fail open to "already seen"
       // rather than replaying the opening pose on every single visit.
@@ -176,7 +207,7 @@ export default function Home() {
     if (logoRef.current) logoRef.current.style.transform = "translate(0, 0) scale(1)";
     window.setTimeout(() => {
       try {
-        localStorage.setItem(SPLASH_SEEN_KEY, "1");
+        localStorage.setItem(isStandaloneDisplay() ? SPLASH_SEEN_KEY_STANDALONE : SPLASH_SEEN_KEY, "1");
       } catch {
         // Nothing to do if storage is unavailable — the opening pose will
         // just replay next visit, which is a harmless fallback.
