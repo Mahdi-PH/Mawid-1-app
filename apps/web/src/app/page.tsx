@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import SplashScreen, { SPLASH_ANIMATION_TOTAL_MS } from "../components/SplashScreen";
 import HomeBackdrop from "../components/HomeBackdrop";
 
 // Matches the branded two-sided home screen already iterated in the demo
@@ -18,34 +17,55 @@ import HomeBackdrop from "../components/HomeBackdrop";
 // flow: role picker -> subscription info screen -> signup/login), not
 // straight to /signup.
 //
-// Animations added here (see CLAUDE.md "Animations"): a one-time welcome
-// splash (SplashScreen) on this browser's first-ever visit, a two-stage
-// "pick, then leave" transition on the role cards (a quick selection pop
-// on the chosen card, then the whole screen fades/settles away together)
-// instead of an instant hard cut, and a static decorative backdrop
-// (HomeBackdrop) that stays visually constant behind every phase this
-// screen goes through. All pure CSS/Tailwind (tailwind.config.js
-// keyframes) — no animation library was added, per the user's explicit
-// choice — and none of it touches Firebase or any data fetch, so none of
-// it can slow down anything this page actually depends on.
+// Animations added here (see CLAUDE.md "Animations"): a first-launch
+// "opening" pose where the logo appears large and centered over the
+// persistent backdrop, then glides back into its normal small header spot
+// (a FLIP-style shared-element transform on the SAME logo element — see
+// the useLayoutEffect below — not a separate splash component crossfading
+// into a different one), triggered by either a tap anywhere or a short
+// auto-timer; a two-stage "pick, then leave" transition on the role cards;
+// and a static decorative backdrop (HomeBackdrop) that never remounts
+// across any of these phases, so it stays visually constant the whole
+// time. All pure CSS/Tailwind — no animation library was added, per the
+// user's explicit choice — and none of it touches Firebase or any data
+// fetch, so none of it can slow down anything this page actually depends
+// on.
 const SPLASH_SEEN_KEY = "mawid_splash_seen";
-// Two-stage exit, deliberately longer/more distinctive than a plain
-// instant cut per the user's follow-up ask: the clicked card briefly
-// "pops" (SELECT_PULSE_MS) to confirm the choice, then the whole screen
+const HERO_SIZE_PX = 112; // the logo's size while it's the big, centered "opening" mark
+const INTRO_AUTO_MS = 2200; // auto-continues even if the visitor never taps
+const REVEAL_MS = 650; // how long the logo takes to glide back into its header spot
+const HINT_DELAY_MS = 650; // delay before the "tap to continue" hint fades in
+// Two-stage exit on the role cards: the clicked card briefly "pops"
+// (SELECT_PULSE_MS) to confirm the choice, then the whole screen
 // fades/settles away together (EXIT_MS) before the route actually changes.
 const SELECT_PULSE_MS = 160;
 const EXIT_MS = 380;
 
+type Phase = "intro" | "revealing" | "home";
+
+const ROLE_CARDS = [
+  {
+    href: "/subscribe",
+    title: "عيادة أو مركز تجميل",
+    desc: "سجّل عيادتك أو مركز التجميل لإدارة الحجوزات والاستقبال وشاشة صالة الانتظار.",
+  },
+  {
+    href: "/find",
+    title: "مراجع",
+    desc: "ابحث عن عيادتك واطلب موعدك مباشرة — بدون تسجيل حساب.",
+  },
+] as const;
+
 export default function Home() {
   const router = useRouter();
   // null = "haven't checked localStorage yet" (renders nothing but the
-  // brand-colored background, so there's no flash of the role-picker
-  // content before we know whether the splash should play first).
-  const [showSplash, setShowSplash] = useState<boolean | null>(null);
-  // Which card the user picked (drives the immediate "pop" + dimming the
-  // other card), and whether the full-screen fade-out phase has started.
+  // brand-colored background + backdrop, so there's no flash of the
+  // role-picker content before we know whether the opening pose is needed).
+  const [phase, setPhase] = useState<Phase | null>(null);
+  const [showHint, setShowHint] = useState(false);
   const [selectedHref, setSelectedHref] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
+  const logoRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     let seen = true;
@@ -53,29 +73,62 @@ export default function Home() {
       seen = localStorage.getItem(SPLASH_SEEN_KEY) === "1";
     } catch {
       // Storage blocked (private mode, etc.) — fail open to "already seen"
-      // rather than showing the splash on every single visit.
+      // rather than replaying the opening pose on every single visit.
     }
-    setShowSplash(!seen);
+    setPhase(seen ? "home" : "intro");
   }, []);
 
-  useEffect(() => {
-    if (!showSplash) return;
-    // Safety net in case the browser never fires animationend (e.g. the
-    // tab was backgrounded mid-animation) — never leaves a real visitor
-    // stuck behind the splash indefinitely.
-    const t = window.setTimeout(finishSplash, SPLASH_ANIMATION_TOTAL_MS + 500);
-    return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showSplash]);
+  // FLIP transform: the logo lives in exactly one DOM spot (its normal,
+  // small header position) the whole time — this measures that natural
+  // position the instant it mounts, then fakes a large-and-centered
+  // "opening" pose with a transform applied *before* any transition is
+  // enabled (so there's no visible jump), and only then turns the
+  // transition on so the later return to identity (beginReveal) glides
+  // smoothly instead of snapping straight there.
+  useLayoutEffect(() => {
+    if (phase !== "intro" || !logoRef.current) return;
+    const el = logoRef.current;
+    const rect = el.getBoundingClientRect();
+    const scale = HERO_SIZE_PX / rect.width;
+    const dx = window.innerWidth / 2 - (rect.left + rect.width / 2);
+    const dy = window.innerHeight / 2 - (rect.top + rect.height / 2);
+    el.style.transition = "none";
+    el.style.transform = `translate(${dx}px, ${dy}px) scale(${scale})`;
+    // Force a reflow so the transition-off write above is committed on its
+    // own before we re-enable transitions — otherwise the browser can
+    // coalesce both style writes into one recalc and skip animating later.
+    void el.offsetHeight;
+    el.style.transition = `transform ${REVEAL_MS}ms cubic-bezier(0.16, 1, 0.3, 1)`;
+  }, [phase]);
 
-  function finishSplash() {
-    try {
-      localStorage.setItem(SPLASH_SEEN_KEY, "1");
-    } catch {
-      // Nothing to do if storage is unavailable — the splash will just
-      // play again next visit, which is a harmless fallback.
-    }
-    setShowSplash(false);
+  useEffect(() => {
+    if (phase !== "intro") return;
+    const hint = window.setTimeout(() => setShowHint(true), HINT_DELAY_MS);
+    const auto = window.setTimeout(beginReveal, INTRO_AUTO_MS);
+    return () => {
+      window.clearTimeout(hint);
+      window.clearTimeout(auto);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
+  function beginReveal() {
+    if (phase !== "intro") return;
+    setShowHint(false);
+    setPhase("revealing");
+    // Transition was already armed by the layout effect above — changing
+    // the transform back to identity here is what actually animates the
+    // logo gliding from its big centered pose back to its real spot.
+    if (logoRef.current) logoRef.current.style.transform = "translate(0, 0) scale(1)";
+    window.setTimeout(() => {
+      try {
+        localStorage.setItem(SPLASH_SEEN_KEY, "1");
+      } catch {
+        // Nothing to do if storage is unavailable — the opening pose will
+        // just replay next visit, which is a harmless fallback.
+      }
+      setPhase("home");
+    }, REVEAL_MS);
   }
 
   // Only intercepts a plain left-click to play the exit animation before
@@ -92,7 +145,7 @@ export default function Home() {
     }, SELECT_PULSE_MS);
   }
 
-  if (showSplash === null) {
+  if (phase === null) {
     return (
       <main className="relative min-h-screen" style={{ background: "#F5FBF9" }}>
         <HomeBackdrop />
@@ -100,22 +153,45 @@ export default function Home() {
     );
   }
 
+  const introActive = phase === "intro";
+  const contentVisible = phase !== "intro";
+
   return (
     <main
       className="relative flex min-h-screen flex-col items-center justify-center gap-10 p-8 text-center"
       style={{ background: "#F5FBF9" }}
+      onClick={introActive ? beginReveal : undefined}
     >
       <HomeBackdrop />
 
-      {showSplash && <SplashScreen onFinish={finishSplash} />}
+      {/* animate-hero-ring's own keyframes bake in translate(-50%,-50%)
+          for centering (see tailwind.config.js), so no separate translate
+          utility is needed here — it would just be overridden by the
+          animation's own transform value anyway. */}
+      {introActive && (
+        <span
+          className="pointer-events-none fixed left-1/2 top-1/2 h-32 w-32 animate-hero-ring rounded-full"
+          style={{ background: "radial-gradient(circle, rgba(23,168,146,0.5) 0%, rgba(23,168,146,0) 70%)" }}
+        />
+      )}
 
-      <div
-        className={
-          "relative flex flex-col items-center gap-3 transition-all duration-300 ease-out " +
-          (leaving ? "-translate-y-2 opacity-0" : "animate-fade-in-up")
-        }
-      >
-        <span className="block h-16 w-16 overflow-hidden rounded-2xl shadow-lg">
+      {introActive && (
+        <p
+          className={
+            "pointer-events-none fixed bottom-16 left-1/2 -translate-x-1/2 text-sm text-neutral-400 transition-opacity duration-500 " +
+            (showHint ? "opacity-100" : "opacity-0")
+          }
+        >
+          المس الشاشة للمتابعة
+        </p>
+      )}
+
+      <div className="relative flex flex-col items-center gap-3">
+        <span
+          ref={logoRef}
+          className="block h-16 w-16 overflow-hidden rounded-2xl shadow-lg"
+          style={{ willChange: "transform" }}
+        >
           <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
             <defs>
               <radialGradient id="hbg" cx="32%" cy="28%" r="85%">
@@ -141,35 +217,28 @@ export default function Home() {
             </g>
           </svg>
         </span>
-        <h1 className="text-4xl font-bold" style={{ color: "#0F7A6C" }}>
+        <h1
+          className={"text-4xl font-bold " + (contentVisible ? "animate-fade-in-up" : "opacity-0")}
+          style={{ color: "#0F7A6C" }}
+        >
           مَوْعِد
         </h1>
-        <p className="text-neutral-600">اختر كيف تريد استخدام موعد</p>
+        <p
+          className={"text-neutral-600 " + (contentVisible ? "animate-fade-in-up" : "opacity-0")}
+          style={{ animationDelay: contentVisible ? "60ms" : undefined }}
+        >
+          اختر كيف تريد استخدام موعد
+        </p>
       </div>
 
       <div
         className={
           "relative grid w-full max-w-2xl grid-cols-1 gap-5 text-right sm:grid-cols-2 " +
-          (leaving ? "" : "animate-fade-in-up")
+          (contentVisible && !leaving ? "animate-fade-in-up" : contentVisible ? "" : "pointer-events-none opacity-0")
         }
-        style={{ animationDelay: leaving ? undefined : "80ms" }}
+        style={{ animationDelay: contentVisible && !leaving ? "120ms" : undefined }}
       >
-        {(
-          [
-            {
-              href: "/subscribe",
-              title: "عيادة أو مركز تجميل",
-              desc: "سجّل عيادتك أو مركز التجميل لإدارة الحجوزات والاستقبال وشاشة صالة الانتظار.",
-              delay: 0,
-            },
-            {
-              href: "/find",
-              title: "مراجع",
-              desc: "ابحث عن عيادتك واطلب موعدك مباشرة — بدون تسجيل حساب.",
-              delay: 60,
-            },
-          ] as const
-        ).map((card) => {
+        {ROLE_CARDS.map((card) => {
           const isSelected = selectedHref === card.href;
           const isDimmed = selectedHref !== null && !isSelected;
           return (

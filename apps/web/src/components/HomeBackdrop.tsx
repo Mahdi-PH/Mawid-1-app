@@ -1,17 +1,18 @@
 // Light, static (non-animated — "ثابتة") decorative background for the
-// home screen, per the user's follow-up ask. Deliberately not tied to any
-// of page.tsx's own state (splash showing, content revealed, leaving) —
-// it's rendered once, unconditionally, so it stays visually constant
-// across every phase that screen goes through: hidden under the opaque
-// splash overlay while that plays (z-50, fully covers it), then a stable
-// backdrop behind both the role-picker content and its exit transition.
+// home screen. Rendered exactly once, unconditionally, and never remounted
+// by page.tsx's own phase changes (intro -> revealing -> home) — it is the
+// one constant layer every phase sits in front of, including the opening
+// "hero" pose (see page.tsx), matching the user's explicit ask that this
+// image "تبقى خلف الخيارات" (stays behind the options) throughout.
 //
-// Purely decorative (aria-hidden, pointer-events-none) and reuses the
-// existing brand teal + the exact logo mark already used everywhere else
-// in this app, rather than inventing new imagery — two soft blurred glows
-// echo the logo's own radial gradient, and the enlarged, very-low-opacity
-// brand mark ties it directly to "فكرة التطبيق" without competing with the
-// actual role cards for attention.
+// Purely decorative (aria-hidden, pointer-events-none) and built entirely
+// from the app's own existing visual language rather than new imagery:
+// two soft blurred glows echo the logo's own radial gradient, a faint
+// dot grid nods at "فكرة التطبيق" (an appointment/scheduling calendar,
+// the literal meaning of "موعد") without spelling it out literally, and
+// the enlarged, very-low-opacity brand mark ties it directly to the logo
+// that opens the app — all light enough to never compete with the actual
+// role cards for attention.
 export default function HomeBackdrop() {
   return (
     // No negative z-index here on purpose: `main` (the parent) is only
@@ -24,6 +25,14 @@ export default function HomeBackdrop() {
     // land in the same paint layer and DOM order (this element first)
     // decides the stacking — no stacking-context plumbing required.
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+      <div
+        className="absolute inset-0"
+        style={{
+          backgroundImage: "radial-gradient(rgba(15,122,108,0.5) 1px, transparent 1px)",
+          backgroundSize: "26px 26px",
+          opacity: 0.05,
+        }}
+      />
       <div
         className="absolute -right-24 -top-24 h-72 w-72 rounded-full blur-3xl"
         style={{ background: "#17A892", opacity: 0.12 }}

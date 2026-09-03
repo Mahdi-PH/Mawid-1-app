@@ -12,9 +12,12 @@ body {
 }
 
 /* Respect the OS-level "reduce motion" accessibility setting — every
-   animation added for the splash screen and role-selection transition
-   (see components/SplashScreen.tsx and app/page.tsx) collapses to an
-   instant state change instead of skipping straight to unstyled content. */
+   animation added for the home screen's opening pose and role-selection
+   transition (see app/page.tsx) collapses to an instant state change
+   instead of skipping straight to unstyled content. This also covers the
+   inline `transition`/`transform` styles page.tsx sets imperatively for
+   the logo's FLIP animation, since a stylesheet !important rule always
+   wins over a non-!important inline style. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

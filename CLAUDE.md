@@ -1093,6 +1093,78 @@ screen goes through.
   `sites/mawid-app-d1d03/releases/1788439588017000`). No `firestore.rules`
   changes — this is client-side only.
 
+### Follow-up: shared-element "hero" logo + tap-to-continue + richer backdrop
+
+The user asked for something more specific than a generic splash: a
+background image (logo + extra graphics fitting the app's concept) shown
+on open, tappable to trigger a visual effect before reaching the home
+screen, where afterward "الصورة تبقى خلف الخيارات" (the image stays
+behind the role cards) while "الشعار يرجع الى مكانه" (the logo returns to
+its place). That last pairing is a shared-element transition, not a
+crossfade between two different pieces — so the standalone
+`SplashScreen.tsx` component (fixed full-screen overlay, a *different*
+logo element than the one on the home screen) was retired entirely and
+replaced with logic inline in `app/page.tsx` built around ONE logo
+element that never unmounts.
+
+- **FLIP transform, not two logos**: the logo `<span>` lives in exactly
+  one DOM spot the whole time — its normal small header position, inside
+  the same `<h1>`/tagline block as before. A `useLayoutEffect` measures
+  that natural position the instant it mounts (`getBoundingClientRect()`)
+  and imperatively (via the DOM ref, not React state — precision here
+  matters more than declarative purity) applies a `translate(dx,dy)
+  scale(s)` transform that makes it *look* like a large (112px, up from
+  64px), screen-centered "opening" mark, with `transition: none` during
+  that initial write so there's no visible jump, then re-enables the
+  transition right after (forcing a reflow in between so the browser
+  can't coalesce both writes into one recalc and skip animating later).
+  Calling `beginReveal()` (on tap or the `INTRO_AUTO_MS` auto-timer, see
+  below) just sets the transform back to `translate(0,0) scale(1)` —
+  since the transition is already armed, the browser animates the glide
+  back to the logo's real position on its own. This is the standard FLIP
+  (First-Last-Invert-Play) technique, verified precisely: a Playwright
+  bounding-box check confirmed the logo starts at exactly 112×112px
+  centered on a 420×800 viewport (154,344 → true center), and ends at
+  exactly 64×64px in its original header slot (178,144) — not just "looks
+  about right" in a screenshot.
+- **Tap-to-continue**: an `onClick` on the whole `<main>` calls
+  `beginReveal()` while `phase === "intro"` (a click anywhere works, not
+  just on the logo — matches "عند الضغط عليها" without requiring
+  pixel-precise targeting), with a `"المس الشاشة للمتابعة"` hint fading
+  in after `HINT_DELAY_MS` (650ms) so the gesture is discoverable rather
+  than hidden. `INTRO_AUTO_MS` (2200ms) auto-triggers the same
+  `beginReveal()` if nobody taps, so a visitor is never stuck waiting
+  indefinitely — replaces the old animationend-based safety-net timer
+  entirely, since the reveal is no longer gated on any CSS animation
+  actually finishing.
+- **`components/HomeBackdrop.tsx` gained a third layer**: a faint dot
+  grid (`radial-gradient` repeating pattern, 5% opacity) alongside the
+  existing soft blurred glows and brand-mark watermark — a subtle nod at
+  a scheduling/calendar grid (the literal meaning of "موعد") without
+  spelling it out literally, answering the "رسومات اضافية تتناسب مع فكرة
+  التطبيق" ask. It is still rendered exactly once, never remounted by any
+  phase change, so "the image stays behind the options" holds by
+  construction — nothing in `page.tsx` ever re-renders or hides it.
+- **`tailwind.config.js`**: `splash-logo-in`/`splash-dot`/`splash-out`
+  keyframes were removed (dead now that the logo's own move is a
+  per-visit-computed inline transform, not a fixed keyframe); `fade-in-up`
+  stays (still used for the wordmark/tagline/cards' entrance once the
+  logo settles); `splash-ring` was kept but renamed `hero-ring` (the
+  ambient pulsing halo behind the intro logo — this one **does** stay a
+  keyframe, since unlike the logo it doesn't need to travel anywhere, just
+  fade out in place).
+- **Verified**: `tsc --noEmit` and `next build` both clean (home page:
+  98.4 kB → 98.6 kB, still negligible). A Playwright run against the
+  exported `out/` directory checked actual bounding boxes at each stage
+  (not just screenshots): intro pose exactly centered at the computed
+  hero size, mid-transition shrinking, settled back at the exact original
+  header position, and a **second visit skips the hero pose entirely**
+  (logo renders at 64×64 immediately, confirming the `mawid_splash_seen`
+  localStorage gate from the original splash feature still applies here
+  unchanged) — plus the existing role-card pop/dim/fade selection
+  transition confirmed still working unmodified alongside all of this.
+- **Not deployed yet** — built and verified locally only.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —
