@@ -2385,9 +2385,10 @@ same toggle-link pattern already used by `/signup` for clinic accounts
   field is gone), submit wrong credentials (confirms the error message),
   then the correct phone/PIN (confirms it logs back into the same
   account) — screenshotted for a visual check too.
-- **Not yet deployed** — built and committed locally only, per this
-  session's standing practice of holding a live deploy for explicit
-  go-ahead.
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788532533262000`). No `firestore.rules`
+  changes — this is client-side/local-storage only.
 
 ## Next steps if resumed
 
