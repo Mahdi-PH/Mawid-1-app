@@ -2491,9 +2491,10 @@ entirely and didn't touch this.
   (the CSS transition actually re-engaging), proving the reset code
   path itself works correctly independent of which real mechanism
   triggers it on an actual phone.
-- **Not yet deployed** — built and committed locally only, per this
-  session's standing practice of holding a live deploy for explicit
-  go-ahead.
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788534499449000`). No `firestore.rules`
+  changes — this is client-side only.
 
 ## Next steps if resumed
 
