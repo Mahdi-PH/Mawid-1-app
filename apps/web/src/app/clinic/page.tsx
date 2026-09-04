@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import BackButton from "../../components/BackButton";
 import AppBackdrop from "../../components/AppBackdrop";
+import AppointmentStatusBadge from "../../components/AppointmentStatusBadge";
 import { auth } from "../../lib/firebase/config";
 import { markIntentionalSignOut, signOutUser } from "../../lib/firebase/auth";
 import {
@@ -27,18 +28,9 @@ import {
   ScheduleConflictError,
 } from "../../lib/firebase/firestore";
 import { generateDaySlots } from "../../lib/firebase/slotEngine";
+import { STATUS_DOT, STATUS_LABEL } from "../../lib/firebase/statusMeta";
 import { OCCUPYING_STATUSES } from "../../lib/firebase/types";
 import type { AppointmentDoc, AppointmentStatus, ClinicDoc } from "../../lib/firebase/types";
-
-const STATUS_LABEL: Record<AppointmentStatus, string> = {
-  requested: "بانتظار تأكيد",
-  booked: "مؤكَّد",
-  arrived: "وصل",
-  in_progress: "عند الطبيب",
-  completed: "انتهى",
-  no_show: "غياب",
-  cancelled: "ملغي",
-};
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -270,17 +262,21 @@ function ReceptionTab({
                 </td>
                 <td className="px-4 py-2">
                   {a ? (
-                    <select
-                      value={a.status}
-                      onChange={(e) => handleStatusChange(a.id, e.target.value as AppointmentStatus)}
-                      className="rounded border px-2 py-1"
-                    >
-                      {(Object.keys(STATUS_LABEL) as AppointmentStatus[]).map((st) => (
-                        <option key={st} value={st}>
-                          {STATUS_LABEL[st]}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex items-center gap-2">
+                      <AppointmentStatusBadge status={a.status} />
+                      <select
+                        value={a.status}
+                        onChange={(e) => handleStatusChange(a.id, e.target.value as AppointmentStatus)}
+                        className="rounded border px-2 py-1"
+                        style={{ borderInlineStartWidth: 3, borderInlineStartColor: STATUS_DOT[a.status] }}
+                      >
+                        {(Object.keys(STATUS_LABEL) as AppointmentStatus[]).map((st) => (
+                          <option key={st} value={st}>
+                            {STATUS_LABEL[st]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   ) : (
                     "—"
                   )}

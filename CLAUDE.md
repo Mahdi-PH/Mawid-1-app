@@ -2027,6 +2027,85 @@ logo).
   `sites/mawid-app-d1d03/releases/1788518884974000`). No `firestore.rules`
   changes — this is client-side/asset only.
 
+## Patient waiting screen (second window after booking) + color-coded statuses
+
+Two requests together: (1) after a patient books, open a second "شاشة
+الانتظار" (waiting screen) window for that same clinic/appointment,
+alongside the booking window itself; (2) color-code each booking status
+in the reception dashboard with a simple matching indicator, the way the
+demo artifact already did.
+
+- **Shared status palette, not duplicated per screen**:
+  `apps/web/src/lib/firebase/statusMeta.ts` (new) is the one place
+  `STATUS_LABEL`/`STATUS_COLOR`/`STATUS_DOT`/`STATUS_PATIENT_MESSAGE` live
+  for the Firestore `AppointmentStatus` type, so the reception dashboard
+  and the new patient screen can never show a status in two different
+  colors. Same `bg-X-100 text-X-800 border-X-300` Tailwind convention
+  already used by `@mawid/shared`'s `APPOINTMENT_STATUS_COLORS` (the
+  older Postgres/`apps/server` track's own status badge, see
+  `components/StatusBadge.tsx`) — extended with `requested` (purple), a
+  status the Postgres model has no equivalent for. `components/
+  AppointmentStatusBadge.tsx` (new) is the small pill component built on
+  it; `/clinic`'s reception table now shows one next to each appointment's
+  status `<select>` (which also gained a colored left-border matching
+  `STATUS_DOT`) instead of the select being the only signal.
+- **`/find/wait`** (new, query-param route: `?clinic=<slug>&appt=<id>`):
+  the patient's own live appointment-status screen — a big colored status
+  card + a plain-language message per status (e.g. "حان دورك الآن —
+  تفضّل عند الطبيب" for `in_progress`, with a small pulsing dot).
+  Deliberately scoped to **the patient's own appointment only**, not the
+  clinic's full queue — a public "who's currently being seen" screen
+  would need a `firestore.rules` change letting any visitor list a
+  clinic's appointments for today, which would also hand over every
+  other patient's name/phone on that list. Same privacy tradeoff
+  `getSlotAvailability()` already avoids for the booking grid (see that
+  function's own comment) — this stays inside it rather than reopening
+  it, so **no `firestore.rules` change was needed** for this feature at
+  all: reading one's own appointment doc was already allowed.
+- **Live-updating, not polled**: `watchAppointment()` (new,
+  `firestore.ts`) wraps `onSnapshot` on the appointment doc, so the
+  screen updates the instant the clinic marks the patient
+  arrived/in_progress/completed from `/clinic`'s reception tab — no
+  manual refresh. `getAppointmentId()` (new, also `firestore.ts`) just
+  exposes the existing deterministic-id builder `bookSlot()` already used
+  internally, since the booking page knows clinicSlug/date/startTime but
+  `bookSlot()` itself returns `void`, not the new doc.
+- **"Two windows" implemented literally**: `find/book/page.tsx` computes
+  the appointment id right after `bookSlot()` succeeds and calls
+  `window.open("/find/wait?...", "_blank")` — best-effort, since some
+  browsers (Safari especially) drop the "real user gesture" grace period
+  across an `await`, so this can get popup-blocked. The confirmation card
+  also gained a plain "فتح شاشة الانتظار" link/button as the reliable
+  fallback either way, not just a backstop for a blocked popup.
+- **A real timing edge case, handled not ignored**: a fresh second tab's
+  Firebase Auth persisted session (from the booking tab's
+  `ensurePatientSession()`) takes a moment to rehydrate from IndexedDB
+  even though it's the same browser/origin. `/find/wait` calls
+  `ensurePatientSession()` itself before subscribing (idempotent — returns
+  the existing anonymous user if already signed in, per its own
+  implementation) so the `onSnapshot` read never races an unresolved auth
+  state. Opening the same link from a browser that never booked (a
+  different device, or a cleared session) correctly gets denied by the
+  unchanged rules — there's no patient login system, so that's the same
+  expected boundary as everywhere else in this track.
+- **Verified**: `tsc --noEmit` and `next build` both clean, including the
+  new `/find/wait` route. The seven status badge colors were rendered
+  directly against the app's own compiled Tailwind CSS (not assumed from
+  class names) and confirmed visually distinct. `/find/wait`'s
+  not-found state and `/find/book`'s existing behavior were both
+  confirmed still rendering correctly against the static export.
+  **Not run against the live project this time**: the earlier
+  service-account key was deleted after the last deploy per this
+  session's standing practice, and no fresh one was shared for this
+  change — so the real booking → live status update path (which needs a
+  real approved clinic + a real second tab) wasn't exercised end-to-end
+  against `mawid-app-d1d03` the way earlier features in this file were.
+  Flagged here rather than silently claimed as fully tested; ask for
+  a live E2E pass before/along with deploying if that matters here.
+- **Not yet deployed** — built and committed locally only, per this
+  session's standing practice of holding a live deploy for explicit
+  go-ahead.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

@@ -15,6 +15,7 @@ import AppBackdrop from "../../../components/AppBackdrop";
 import { ensurePatientSession } from "../../../lib/firebase/auth";
 import {
   bookSlot,
+  getAppointmentId,
   getClinic,
   getSlotAvailability,
   isSubscriptionActive,
@@ -55,6 +56,7 @@ function BookClinic() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<string | null>(null); // startTime of the confirmed request
+  const [confirmedApptId, setConfirmedApptId] = useState<string | null>(null);
 
   const slots = clinic ? generateDaySlots(clinic) : [];
 
@@ -101,8 +103,17 @@ function BookClinic() {
         patientName: name.trim(),
         patientPhone: phone.trim(),
       });
+      const apptId = getAppointmentId(clinic.slug, date, selected);
+      const waitUrl = `/find/wait?clinic=${encodeURIComponent(clinic.slug)}&appt=${encodeURIComponent(apptId)}`;
       setConfirmed(selected);
+      setConfirmedApptId(apptId);
       setSelected(null);
+      // Best-effort: open the waiting screen as a second window right
+      // away. Some browsers (Safari especially) drop the "triggered by a
+      // real click" grace period after an await, so this can get popup-
+      // blocked — the button rendered in the confirmation card below is
+      // the reliable fallback either way, not just a backup for this.
+      window.open(waitUrl, "_blank", "noopener,noreferrer");
     } catch (err) {
       if (err instanceof SlotTakenError) {
         setError("هذا الموعد حُجز للتو من شخص آخر — اختر وقتاً آخر.");
@@ -152,8 +163,18 @@ function BookClinic() {
       </p>
 
       {confirmed && (
-        <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">
-          تم إرسال طلبك للموعد الساعة {confirmed} — بانتظار تأكيد العيادة.
+        <div className="mb-6 space-y-3 rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">
+          <p>تم إرسال طلبك للموعد الساعة {confirmed} — بانتظار تأكيد العيادة.</p>
+          {confirmedApptId && (
+            <a
+              href={`/find/wait?clinic=${encodeURIComponent(clinic.slug)}&appt=${encodeURIComponent(confirmedApptId)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700"
+            >
+              فتح شاشة الانتظار
+            </a>
+          )}
         </div>
       )}
 

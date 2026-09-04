@@ -7,6 +7,7 @@ import {
   getCountFromServer,
   getDoc,
   getDocs,
+  onSnapshot,
   orderBy,
   query,
   runTransaction,
@@ -284,6 +285,28 @@ export async function updateClinicSchedule(slug: string, patch: ScheduleUpdate):
 
 function apptId(clinicSlug: string, date: string, startTime: string) {
   return `${clinicSlug}_${date}_${startTime}`;
+}
+
+/** Exposed so a caller that just booked a slot (which knows clinicSlug/date/
+ *  startTime but never gets the appointment doc back from bookSlot()) can
+ *  compute the same deterministic id to open /find/wait with. */
+export function getAppointmentId(clinicSlug: string, date: string, startTime: string): string {
+  return apptId(clinicSlug, date, startTime);
+}
+
+/** Live status updates for the patient-facing waiting screen (/find/wait) —
+ *  a plain getDoc() would need polling to notice the clinic marking the
+ *  patient "arrived"/"in_progress"; onSnapshot pushes the change instead.
+ *  Firestore rules already let a patient read their own appointment doc in
+ *  full, so no rules change was needed for this. Returns the unsubscribe
+ *  function. */
+export function watchAppointment(
+  appointmentId: string,
+  onChange: (appt: AppointmentDoc | null) => void
+): () => void {
+  return onSnapshot(doc(db, "appointments", appointmentId), (snap) => {
+    onChange(snap.exists() ? ({ id: snap.id, ...snap.data() } as AppointmentDoc) : null);
+  });
 }
 
 /** Per-slot availability for the patient-facing booking grid, without ever
