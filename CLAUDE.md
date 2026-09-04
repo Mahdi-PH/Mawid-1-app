@@ -2205,19 +2205,34 @@ requested together.
   — the result set is one clinic's appointments, small enough that this
   costs nothing extra at this app's scale, same tradeoff already accepted
   throughout this track.
-- **Verified**: `tsc --noEmit` and `next build` both clean, including the
-  now-larger `/find/book`/`/find/wait` bundles. The composite-index
-  diagnosis for the schedule-save bug was cross-checked against
-  `firestore.indexes.json` (confirms the needed index is declared but,
-  per this file's own repeated notes on the `datastore.indexAdmin` gap,
-  not live) rather than only inferred from reading the query — the same
-  root cause already hit and fixed twice before in this exact codebase.
-  **Not yet re-verified against a live booking/save on `mawid-app-d1d03`
-  this pass** — flagged here rather than assumed; do that alongside the
-  next deploy.
-- **Not yet deployed** — built and committed locally only, per this
-  session's standing practice of holding a live deploy for explicit
-  go-ahead.
+- **Verified end-to-end against the live `mawid-app-d1d03` project**, all
+  three fixes, not just build-clean: a temporary clinic (`e2e-settings-
+  test`) with a **real email/password clinic-owner account** (not an
+  admin-privileged bypass — the same login path any real clinic owner
+  uses) was created, then driven through the actual running app:
+  1. Signed in via `/signup`'s login-mode toggle, opened إعدادات الدوام,
+     changed the hours, clicked حفظ — "تم الحفظ" appeared with no error,
+     and the new hours were confirmed **persisted** by reading the
+     `clinics/e2e-settings-test` doc directly afterward (workStart/
+     workEnd genuinely changed server-side, not just a UI success message
+     that didn't actually write anything).
+  2. A real anonymous patient booked a slot on that clinic and was
+     **auto-navigated to `/find/wait` with zero clicks** — confirmed by
+     watching the tab's own URL change on its own after the confirmation
+     pause, landing on the correct live status card ("بانتظار تأكيد")
+     with the "١ من ٣٤" booking-completion stat rendering correctly.
+  3. The reception table (`/clinic`, الاستقبال tab) showed the new
+     appointment with a plain colored dot next to its status select —
+     confirmed visually, no redundant text badge.
+  All test data (the clinic doc, its owner's `users` doc, its
+  appointment, and the owner's Firebase Auth account) were deleted after
+  and the live `clinics` collection was read back showing only the
+  user's own real clinic doc (`mahdi`) — read-before-delete, per the
+  standing rule.
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788526852746000`). No `firestore.rules`
+  changes.
 
 ## Next steps if resumed
 
