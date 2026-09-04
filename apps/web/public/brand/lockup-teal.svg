@@ -21,9 +21,10 @@
 
   <g clip-path="url(#mawid-round-lockup)">
     <rect x="520" y="40" width="220" height="220" fill="url(#mawid-bg-lockup)"/>
-    <g transform="translate(630,164) scale(0.43)" fill="none" stroke="#f5fbf9" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="38" cy="-26" r="58" stroke-width="42"/>
-      <path d="M 10 22 C -20 76, -78 104, -112 92 C -136 84, -146 62, -134 42" stroke-width="42" fill="none"/>
+    <g transform="translate(520,40) scale(0.429688)">
+      <g transform="translate(31.04,-48) scale(6.08)">
+        <path d="M46,18 C36,18 28,26 27,36 C26,42 22,44 18,46 C23,49 25,54 25,60 L28,70 C31,77 38,82 47,82 L47,66 C47,66 40,60 40,50 C40,38 46,30 56,28" fill="#f5fbf9"/>
+      </g>
     </g>
   </g>
 </svg>

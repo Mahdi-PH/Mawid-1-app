@@ -1954,6 +1954,78 @@ an old install to have gotten wrong.
   `sites/mawid-app-d1d03/releases/1788476006737000`). No `firestore.rules`
   changes.
 
+## Logo replaced: the "الملامح" profile mark, applied to every real icon asset
+
+The abstract calligraphic "meem" mark (circle + swooping tail) described in
+the Brand section above has been **replaced app-wide** with a mark
+developed this session from a user-uploaded reference composite icon
+(stethoscope + calendar/checkmark + pulse line + a woman's side-profile
+silhouette with leaf-shaped hair). The reference was broken down into its
+four component parts on a logo-concepts artifact
+(`https://claude.ai/code/artifact/368dd134-5ae8-4486-b9e2-f78ca89206cf`),
+several developed/combined concepts were explored there, and the user
+picked the plain profile-silhouette part on its own — explicitly with the
+leaf removed and rescaled to properly fill an icon tile (it was originally
+sized as one small reference chip in a 4-up breakdown row, not a real
+logo).
+
+- **The shape itself did not change** from what the user approved on the
+  artifact — same path, same curves. What changed for production use is
+  scale/position only: `transform="translate(31.04,-48) scale(6.08)"` on a
+  filled `#f5fbf9` path (`M46,18 C36,18 28,26 27,36 C26,42 22,44 18,46
+  C23,49 25,54 25,60 L28,70 C31,77 38,82 47,82 L47,66 C47,66 40,60 40,50
+  C40,38 46,30 56,28`) centers and enlarges the approved 100×100-space
+  shape into the real 512×512 icon canvas — the same ratio used
+  everywhere below, so every asset is pixel-consistent with the others,
+  not independently eyeballed per file.
+- **Every real place the old mark appeared was updated, not just the
+  source SVGs**:
+  - `apps/web/public/brand/icon.svg` (full-bleed square source) and
+    `icon-tile.svg` (rounded variant) — both re-drawn with the new path.
+  - All PNG exports regenerated from the updated `icon.svg` via a
+    Playwright screenshot render (matching the original generation
+    method) at every existing size: `icon-16/32/152/180/192/512/1024.png`.
+  - `apps/web/src/app/icon.png` (512×512) and `apps/web/src/app/apple-
+    icon.png` (180×180) — Next.js App Router's special favicon/apple-
+    touch-icon convention files — regenerated the same way, so the
+    browser tab favicon and iOS "Add to Home Screen" icon both changed
+    too, not just the PWA manifest icons.
+  - `apps/web/public/brand/lockup-teal.svg` (icon+wordmark horizontal
+    lockup) — its embedded icon mark updated with the same path, nested
+    inside the lockup's own existing tile-position/scale transform;
+    `lockup-teal.png` re-rendered from it (Playwright, since the file
+    uses a `foreignObject` + Google Fonts `@import` for the Arabic
+    wordmark text, same as its original generation).
+  - `apps/web/src/app/page.tsx` — the **one inline SVG in the actual
+    running app** (the home screen's hero/header logo, shared by both the
+    tap-to-continue intro pose and the settled small header logo via the
+    existing FLIP shared-element transform) — same path swapped in,
+    replacing the old stroke-based circle+tail group.
+  - Android launcher icons — all five `mipmap-{m,h,xh,xxh,xxxh}dpi/
+    ic_launcher.png` + `ic_launcher_round.png` (48/72/96/144/192px)
+    regenerated with Pillow (`LANCZOS` resize) from the new
+    `icon-1024.png`, the same method used to generate them originally.
+    No Android rebuild was run in this session (this sandbox still can't
+    reach `dl.google.com`, see the Android section above) — the next
+    `android-build.yml` CI run (triggered by any push touching
+    `android/**`) will bake these into a fresh APK automatically.
+- **Not changed**: `wordmark-teal.svg/png` and `wordmark-white.svg/png`
+  (text-only, no icon mark) were untouched. `apps/web/public/brand/
+  README.md`'s asset descriptions didn't reference the old mark's shape
+  specifically, so nothing there needed editing.
+- **Verified**: `npm run build --workspace=apps/web` (typecheck +
+  static export) clean. A local Playwright pass against the exported
+  `out/` served statically confirmed the new mark renders correctly in
+  the real running app at both the large "intro" hero pose and the small
+  settled header position (same FLIP transform, unmodified) — screenshot-
+  checked, not just assumed from the source edit. The regenerated PNGs
+  were also visually checked directly (1024px and 16px) before copying
+  them in, confirming the shape stays legible at the smallest real icon
+  size used anywhere (the 16px favicon).
+- **Not yet done**: `firebase deploy --only hosting` — built and
+  committed locally only, per this session's standing practice of
+  holding a live deploy for explicit go-ahead.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —
