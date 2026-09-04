@@ -2442,6 +2442,59 @@ Three more corrections, all requested together.
   `sites/mawid-app-d1d03/releases/1788533568407000`). No `firestore.rules`
   changes — this is client-side only.
 
+## Real bug: home screen's role cards invisible after "رجوع" from /signup or /find
+
+Reported with a screenshot: pressing "رجوع" from either the clinic
+account-creation screen or the patient account-creation screen landed
+back on `/` with the logo/wordmark/subtitle all visible but **both role
+cards completely gone** — fixed only by a manual refresh of the home
+screen. The previous attempt at a back-button fix (the `alwaysUseFallback`
+pass earlier in this file) addressed a different route's back button
+entirely and didn't touch this.
+
+- **Root cause, found by reading the animation code, not guessed**:
+  clicking a role card (`handleRoleClick` in `app/page.tsx`) sets
+  `leaving=true` (which drives every card's `opacity-0 scale-95
+  translate-y-3` exit class) *before* `router.push()` actually navigates
+  away — and nothing ever reset that state back to `false`. Two different
+  real mechanisms can then hand that exact stale `leaving=true` back to
+  the visitor on "رجوع", both producing the identical symptom (a hard
+  refresh fixes it because that forces a genuinely new mount with
+  `leaving` back at its default):
+  1. Next's client-side router can reuse this component instance from its
+     router cache on `router.back()` instead of remounting it fresh — a
+     mount-only effect would never re-run to reset the stale state.
+  2. Real mobile browsers routinely serve a same-origin back-navigation
+     straight from the **back-forward cache (bfcache)** — a literal
+     frozen snapshot of the JS heap/DOM taken at the instant the visitor
+     left, mid-animation, thawed back byte-for-byte on return.
+- **Fixed with two listeners, not one, to close both**: a `popstate`
+  listener resets `leaving`/`selectedHref` for the router-cache-reuse
+  case; a `pageshow` listener (checking `event.persisted`, the flag a
+  real bfcache restore sets) resets it for the bfcache case. Both are
+  registered once in a mount effect and just flip the same two pieces of
+  state back to their defaults — no interaction with anything else on the
+  page.
+- **Verified, not just built**: `tsc --noEmit` and `next build` both
+  clean. A Playwright pass against the exported `out/` directory drove
+  the literal reported scenario (tap a role card, click "رجوع", check
+  the cards immediately with no refresh) for both `/find` and `/signup`
+  — computed `opacity` read back as `1` in both cases, not just "visible"
+  by Playwright's own heuristic. Since this sandbox's headless Chromium
+  didn't reproduce the freeze on its own (bfcache eligibility differs
+  under automation), the fix's actual reset mechanism was confirmed
+  directly instead: manually froze a card mid-exit-animation (real
+  computed opacity ≈0.18, captured on purpose before the fade
+  completed), dispatched a synthetic `pageshow` event with
+  `persisted: true` exactly as a real bfcache restore would, and
+  confirmed the opacity immediately started climbing back toward `1`
+  (the CSS transition actually re-engaging), proving the reset code
+  path itself works correctly independent of which real mechanism
+  triggers it on an actual phone.
+- **Not yet deployed** — built and committed locally only, per this
+  session's standing practice of holding a live deploy for explicit
+  go-ahead.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

@@ -108,6 +108,37 @@ export default function Home() {
   const logoRef = useRef<HTMLSpanElement>(null);
   const decidedIntro = useRef(false);
 
+  // Real bug fixed here: clicking a role card sets leaving=true right
+  // before router.push() carries the visitor away to /signup or /find —
+  // but nothing ever reset it. Two different mechanisms can bring back
+  // that exact stale state on "رجوع", both closed by the two listeners
+  // below rather than just one: (1) Next's router cache can reuse this
+  // component instance instead of remounting it fresh on router.back(),
+  // so a mount-only effect would never re-run to reset it; (2) real
+  // mobile browsers commonly serve a back-navigation to a same-origin
+  // page straight from the back-forward cache (bfcache) — a literal
+  // frozen snapshot of the JS heap/DOM taken at the instant the visitor
+  // left, mid-animation, thawed byte-for-byte on return. Either way the
+  // symptom is identical (every role card stuck at opacity-0, invisible,
+  // until a hard refresh forces a genuinely new mount/document load) —
+  // popstate covers the first, pageshow (checking event.persisted, the
+  // flag a bfcache restore sets) covers the second.
+  useEffect(() => {
+    function resetExitAnimation() {
+      setLeaving(false);
+      setSelectedHref(null);
+    }
+    function onPageShow(e: PageTransitionEvent) {
+      if (e.persisted) resetExitAnimation();
+    }
+    window.addEventListener("popstate", resetExitAnimation);
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      window.removeEventListener("popstate", resetExitAnimation);
+      window.removeEventListener("pageshow", onPageShow);
+    };
+  }, []);
+
   useEffect(() => {
     return onAuthChange(async (user) => {
       if (!user || user.isAnonymous) {
