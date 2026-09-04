@@ -2309,6 +2309,58 @@ adds a UX layer in front of it.
   session's standing practice of holding a live deploy for explicit
   go-ahead.
 
+## Patient sign-out made non-destructive; shared confirm popup; gate copy trim
+
+Three corrections to the patient local-session work above, all requested
+together.
+
+- **Gate heading trimmed**: "إنشاء حساب سريع" → "إنشاء حساب", and its
+  one-line description ("بيانات بسيطة تُحفظ على جهازك فقط...") removed
+  entirely, per the user's explicit "لا حاجة لها".
+- **Sign-out is no longer destructive** — this is the real behavior
+  change. Previously `clearPatientSession()` wiped the stored profile
+  and active-booking pointer outright, so signing out and then "logging
+  back in" always created a brand-new, empty local account — exactly
+  what the user said they didn't want. `lib/patientLocal.ts` now
+  separates *stored* data from *active session*:
+  - The profile and active booking stay in `localStorage` forever (until
+    overwritten — see below), untouched by sign-out.
+  - A separate `mawid_patient_session_active` flag is what actually
+    gates whether `/find` shows the account or the gate.
+    `signOutPatient()` clears only this flag.
+  - `beginSession(input)` (what the gate calls on submit) compares the
+    typed name/phone/PIN against whatever's already stored: an exact
+    match resumes that same stored profile *and its active booking* untouched
+    — this is the PIN's actual purpose, not just a field to fill in. A
+    non-match (or nothing stored yet) overwrites with the newly-typed
+    profile and clears any previous active booking, since that booking
+    belonged to a different identity on this device.
+  - This means a plain "sign out, don't retype anything" visit still
+    shows the gate again (a real session boundary, as asked for), but
+    signing back in with the *same* details is invisible to the user —
+    their account and current booking are exactly as they left them.
+- **One shared confirm popup for every sign-out button in the app**:
+  `components/ConfirmPopup.tsx` (new, generic: title/message/confirm/
+  cancel) replaces `PatientAccountBar`'s own inline modal and is now also
+  wired into `/admin`'s and `/clinic`'s sign-out buttons, which
+  previously signed out immediately with no confirmation at all — per
+  the user's explicit ask to have the same one-click confirm step
+  everywhere, not just on the patient side.
+- **Verified, not just built**: `tsc --noEmit` and `next build` both
+  clean. A Playwright pass against the exported `out/` directory drove
+  the actual scenario this was about: create a profile + seed an active
+  booking, sign out, confirm the gate reappears (not an empty page or an
+  error), re-enter the *same* name/phone/PIN and confirm both the
+  account *and* the active-booking card come back exactly as before;
+  separately, signing out and entering *different* credentials correctly
+  starts a fresh profile with no leftover booking from the previous
+  identity. The admin/clinic confirm-popup wiring is mechanical reuse of
+  the same already-verified component and wasn't separately re-tested
+  live (needs an authenticated session) — flagged rather than assumed.
+- **Not yet deployed** — built and committed locally only, per this
+  session's standing practice of holding a live deploy for explicit
+  go-ahead.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

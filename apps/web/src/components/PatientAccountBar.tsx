@@ -2,20 +2,22 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { clearPatientSession, type PatientProfile } from "../lib/patientLocal";
+import ConfirmPopup from "./ConfirmPopup";
+import { signOutPatient, type PatientProfile } from "../lib/patientLocal";
 
 /** Shown on every patient-facing screen once a local profile exists —
  *  "مرحباً {name}" plus a sign-out control. Sign-out asks for one-click
- *  confirmation in a small popup (not a native confirm(), for consistent
- *  styling with the rest of the app), then clears the local session and
- *  returns to the home screen — same "clear + land on /" convention the
- *  clinic/admin sign-out buttons already use elsewhere in this app. */
+ *  confirmation, then ends the local session and returns to the home
+ *  screen — same "confirm + land on /" convention the clinic/admin
+ *  sign-out buttons use elsewhere in this app. It does NOT delete the
+ *  saved profile/booking data (see signOutPatient()) — entering the same
+ *  name/phone/PIN again on /find brings the same local account back. */
 export default function PatientAccountBar({ profile }: { profile: PatientProfile }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
 
   function handleConfirmSignOut() {
-    clearPatientSession();
+    signOutPatient();
     router.push("/");
   }
 
@@ -28,37 +30,14 @@ export default function PatientAccountBar({ profile }: { profile: PatientProfile
         تسجيل خروج
       </button>
 
-      {confirming && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6"
-          onClick={() => setConfirming(false)}
-        >
-          <div
-            dir="rtl"
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-xs rounded-2xl bg-white p-5 text-center shadow-xl"
-          >
-            <p className="mb-4 font-bold text-gray-800">هل تريد تسجيل الخروج؟</p>
-            <p className="mb-5 text-xs text-gray-500">سيتم مسح بيانات حسابك المحفوظة على هذا الجهاز.</p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirming(false)}
-                className="flex-1 rounded-lg border px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
-              >
-                إلغاء
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmSignOut}
-                className="flex-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-bold text-white hover:bg-red-700"
-              >
-                تأكيد الخروج
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmPopup
+        open={confirming}
+        title="هل تريد تسجيل الخروج؟"
+        message="يمكنك الرجوع لاحقاً بنفس بياناتك."
+        confirmLabel="تأكيد الخروج"
+        onConfirm={handleConfirmSignOut}
+        onCancel={() => setConfirming(false)}
+      />
     </div>
   );
 }

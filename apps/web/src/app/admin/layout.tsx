@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import BackButton from "../../components/BackButton";
 import AppBackdrop from "../../components/AppBackdrop";
+import ConfirmPopup from "../../components/ConfirmPopup";
 import {
   consumeIntentionalSignOut,
   isAdminUser,
@@ -30,6 +31,7 @@ type Status = "checking" | "signed-out" | "not-admin" | "ok";
  *  is kept only as a redirect for old links (see that file). */
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<Status>("checking");
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -66,6 +68,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [status, pathname, router]);
 
   async function handleSignOut() {
+    setConfirmingSignOut(false);
     markIntentionalSignOut();
     await signOutUser();
   }
@@ -104,7 +107,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           />
           <button
             type="button"
-            onClick={handleSignOut}
+            onClick={() => setConfirmingSignOut(true)}
             className="text-sm text-red-600 hover:underline"
           >
             تسجيل خروج
@@ -112,6 +115,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
         <h1 className="text-lg font-bold text-brand-700">لوحة تحكم المدير — موعد</h1>
       </header>
+
+      <ConfirmPopup
+        open={confirmingSignOut}
+        title="هل تريد تسجيل الخروج؟"
+        confirmLabel="تأكيد الخروج"
+        onConfirm={handleSignOut}
+        onCancel={() => setConfirmingSignOut(false)}
+      />
       <main className="relative p-6">{children}</main>
     </div>
   );

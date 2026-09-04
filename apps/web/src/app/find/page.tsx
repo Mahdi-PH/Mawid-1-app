@@ -16,9 +16,9 @@ import BackButton from "../../components/BackButton";
 import AppBackdrop from "../../components/AppBackdrop";
 import PatientAccountBar from "../../components/PatientAccountBar";
 import {
+  beginSession,
   getActiveBooking,
   getPatientProfile,
-  savePatientProfile,
   type ActiveBooking,
   type PatientProfile,
 } from "../../lib/patientLocal";
@@ -47,8 +47,9 @@ export default function FindClinicPage() {
     return (
       <PatientGate
         onDone={(p) => {
-          savePatientProfile(p);
-          setProfile(p);
+          const resumed = beginSession(p);
+          setProfile(resumed);
+          setActiveBooking(getActiveBooking());
         }}
       />
     );
@@ -78,12 +79,9 @@ function PatientGate({ onDone }: { onDone: (profile: PatientProfile) => void }) 
       <AppBackdrop />
       <div className="relative">
         <BackButton fallbackHref="/" className="mb-3 block text-sm text-brand-600 hover:underline" />
-        <h1 className="mb-2 text-xl font-bold" style={{ color: "#0F7A6C" }}>
-          إنشاء حساب سريع
+        <h1 className="mb-6 text-xl font-bold" style={{ color: "#0F7A6C" }}>
+          إنشاء حساب
         </h1>
-        <p className="mb-6 text-sm text-gray-500">
-          بيانات بسيطة تُحفظ على جهازك فقط، حتى لا تُعيد إدخالها في كل مرة تحجز فيها موعداً.
-        </p>
 
         <div className="space-y-3 rounded-xl border bg-white p-4">
           <label className="block text-sm">

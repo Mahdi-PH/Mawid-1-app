@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import BackButton from "../../components/BackButton";
 import AppBackdrop from "../../components/AppBackdrop";
+import ConfirmPopup from "../../components/ConfirmPopup";
 import { auth } from "../../lib/firebase/config";
 import { markIntentionalSignOut, signOutUser } from "../../lib/firebase/auth";
 import {
@@ -337,8 +338,10 @@ function SettingsTab({ clinic, onSaved }: { clinic: ClinicDoc; onSaved: (c: Clin
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 
   async function handleSignOut() {
+    setConfirmingSignOut(false);
     setSigningOut(true);
     try {
       // Marked before signOutUser() so clinic/layout.tsx's own auth effect
@@ -423,13 +426,21 @@ function SettingsTab({ clinic, onSaved }: { clinic: ClinicDoc; onSaved: (c: Clin
 
       <div className="border-t pt-4">
         <button
-          onClick={handleSignOut}
+          onClick={() => setConfirmingSignOut(true)}
           disabled={signingOut}
           className="w-full rounded-lg border border-red-300 px-4 py-2 text-red-600 hover:bg-red-50 disabled:opacity-50"
         >
           {signingOut ? "جارٍ تسجيل الخروج…" : "تسجيل خروج من الحساب"}
         </button>
       </div>
+
+      <ConfirmPopup
+        open={confirmingSignOut}
+        title="هل تريد تسجيل الخروج؟"
+        confirmLabel="تأكيد الخروج"
+        onConfirm={handleSignOut}
+        onCancel={() => setConfirmingSignOut(false)}
+      />
     </div>
   );
 }
