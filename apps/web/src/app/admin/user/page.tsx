@@ -59,8 +59,8 @@ function AdminUserDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uid]);
 
-  async function handleStatusChange(id: string, status: AppointmentStatus) {
-    await setAppointmentStatus(id, status);
+  async function handleStatusChange(appt: AppointmentDoc, status: AppointmentStatus) {
+    await setAppointmentStatus(appt, status);
     await reload();
   }
 
@@ -113,7 +113,7 @@ function AdminUserDetail() {
                 <td className="px-4 py-2">
                   <select
                     value={a.status}
-                    onChange={(e) => handleStatusChange(a.id, e.target.value as AppointmentStatus)}
+                    onChange={(e) => handleStatusChange(a, e.target.value as AppointmentStatus)}
                     className="rounded border px-2 py-1"
                   >
                     {(Object.keys(STATUS_LABEL) as AppointmentStatus[]).map((s) => (

@@ -87,6 +87,25 @@ service cloud.firestore {
         && data.text is string && data.text.size() > 0 && data.text.size() <= 4000;
     }
 
+    // The live patient-facing queue board (clinic_queue_slots/{apptId} —
+    // same id as its matching appointments doc). A signed-in patient may
+    // write only their OWN slot's entry, proven by an exists()+get() check
+    // against the real appointments doc it mirrors (same style as
+    // hasActiveGrant() above) — this is what lets bookSlot() create the
+    // very first "requested" entry for a brand-new booking, before the
+    // clinic has ever touched it.
+    function isValidQueueStatus(v) {
+      return v in ["requested", "booked", "arrived", "in_progress", "completed", "no_show", "cancelled"];
+    }
+    function matchingAppointment(data) {
+      return get(/databases/$(database)/documents/appointments/$(data.clinicSlug + '_' + data.date + '_' + data.startTime));
+    }
+    function ownsMatchingAppointment(data) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/appointments/$(data.clinicSlug + '_' + data.date + '_' + data.startTime)) &&
+        matchingAppointment(data).data.patientUid == request.auth.uid;
+    }
+
     // ---------------------------------------------------------------
     // users/{uid} — one document per registered account (admin or
     // clinic; anonymous patients are never written here, only to
@@ -216,6 +235,49 @@ service cloud.firestore {
                     || (isSignedIn()
                         && resource.data.patientUid == request.auth.uid
                         && resource.data.status == "completed");
+    }
+
+    // ---------------------------------------------------------------
+    // clinic_queue_slots/{apptId} — the live, PII-free queue board a
+    // patient's own /find/wait screen reads to show "دورك رقم N" / how
+    // many appointments are still ahead of theirs today. Same id as the
+    // appointments doc it mirrors. Holds only clinicSlug/date/startTime/
+    // status — never patientName/patientPhone — which is exactly what
+    // makes the public `allow read: if isSignedIn()` below safe: there is
+    // no PII in this collection to leak.
+    // ---------------------------------------------------------------
+    match /clinic_queue_slots/{slotId} {
+      allow read: if isSignedIn();
+
+      // Two writers, kept structurally separate:
+      //   - the owning clinic (any status, any time — its own reception
+      //     dashboard driving real status transitions);
+      //   - the booking patient, but ONLY for their own slot (proven by
+      //     ownsMatchingAppointment()), and ONLY setting the status their
+      //     real appointments doc already has — a patient can never write
+      //     appointments/{apptId}.status directly (that update rule is
+      //     ownsClinic-only), so requiring the queue-slot's status to
+      //     match it exactly means a patient can never forge their own
+      //     queue standing either, even on their own slot. This is what
+      //     lets bookSlot() create the very first entry (status
+      //     "requested", which is also what it just wrote to the real
+      //     appointments doc in the same call).
+      allow create: if isAdmin()
+                    || ownsClinic(request.resource.data.clinicSlug)
+                    || (ownsMatchingAppointment(request.resource.data)
+                        && isValidQueueStatus(request.resource.data.status)
+                        && request.resource.data.status == matchingAppointment(request.resource.data).data.status);
+
+      allow update: if isAdmin()
+                    || ownsClinic(resource.data.clinicSlug)
+                    || (ownsMatchingAppointment(resource.data)
+                        && request.resource.data.clinicSlug == resource.data.clinicSlug
+                        && request.resource.data.date == resource.data.date
+                        && request.resource.data.startTime == resource.data.startTime
+                        && isValidQueueStatus(request.resource.data.status)
+                        && request.resource.data.status == matchingAppointment(resource.data).data.status);
+
+      allow delete: if isAdmin();
     }
 
     // ---------------------------------------------------------------

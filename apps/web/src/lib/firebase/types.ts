@@ -215,3 +215,21 @@ export interface AccessGrantDoc {
   grantedAt: Timestamp;
   expiresAt: Timestamp;
 }
+
+// ---------------------------------------------------------------------
+// Live patient-facing queue board — clinic_queue_slots/{apptId} (same
+// deterministic id as its matching appointments/{apptId}). Holds only
+// clinicSlug/date/startTime/status, deliberately NO patientName/
+// patientPhone, so it's safe to let any signed-in patient read the whole
+// board for a given clinic/day (needed to compute "how many are ahead of
+// me") without exposing anyone else's identity — see /find/wait and
+// lib/firebase/queue.ts for how it's read/written.
+// ---------------------------------------------------------------------
+
+export interface ClinicQueueSlotDoc {
+  clinicSlug: string;
+  date: string;
+  startTime: string;
+  status: AppointmentStatus;
+  updatedAt: Timestamp;
+}

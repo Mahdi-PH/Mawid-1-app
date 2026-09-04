@@ -24,7 +24,7 @@ import {
 } from "../../../lib/firebase/firestore";
 import { generateDaySlots } from "../../../lib/firebase/slotEngine";
 import type { ClinicDoc } from "../../../lib/firebase/types";
-import { getPatientProfile, saveActiveBooking, type PatientProfile } from "../../../lib/patientLocal";
+import { getActiveBooking, getPatientProfile, saveActiveBooking, type PatientProfile } from "../../../lib/patientLocal";
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -51,6 +51,10 @@ function BookClinic() {
   const date = todayISO();
 
   const [clinic, setClinic] = useState<ClinicDoc | null | undefined>(undefined); // undefined = loading
+  // "menu" = the clinic landing page (تثبيت حجز / شاشة الانتظار); "book"
+  // = the existing slot-grid flow, now reached only from that menu.
+  const [view, setView] = useState<"menu" | "book">("menu");
+  const [activeBooking, setActiveBooking] = useState<ReturnType<typeof getActiveBooking> | undefined>(undefined);
   const [availability, setAvailability] = useState<Record<string, boolean>>({});
   const [availabilityLoading, setAvailabilityLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
@@ -85,6 +89,7 @@ function BookClinic() {
       setName(p.name);
       setPhone(p.phone);
     }
+    setActiveBooking(getActiveBooking());
   }, []);
 
   const slots = clinic ? generateDaySlots(clinic) : [];
@@ -145,13 +150,9 @@ function BookClinic() {
       });
       const apptId = getAppointmentId(clinic.slug, date, selected);
       const waitUrl = `/find/wait?clinic=${encodeURIComponent(clinic.slug)}&appt=${encodeURIComponent(apptId)}`;
-      saveActiveBooking({
-        clinicSlug: clinic.slug,
-        clinicName: clinic.clinicName,
-        apptId,
-        date,
-        startTime: selected,
-      });
+      const active = { clinicSlug: clinic.slug, clinicName: clinic.clinicName, apptId, date, startTime: selected };
+      saveActiveBooking(active);
+      setActiveBooking(active);
       setConfirmed(selected);
       setConfirmedApptId(apptId);
       setSelected(null);
@@ -239,90 +240,168 @@ function BookClinic() {
         {clinic.gov && ` · ${clinic.gov}${clinic.district ? " - " + clinic.district : ""}`}
       </p>
 
-      {confirmed && (
-        <div className="mb-6 space-y-3 rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">
-          <p>تم إرسال طلبك للموعد الساعة {confirmed} — بانتظار تأكيد العيادة.</p>
-          <p className="text-sm text-green-700">جارٍ الانتقال إلى شاشة الانتظار…</p>
-          {confirmedApptId && (
-            <button
-              onClick={() =>
-                router.push(
-                  `/find/wait?clinic=${encodeURIComponent(clinic.slug)}&appt=${encodeURIComponent(confirmedApptId)}`
-                )
-              }
-              className="inline-block rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700"
-            >
-              الانتقال الآن
-            </button>
-          )}
-        </div>
+      {view === "menu" && (
+        <ClinicMenu
+          clinic={clinic}
+          activeBooking={activeBooking}
+          onBook={() => setView("book")}
+          onWait={(waitUrl) => router.push(waitUrl)}
+        />
       )}
 
-      <h2 className="mb-3 font-bold">مواعيد اليوم المتاحة</h2>
-      {availabilityLoading && <p className="text-gray-500">جارٍ تحميل الأوقات…</p>}
-      {!availabilityLoading && slots.length === 0 && (
-        <p className="text-gray-400">لا توجد مواعيد متاحة اليوم.</p>
-      )}
-
-      <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
-        {slots.map((s) => {
-          const free = availability[s.startTime] ?? false;
-          const isSelected = selected === s.startTime;
-          return (
-            <button
-              key={s.startTime}
-              disabled={!free || availabilityLoading}
-              onClick={() => {
-                setSelected(s.startTime);
-                setConfirmed(null);
-                setError(null);
-              }}
-              className={
-                "rounded-lg border px-2 py-2 text-sm " +
-                (isSelected
-                  ? "border-brand-600 bg-brand-500 text-white"
-                  : free
-                    ? "border-brand-200 bg-white text-brand-700 hover:bg-brand-50"
-                    : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 line-through")
-              }
-            >
-              {s.startTime}
-            </button>
-          );
-        })}
-      </div>
-
-      {selected && (
-        <div className="mt-6 space-y-3 rounded-xl border bg-white p-4">
-          <div className="font-bold">تأكيد الحجز — {selected}</div>
-          <label className="block text-sm">
-            الاسم
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="mt-1 w-full rounded-lg border px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm">
-            رقم الهاتف
-            <input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              dir="ltr"
-              className="mt-1 w-full rounded-lg border px-3 py-2"
-            />
-          </label>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+      {view === "book" && (
+        <>
           <button
-            onClick={handleConfirm}
-            disabled={busy}
-            className="w-full rounded-lg bg-brand-500 px-4 py-2 text-white hover:bg-brand-600 disabled:opacity-50"
+            type="button"
+            onClick={() => setView("menu")}
+            className="mb-4 block text-sm text-brand-600 hover:underline"
           >
-            {busy ? "جارٍ الإرسال…" : "تأكيد طلب الموعد"}
+            ‹ رجوع لقائمة العيادة
           </button>
-        </div>
+
+          {confirmed && (
+            <div className="mb-6 space-y-3 rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">
+              <p>تم إرسال طلبك للموعد الساعة {confirmed} — بانتظار تأكيد العيادة.</p>
+              <p className="text-sm text-green-700">جارٍ الانتقال إلى شاشة الانتظار…</p>
+              {confirmedApptId && (
+                <button
+                  onClick={() =>
+                    router.push(
+                      `/find/wait?clinic=${encodeURIComponent(clinic.slug)}&appt=${encodeURIComponent(confirmedApptId)}`
+                    )
+                  }
+                  className="inline-block rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700"
+                >
+                  الانتقال الآن
+                </button>
+              )}
+            </div>
+          )}
+
+          <h2 className="mb-3 font-bold">مواعيد اليوم المتاحة</h2>
+          {availabilityLoading && <p className="text-gray-500">جارٍ تحميل الأوقات…</p>}
+          {!availabilityLoading && slots.length === 0 && (
+            <p className="text-gray-400">لا توجد مواعيد متاحة اليوم.</p>
+          )}
+
+          <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+            {slots.map((s) => {
+              const free = availability[s.startTime] ?? false;
+              const isSelected = selected === s.startTime;
+              return (
+                <button
+                  key={s.startTime}
+                  disabled={!free || availabilityLoading}
+                  onClick={() => {
+                    setSelected(s.startTime);
+                    setConfirmed(null);
+                    setError(null);
+                  }}
+                  className={
+                    "rounded-lg border px-2 py-2 text-sm " +
+                    (isSelected
+                      ? "border-brand-600 bg-brand-500 text-white"
+                      : free
+                        ? "border-brand-200 bg-white text-brand-700 hover:bg-brand-50"
+                        : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 line-through")
+                  }
+                >
+                  {s.startTime}
+                </button>
+              );
+            })}
+          </div>
+
+          {selected && (
+            <div className="mt-6 space-y-3 rounded-xl border bg-white p-4">
+              <div className="font-bold">تأكيد الحجز — {selected}</div>
+              <label className="block text-sm">
+                الاسم
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2"
+                />
+              </label>
+              <label className="block text-sm">
+                رقم الهاتف
+                <input
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  dir="ltr"
+                  className="mt-1 w-full rounded-lg border px-3 py-2"
+                />
+              </label>
+              {error && <p className="text-sm text-red-600">{error}</p>}
+              <button
+                onClick={handleConfirm}
+                disabled={busy}
+                className="w-full rounded-lg bg-brand-500 px-4 py-2 text-white hover:bg-brand-600 disabled:opacity-50"
+              >
+                {busy ? "جارٍ الإرسال…" : "تأكيد طلب الموعد"}
+              </button>
+            </div>
+          )}
+        </>
       )}
       </div>
     </main>
+  );
+}
+
+/** The clinic's own landing menu — reached the moment a patient enters a
+ *  specific clinic (from /find's search results or a shared booking
+ *  link), before anything else: two clear entry points, "تثبيت حجز" (the
+ *  existing slot-grid booking flow, unchanged, now one step behind this
+ *  menu instead of the immediate first thing shown) and "شاشة الانتظار"
+ *  (the patient's live queue screen for THIS clinic specifically — only
+ *  enabled when the local ActiveBooking pointer actually points at a
+ *  booking with this same clinic, so it can't offer a queue screen for a
+ *  booking that doesn't exist here). */
+function ClinicMenu({
+  clinic,
+  activeBooking,
+  onBook,
+  onWait,
+}: {
+  clinic: ClinicDoc;
+  activeBooking: ReturnType<typeof getActiveBooking> | undefined;
+  onBook: () => void;
+  onWait: (waitUrl: string) => void;
+}) {
+  const hasActiveBookingHere = !!activeBooking && activeBooking.clinicSlug === clinic.slug;
+  const waitUrl = hasActiveBookingHere
+    ? `/find/wait?clinic=${encodeURIComponent(clinic.slug)}&appt=${encodeURIComponent(activeBooking!.apptId)}`
+    : "";
+
+  return (
+    <div className="space-y-3">
+      <button
+        type="button"
+        onClick={onBook}
+        className="w-full rounded-xl bg-brand-500 px-4 py-4 text-right text-lg font-bold text-white hover:bg-brand-600"
+      >
+        تثبيت حجز
+        <div className="text-sm font-normal text-white/80">اختر موعداً اليوم وأدخل بياناتك</div>
+      </button>
+
+      <button
+        type="button"
+        disabled={!hasActiveBookingHere}
+        onClick={() => hasActiveBookingHere && onWait(waitUrl)}
+        className={
+          "w-full rounded-xl border-2 px-4 py-4 text-right text-lg font-bold " +
+          (hasActiveBookingHere
+            ? "border-brand-500 text-brand-700 hover:bg-brand-50"
+            : "cursor-not-allowed border-gray-200 text-gray-300")
+        }
+        style={hasActiveBookingHere ? { borderColor: "#0F7A6C", color: "#0F7A6C" } : undefined}
+      >
+        شاشة الانتظار
+        <div className={"text-sm font-normal " + (hasActiveBookingHere ? "text-brand-600/80" : "text-gray-300")}>
+          {hasActiveBookingHere ? "تابع دورك وحالة موعدك مباشرة" : "لا يوجد حجز نشط لديك في هذه العيادة اليوم"}
+        </div>
+      </button>
+    </div>
   );
 }

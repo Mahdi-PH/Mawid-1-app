@@ -20,6 +20,7 @@ import {
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth, db } from "./config";
 import { compressLicenseImageToDataUrl } from "./licenseImage";
+import { syncQueueSlot } from "./queue";
 import { generateDaySlots, resolveSlotEndTime } from "./slotEngine";
 import { OCCUPYING_STATUSES } from "./types";
 import type { AppointmentDoc, AppointmentStatus, ClinicDoc, ClinicStatus, UserDoc } from "./types";
@@ -404,10 +405,18 @@ export async function bookSlot(input: BookSlotInput): Promise<void> {
     };
     tx.set(ref, data);
   });
+  // Best-effort — see syncQueueSlot()'s own comment for why a failure
+  // here doesn't (and shouldn't) fail the booking itself, which has
+  // already committed by this point.
+  syncQueueSlot(input.clinicSlug, input.date, input.startTime, "requested");
 }
 
-export async function setAppointmentStatus(appointmentId: string, status: AppointmentStatus): Promise<void> {
-  await updateDoc(doc(db, "appointments", appointmentId), { status, updatedAt: serverTimestamp() });
+export async function setAppointmentStatus(
+  appt: Pick<AppointmentDoc, "id" | "clinicSlug" | "date" | "startTime">,
+  status: AppointmentStatus
+): Promise<void> {
+  await updateDoc(doc(db, "appointments", appt.id), { status, updatedAt: serverTimestamp() });
+  syncQueueSlot(appt.clinicSlug, appt.date, appt.startTime, status);
 }
 
 export async function deleteAppointment(appointmentId: string): Promise<void> {

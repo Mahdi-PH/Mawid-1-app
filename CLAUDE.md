@@ -2803,6 +2803,163 @@ gap above (a real clinic completing a real appointment while a real
 patient watches the prompt appear) is unaffected by deploying — still
 worth doing once there's a real clinic/patient pair to test with.
 
+## Clinic landing menu + live queue-position waiting screen
+
+The user's next request, framed as a real-time/UX re-architecture: move
+"شاشة الانتظار" so it's reachable only after entering a specific clinic's
+own page (two clear buttons there — "تثبيت حجز" / "شاشة الانتظار" — not
+straight into the booking grid), and make the waiting screen itself show
+the clinic name, the patient's own name, their live queue number, and
+how many people (or how much time) are still ahead of them — all synced
+live with whatever the clinic's own reception dashboard does.
+
+- **New collection: `clinic_queue_slots/{apptId}`** (same deterministic
+  id as its matching `appointments/{apptId}` doc) — a small, deliberately
+  **PII-free mirror**: `clinicSlug`/`date`/`startTime`/`status` only,
+  never `patientName`/`patientPhone`. That absence of PII is what makes
+  `allow read: if isSignedIn()` safe for the whole collection — any
+  patient can read a clinic's entire day's queue board (needed to count
+  "how many are ahead of me") without ever seeing who anyone else is,
+  the same privacy posture `getSlotAvailability()` already established
+  for the booking grid, just applied to a live board instead of a
+  one-shot per-slot check. `lib/firebase/queue.ts` (new) holds:
+  - `syncQueueSlot()` — best-effort (own try/catch, never throws) write,
+    called from two places that already know the real, current status:
+    `bookSlot()` right after its transaction commits (writes the very
+    first "requested" entry) and `setAppointmentStatus()` on every
+    status change the clinic makes. Neither call blocks or fails its
+    real operation if this write fails — the board is a live convenience
+    view, not the source of truth (that stays `appointments/{apptId}`,
+    unchanged, still governed by its own existing rules).
+  - `watchClinicQueue(clinicSlug, date, cb)` — one live `onSnapshot`
+    query (`clinicSlug == X && date == Y`, two equality filters, no
+    composite index needed — same shape `listAppointmentsForClinic()`
+    already uses successfully) instead of the old capacity check's one
+    `getDoc()` per possible slot. A real efficiency win, not just a
+    refactor: for a clinic with e.g. 30 slots, the old
+    `getSlotAvailability()`-based "X of Y booked" stat on `/find/wait`
+    cost up to 30 reads on every load; the new board costs one query
+    that scales with *actual appointments today*, not *possible slots
+    today*.
+  - `computeQueueStanding(slots, myStartTime)` — pure: `aheadCount` =
+    slots with an earlier `startTime` still in a non-terminal status
+    (`requested`/`booked`/`arrived`/`in_progress` — a completed/
+    cancelled/no-show slot is out of the way and shouldn't inflate
+    anyone's wait estimate); `position` = `aheadCount + 1`. Works even if
+    the patient's own slot-doc write hasn't landed yet, since it only
+    needs to compare *other* slots against the patient's own known
+    `startTime`.
+- **`firestore.rules`**: two writers into the same collection, kept
+  structurally honest —
+  - the owning clinic (`ownsClinic()`) may write any slot, any status,
+    any time (its own reception dashboard driving real transitions);
+  - a signed-in patient may create/update **only their own slot**,
+    proven the same way `hasActiveGrant()`/the Passport feature's rules
+    already prove ownership elsewhere in this file: `exists()` +
+    `get()` against the real `appointments/{apptId}` doc, checking
+    `patientUid == request.auth.uid`. Critically, the status they may
+    write **must equal** their real appointment's own current status
+    (`request.resource.data.status ==
+    matchingAppointment(...).data.status`) — a patient can never write
+    `appointments/{apptId}.status` directly (that rule stays
+    `ownsClinic()`-only, unchanged), so requiring the mirror to match it
+    exactly means a patient can never self-advance or forge their own
+    queue standing either, even on a document they're otherwise allowed
+    to touch. `delete` stays admin-only, matching every other collection
+    in this file.
+  - **A real bug caught and fixed by the emulator test itself, before
+    this shipped**: the first version of this rule let a patient set
+    *any* valid status on their own slot (not just whatever their real
+    appointment already had) — a live assertion ("patientA cannot
+    self-advance their own queue-slot status") caught this immediately
+    (it unexpectedly succeeded), which is exactly why the
+    `matchingAppointment(...).data.status` equality check above was
+    added; re-run after the fix, denied as intended.
+- **`/find/book` restructured into a two-step clinic landing page**: a
+  new `view: "menu" | "book"` state, default `"menu"` — entering a
+  clinic now shows its name/info plus two large buttons, **"تثبيت حجز"**
+  (switches to the existing, unchanged slot-grid/booking flow — same
+  component tree, same `bookSlot()` call, same auto-navigate-to-
+  `/find/wait`-on-success behavior, just one tap behind this menu
+  instead of the very first thing shown) and **"شاشة الانتظار"**
+  (enabled only when the local `ActiveBooking` pointer's `clinicSlug`
+  matches *this* clinic — a patient with a booking elsewhere, or no
+  booking at all, sees it correctly disabled with "لا يوجد حجز نشط لديك
+  في هذه العيادة اليوم" rather than a dead/misleading button). A small
+  in-page "‹ رجوع لقائمة العيادة" link returns from the booking view to
+  the menu without leaving the clinic page entirely — the page's own top
+  `BackButton` (→ `/find`) is left untouched for "actually leave this
+  clinic," so the two "back" actions stay distinct and predictable.
+- **`/find/wait` redesigned**: now shows the patient's own name
+  (`appt.patientName`, previously never displayed here) alongside the
+  clinic name, plus a new two-tile "دورك رقم N" / "أمامك N مراجع" stat
+  block and an "الوقت المتوقع للانتظار: ~M دقيقة" estimate
+  (`aheadCount * clinic.slotMin`, explicitly labeled "~" /estimated,
+  never claimed as exact) — replacing the old "X من Y محجوز" capacity
+  bar entirely, which answered a less useful question than "how long
+  until *my* turn." Both the appointment's own live status
+  (`watchAppointment`) and the new queue board (`watchClinicQueue`) are
+  independent `onSnapshot` subscriptions, so a clinic marking someone
+  else "completed" on its reception dashboard shrinks every later
+  patient's `aheadCount` on their own already-open `/find/wait` tab with
+  no manual refresh — the actual "real-time sync with what the
+  reception dashboard does" the request asked for.
+- **`setAppointmentStatus()`'s signature changed** (`firestore.ts`) —
+  from `(appointmentId, status)` to `(appt: Pick<AppointmentDoc,"id"|
+  "clinicSlug"|"date"|"startTime">, status)`, since syncing the queue
+  board needs those three extra fields and they were already sitting in
+  the caller's own hands (the full `AppointmentDoc` row) at every real
+  call site — `/clinic`'s reception tab and `/admin/user`'s status
+  dropdown, both updated to pass the row instead of just its id. The
+  unrelated Postgres/`apps/server`-track `setAppointmentStatus()` in
+  `lib/api/client.ts` (used only by the legacy, unhosted
+  `/dashboard`/`/display` pages) was untouched — different function,
+  different track.
+- **Verified against a real, locally-running Firestore emulator**
+  (same jar/technique as every rules change in this file) — a dedicated
+  7-assertion script (two patients, one clinic owner, real anonymous
+  Firebase Auth identities) confirmed: a patient can create their own
+  queue-slot with a status matching their real appointment; a patient
+  cannot create one for someone else's appointment; a patient cannot
+  forge a queue-slot with no matching appointment at all; a patient
+  cannot self-advance their own slot's status (the bug/fix above); the
+  clinic owner can update any slot, including creating one from scratch;
+  a different patient still can't touch another patient's slot even
+  after the clinic has written to it. All 7 passed. Emulator + scratch
+  test script fully cleaned up after.
+- `tsc --noEmit` (via `next build`) and the static export build are both
+  clean.
+- **Not independently live-verified**: a local Playwright pass against
+  the exported `out/` confirmed no *uncaught* page errors and correct
+  fallback rendering (the patient gate still shows on `/find/book`; the
+  not-found state still shows on `/find/wait` with no `?appt=`) — one
+  expected, pre-existing console error appeared (`FirebaseError: Failed
+  to get document because the client is offline`, from `/find/wait`'s
+  own unmodified `getClinic()` call, which has no `.catch()` and was
+  already exactly this shape before today's changes) — this sandbox's
+  network egress to Firebase's own domains isn't reliably reachable
+  from a bare headless browser outside the request-interception pattern
+  used elsewhere in this file for live dev-server passes, so the actual
+  live queue-count-decreasing-in-real-time behavior was **not**
+  exercised against the real project this pass — same class of gap as
+  the two features immediately above this one in this file. Recommended
+  before treating this as fully verified: two real patients booking
+  consecutive slots at a real clinic, both watching `/find/wait`, then
+  the clinic marking the earlier one `"arrived"`/`"in_progress"`/
+  `"completed"` on its own dashboard and confirming the later patient's
+  `aheadCount` drops live with no refresh.
+- **Deliberately out of scope this pass**: no cleanup of a
+  `clinic_queue_slots` doc when its matching appointment is later
+  deleted (see the patient end-of-visit deletion feature above) — a
+  deleted-but-still-"completed"-flagged queue-slot entry is harmless for
+  `computeQueueStanding()` (completed slots never count as "ahead"
+  anyway), so this was left as a small, disclosed bit of intentionally
+  unswept data rather than widening `deleteAppointment()`'s signature
+  for a cosmetic-only gap.
+- **Not deployed yet** — committed locally only, per this project's
+  standing practice of holding `firebase deploy` for the user's explicit
+  go-ahead.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —
