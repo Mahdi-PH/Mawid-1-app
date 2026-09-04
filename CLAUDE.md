@@ -2022,9 +2022,10 @@ logo).
   were also visually checked directly (1024px and 16px) before copying
   them in, confirming the shape stays legible at the smallest real icon
   size used anywhere (the 16px favicon).
-- **Not yet done**: `firebase deploy --only hosting` — built and
-  committed locally only, per this session's standing practice of
-  holding a live deploy for explicit go-ahead.
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788518884974000`). No `firestore.rules`
+  changes — this is client-side/asset only.
 
 ## Next steps if resumed
 
