@@ -79,11 +79,22 @@ function BookClinic() {
       setClinic(null);
       return;
     }
-    getClinic(slug).then((c) => {
-      const live = c && c.status === "approved" && isSubscriptionActive(c);
-      setClinic(live ? c : null);
-      if (live && c) reloadAvailability(c);
-    });
+    // getSlotAvailability()'s per-slot reads rely on firestore.rules' "does
+    // this doc exist" clause, which requires isSignedIn() — a visitor who
+    // has never booked anything yet (no anonymous session established)
+    // would otherwise have every single slot check denied and misread as
+    // "taken", showing a fully-booked grid that's actually just fully
+    // signed-out. ensurePatientSession() is idempotent, so this is a no-op
+    // for a returning visitor who already has one.
+    ensurePatientSession()
+      .catch(() => {})
+      .then(() =>
+        getClinic(slug).then((c) => {
+          const live = c && c.status === "approved" && isSubscriptionActive(c);
+          setClinic(live ? c : null);
+          if (live && c) reloadAvailability(c);
+        })
+      );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 

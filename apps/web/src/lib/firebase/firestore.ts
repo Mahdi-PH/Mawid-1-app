@@ -299,14 +299,26 @@ export function getAppointmentId(clinicSlug: string, date: string, startTime: st
  *  patient "arrived"/"in_progress"; onSnapshot pushes the change instead.
  *  Firestore rules already let a patient read their own appointment doc in
  *  full, so no rules change was needed for this. Returns the unsubscribe
- *  function. */
+ *  function.
+ *
+ *  The error callback matters as much as the success one here: opening
+ *  this link for an appointment that isn't yours (or that never existed)
+ *  hits firestore.rules' permission-denied, same as any not-found case
+ *  from the visitor's point of view — without this, onSnapshot logs the
+ *  error to the console and just stops, leaving onChange() never called
+ *  again and the page stuck on "جارٍ التحميل" forever instead of falling
+ *  back to the not-found state. */
 export function watchAppointment(
   appointmentId: string,
   onChange: (appt: AppointmentDoc | null) => void
 ): () => void {
-  return onSnapshot(doc(db, "appointments", appointmentId), (snap) => {
-    onChange(snap.exists() ? ({ id: snap.id, ...snap.data() } as AppointmentDoc) : null);
-  });
+  return onSnapshot(
+    doc(db, "appointments", appointmentId),
+    (snap) => {
+      onChange(snap.exists() ? ({ id: snap.id, ...snap.data() } as AppointmentDoc) : null);
+    },
+    () => onChange(null)
+  );
 }
 
 /** Per-slot availability for the patient-facing booking grid, without ever

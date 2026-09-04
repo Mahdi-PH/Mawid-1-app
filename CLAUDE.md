@@ -2088,23 +2088,64 @@ demo artifact already did.
   different device, or a cleared session) correctly gets denied by the
   unchanged rules — there's no patient login system, so that's the same
   expected boundary as everywhere else in this track.
-- **Verified**: `tsc --noEmit` and `next build` both clean, including the
-  new `/find/wait` route. The seven status badge colors were rendered
-  directly against the app's own compiled Tailwind CSS (not assumed from
-  class names) and confirmed visually distinct. `/find/wait`'s
-  not-found state and `/find/book`'s existing behavior were both
-  confirmed still rendering correctly against the static export.
-  **Not run against the live project this time**: the earlier
-  service-account key was deleted after the last deploy per this
-  session's standing practice, and no fresh one was shared for this
-  change — so the real booking → live status update path (which needs a
-  real approved clinic + a real second tab) wasn't exercised end-to-end
-  against `mawid-app-d1d03` the way earlier features in this file were.
-  Flagged here rather than silently claimed as fully tested; ask for
-  a live E2E pass before/along with deploying if that matters here.
-- **Not yet deployed** — built and committed locally only, per this
-  session's standing practice of holding a live deploy for explicit
-  go-ahead.
+- **Two real, previously-undiscovered bugs found by the live E2E pass
+  below, not by code review alone** — both fixed before deploying:
+  1. **Every slot on `/find/book` showed as unavailable for a
+     brand-new visitor** (not just this session's test clinic — this
+     was already live in production). Root cause:
+     `getSlotAvailability()`'s per-slot existence checks rely on
+     `firestore.rules`' `(isSignedIn() && resource == null)` clause,
+     which — as its name says — still requires `isSignedIn()`. The
+     booking page only ever called `ensurePatientSession()` at
+     confirm-time, never before loading the grid, so a visitor who had
+     never booked anything yet (no anonymous session established) had
+     every single slot's existence check denied outright and
+     misread as "taken" — every slot line-through, forever, for that
+     visitor. **Confirmed as a real regression, not assumed**: reverted
+     the fix, re-ran the exact same live test against the real project,
+     watched every slot stay unavailable after a 20-second wait; restored
+     the fix, re-ran, all slots came back available. Fixed by calling
+     `ensurePatientSession()` (idempotent — a no-op for a returning
+     visitor who already has a session) before `getClinic()`/
+     `reloadAvailability()` fire, not just before the final booking write.
+  2. **`/find/wait` hung on "جارٍ التحميل" forever for anyone who
+     wasn't the booking patient**, instead of falling back to its
+     not-found state. `watchAppointment()`'s `onSnapshot()` call had no
+     error callback — a `permission-denied` (the exact, correct outcome
+     for a different patient trying to read someone else's appointment)
+     just logged to the console and silently stopped delivering updates,
+     leaving `onChange()` never called again. **The privacy boundary
+     itself was never broken** — rules correctly denied the read in
+     every case — this was purely a UX bug in how the denial was
+     handled client-side, but a confusing one (an infinite spinner
+     instead of an honest "not found"). Fixed by adding an error
+     callback to `onSnapshot()` that calls `onChange(null)`, so any
+     denied/failed read now falls back to the same not-found UI a
+     nonexistent appointment id already showed.
+- **Verified end-to-end against the live `mawid-app-d1d03` project**,
+  not just locally: a temporary approved test clinic (`e2e-wait-test`,
+  created directly via the service-account/Firestore-REST technique used
+  throughout this session, deleted after) was exercised through the real
+  running app (`next dev` + the Firebase-domain Playwright interception
+  pattern used elsewhere in this file) — a real anonymous patient booked
+  a real slot, the second window opened and showed the correct initial
+  "بانتظار تأكيد" status, the appointment's status was then changed
+  server-side to `in_progress` and the **already-open** second window
+  updated to "عند الطبيب" with no page refresh (the core live-update
+  claim, actually observed, not assumed from the code), and a second,
+  unrelated anonymous patient opening the same wait-screen URL was
+  correctly shown "تعذّر العثور على هذا الحجز" rather than any of the
+  first patient's data. All test data (the clinic doc and both
+  appointment docs created during the run) were deleted after and the
+  live `clinics` collection was read back showing only the user's own
+  real clinic doc (`mahdi`) — read-before-delete, per the standing rule.
+  The seven status badge colors were also rendered directly against the
+  app's own compiled Tailwind CSS and confirmed visually distinct.
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788522793839000`). No `firestore.rules`
+  changes — every fix here was client-side (the rules were already
+  correctly strict; the bugs were in how the app called/handled them).
 
 ## Next steps if resumed
 
