@@ -23,6 +23,7 @@ import {
 } from "../../../lib/firebase/firestore";
 import { generateDaySlots } from "../../../lib/firebase/slotEngine";
 import type { ClinicDoc } from "../../../lib/firebase/types";
+import { getPatientProfile, saveActiveBooking } from "../../../lib/patientLocal";
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -67,6 +68,17 @@ function BookClinic() {
     },
     []
   );
+
+  // Prefill from the local patient profile (set once on /find) so a
+  // returning patient never has to retype name/phone here — still
+  // editable, in case this booking is for someone else.
+  useEffect(() => {
+    const profile = getPatientProfile();
+    if (profile) {
+      setName(profile.name);
+      setPhone(profile.phone);
+    }
+  }, []);
 
   const slots = clinic ? generateDaySlots(clinic) : [];
 
@@ -126,6 +138,13 @@ function BookClinic() {
       });
       const apptId = getAppointmentId(clinic.slug, date, selected);
       const waitUrl = `/find/wait?clinic=${encodeURIComponent(clinic.slug)}&appt=${encodeURIComponent(apptId)}`;
+      saveActiveBooking({
+        clinicSlug: clinic.slug,
+        clinicName: clinic.clinicName,
+        apptId,
+        date,
+        startTime: selected,
+      });
       setConfirmed(selected);
       setConfirmedApptId(apptId);
       setSelected(null);

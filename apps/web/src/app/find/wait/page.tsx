@@ -15,11 +15,15 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import BackButton from "../../../components/BackButton";
 import AppBackdrop from "../../../components/AppBackdrop";
+import PatientAccountBar from "../../../components/PatientAccountBar";
 import { ensurePatientSession } from "../../../lib/firebase/auth";
 import { getClinic, getSlotAvailability, watchAppointment } from "../../../lib/firebase/firestore";
 import { generateDaySlots } from "../../../lib/firebase/slotEngine";
 import { STATUS_COLOR, STATUS_LABEL, STATUS_PATIENT_MESSAGE } from "../../../lib/firebase/statusMeta";
 import type { AppointmentDoc, ClinicDoc } from "../../../lib/firebase/types";
+import { clearActiveBooking, getActiveBooking, getPatientProfile, type PatientProfile } from "../../../lib/patientLocal";
+
+const TERMINAL_STATUSES = new Set(["completed", "cancelled", "no_show"]);
 
 export default function WaitPage() {
   return (
@@ -44,10 +48,23 @@ function Wait() {
   const [clinic, setClinic] = useState<ClinicDoc | null>(null);
   const [appt, setAppt] = useState<AppointmentDoc | null | undefined>(undefined); // undefined = loading
   const [capacity, setCapacity] = useState<{ booked: number; total: number } | null>(null);
+  const [profile, setProfile] = useState<PatientProfile | null>(null);
+
+  useEffect(() => {
+    setProfile(getPatientProfile());
+  }, []);
 
   useEffect(() => {
     if (clinicSlug) getClinic(clinicSlug).then(setClinic);
   }, [clinicSlug]);
+
+  // Once the visit is over, this is no longer "your current booking" —
+  // stop offering it as the fast way back in from /find.
+  useEffect(() => {
+    if (!appt || !TERMINAL_STATUSES.has(appt.status)) return;
+    const active = getActiveBooking();
+    if (active?.apptId === appt.id) clearActiveBooking();
+  }, [appt]);
 
   // "مدى اكتمال الحجوزات" — how full today's schedule is. Computed the same
   // privacy-safe way the booking grid already does (per-slot existence
@@ -116,6 +133,8 @@ function Wait() {
       <AppBackdrop />
       <div className="relative">
         <BackButton fallbackHref="/find" label="رجوع للبحث" />
+
+        {profile && <div className="mt-3"><PatientAccountBar profile={profile} /></div>}
 
         <h1 className="mt-3 text-xl font-bold" style={{ color: "#0F7A6C" }}>
           {clinic?.clinicName ?? appt.clinicSlug}

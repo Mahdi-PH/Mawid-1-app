@@ -2234,6 +2234,81 @@ requested together.
   `sites/mawid-app-d1d03/releases/1788526852746000`). No `firestore.rules`
   changes.
 
+## Patient local session: entry gate, auto-resume, sign-out, active-booking shortcut
+
+A large, explicitly-specified request: give the مراجع (patient) side a
+"session" so a returning visitor doesn't retype their info every time,
+with a sign-out control and specific back-navigation behavior. Scoped by
+the request's own explicit instruction to use **local storage** — so
+this is a per-browser convenience layer built on top of the existing
+anonymous-patient architecture, not a new backend account system. That
+matters because it was already explicitly decided (and documented above,
+"Two-sided product direction") that **patients never get a real account,
+anonymous forever** — this feature doesn't reopen that decision, it just
+adds a UX layer in front of it.
+
+- **`lib/patientLocal.ts`** (new): plain `localStorage` helpers for a
+  `PatientProfile` (`name`, `phone`, `pin`) and an `ActiveBooking`
+  pointer (`clinicSlug`, `clinicName`, `apptId`, `date`, `startTime`).
+  **The PIN has no server-side verification at all** — it's a locally-
+  stored field only, collected once and never checked against anything.
+  Disclosed here rather than implied to be real security, the same way
+  this project has always flagged its other local-only/no-backend-check
+  limitations (e.g. the demo artifact's plaintext passwords).
+- **`/find` gained an entry gate**: a first-time visitor sees a small
+  "إنشاء حساب سريع" form (اسم / رقم هاتف / رمز PIN من 4 أرقام) before the
+  clinic search UI renders at all. Submitting saves the profile to
+  `localStorage` and reveals the search UI in the same render pass (no
+  route change, so browser history isn't affected) — see `PatientGate`
+  in `find/page.tsx`. A returning visitor with a saved profile skips this
+  entirely and lands straight on the search UI, satisfying "يدخل إلى
+  حسابه المسبق مباشرة... دون إعادة طلب معلومات التسجيل" by construction.
+- **`components/PatientAccountBar.tsx`** (new): "مرحباً {name}" + a
+  "تسجيل خروج" button, shown on `/find`, `/find/wait`, and
+  `/find/requests`. Clicking sign-out opens a small centered confirm
+  popup (custom-built, not a native `confirm()`, for consistent styling)
+  with "تأكيد الخروج" / "إلغاء" — confirming calls
+  `clearPatientSession()` (wipes both the profile and the remembered
+  active booking) and navigates home, the same "clear + land on `/`"
+  convention `/clinic` and `/admin`'s own sign-out buttons already use.
+- **`/find/book` prefills from the saved profile** (still editable, in
+  case the booking is for someone else) instead of asking again, and
+  saves an `ActiveBooking` pointer to `localStorage` the moment a booking
+  succeeds.
+- **"موعدك الحالي" card on `/find`**: when an `ActiveBooking` pointer
+  exists, a prominent card above the search box links straight into
+  `/find/wait` for it — the "البقاء عليها أو الرجوع إليها بسلاسة" ask,
+  answered without a Firestore query (the pointer alone is enough to
+  build the link). `/find/wait` clears that pointer once the appointment
+  reaches a terminal status (`completed`/`cancelled`/`no_show`) via its
+  existing live listener, so a finished visit stops being offered as
+  "your current booking."
+- **Navigation stack**: turned out to already match the requested
+  behavior with no changes needed, once verified rather than assumed —
+  `BackButton`'s existing `router.back()`-prefers-real-history behavior
+  already sends `/find` → `/` and `/find/book`|`/find/wait`|`/find/
+  requests` → `/find` (unchanged fallbacks), and since the new gate is a
+  conditional render inside `/find` rather than a separate route, it
+  never adds an extra history entry to skip over.
+- **Verified, not just built**: `tsc --noEmit` and `next build` both
+  clean. A full Playwright pass against the exported `out/` directory
+  drove the entire flow — fresh visit shows the gate; submitting it
+  reveals the account bar; a reload skips the gate (profile persisted);
+  clicking the home screen's search card a second time lands directly on
+  `/find` with no gate (real link-based navigation, not just direct URL
+  loads, to exercise the actual back-button/history path a visitor would
+  take); sign-out shows the confirm popup, clears storage, and lands on
+  `/`; the gate reappears on the next visit after that. The "موعدك
+  الحالي" card was checked by seeding a fake `ActiveBooking` pointer
+  directly. Not re-run against a live booking end-to-end this pass (no
+  service-account key on hand for this change) — the booking/prefill/
+  active-booking-save code paths reuse `bookSlot()`/`ensurePatientSession()`
+  unchanged, so risk is concentrated in the new local-only UI, which is
+  what was actually exercised live above.
+- **Not yet deployed** — built and committed locally only, per this
+  session's standing practice of holding a live deploy for explicit
+  go-ahead.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

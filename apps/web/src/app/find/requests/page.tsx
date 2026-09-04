@@ -9,9 +9,11 @@
 import { useEffect, useState } from "react";
 import BackButton from "../../../components/BackButton";
 import AppBackdrop from "../../../components/AppBackdrop";
+import PatientAccountBar from "../../../components/PatientAccountBar";
 import { ensurePatientSession } from "../../../lib/firebase/auth";
 import { listAppointmentsForPatient } from "../../../lib/firebase/firestore";
 import type { AppointmentDoc, AppointmentStatus } from "../../../lib/firebase/types";
+import { getPatientProfile, type PatientProfile } from "../../../lib/patientLocal";
 
 const STATUS_LABEL: Record<AppointmentStatus, string> = {
   requested: "بانتظار تأكيد العيادة",
@@ -26,6 +28,11 @@ const STATUS_LABEL: Record<AppointmentStatus, string> = {
 export default function MyRequestsPage() {
   const [appts, setAppts] = useState<AppointmentDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<PatientProfile | null>(null);
+
+  useEffect(() => {
+    setProfile(getPatientProfile());
+  }, []);
 
   useEffect(() => {
     ensurePatientSession()
@@ -39,6 +46,7 @@ export default function MyRequestsPage() {
       <AppBackdrop />
       <div className="relative">
       <BackButton fallbackHref="/find" label="رجوع للبحث" />
+      {profile && <div className="mt-3"><PatientAccountBar profile={profile} /></div>}
       <h1 className="mb-6 mt-3 text-xl font-bold" style={{ color: "#0F7A6C" }}>
         طلباتي
       </h1>

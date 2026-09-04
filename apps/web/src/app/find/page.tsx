@@ -14,8 +14,125 @@ import { listApprovedClinics } from "../../lib/firebase/firestore";
 import type { ClinicDoc } from "../../lib/firebase/types";
 import BackButton from "../../components/BackButton";
 import AppBackdrop from "../../components/AppBackdrop";
+import PatientAccountBar from "../../components/PatientAccountBar";
+import {
+  getActiveBooking,
+  getPatientProfile,
+  savePatientProfile,
+  type ActiveBooking,
+  type PatientProfile,
+} from "../../lib/patientLocal";
 
 export default function FindClinicPage() {
+  // undefined = hasn't checked localStorage yet (avoids a flash of the
+  // gate before we know a saved profile exists, same reasoning as the
+  // home screen's own localStorage-gated splash check).
+  const [profile, setProfile] = useState<PatientProfile | null | undefined>(undefined);
+  const [activeBooking, setActiveBooking] = useState<ActiveBooking | null>(null);
+
+  useEffect(() => {
+    setProfile(getPatientProfile());
+    setActiveBooking(getActiveBooking());
+  }, []);
+
+  if (profile === undefined) {
+    return (
+      <div className="relative min-h-screen">
+        <AppBackdrop />
+      </div>
+    );
+  }
+
+  if (profile === null) {
+    return (
+      <PatientGate
+        onDone={(p) => {
+          savePatientProfile(p);
+          setProfile(p);
+        }}
+      />
+    );
+  }
+
+  return (
+    <FindClinicSearch profile={profile} activeBooking={activeBooking} />
+  );
+}
+
+function PatientGate({ onDone }: { onDone: (profile: PatientProfile) => void }) {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  function handleSubmit() {
+    if (!name.trim()) return setError("أدخل اسمك");
+    if (!phone.trim()) return setError("أدخل رقم هاتفك");
+    if (!/^\d{4,}$/.test(pin.trim())) return setError("أدخل رمزاً (PIN) من 4 أرقام على الأقل");
+    setError(null);
+    onDone({ name: name.trim(), phone: phone.trim(), pin: pin.trim() });
+  }
+
+  return (
+    <main dir="rtl" className="relative min-h-screen mx-auto max-w-md p-6">
+      <AppBackdrop />
+      <div className="relative">
+        <BackButton fallbackHref="/" className="mb-3 block text-sm text-brand-600 hover:underline" />
+        <h1 className="mb-2 text-xl font-bold" style={{ color: "#0F7A6C" }}>
+          إنشاء حساب سريع
+        </h1>
+        <p className="mb-6 text-sm text-gray-500">
+          بيانات بسيطة تُحفظ على جهازك فقط، حتى لا تُعيد إدخالها في كل مرة تحجز فيها موعداً.
+        </p>
+
+        <div className="space-y-3 rounded-xl border bg-white p-4">
+          <label className="block text-sm">
+            الاسم
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="mt-1 w-full rounded-lg border px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm">
+            رقم الهاتف
+            <input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              dir="ltr"
+              className="mt-1 w-full rounded-lg border px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm">
+            رمز (PIN) من 4 أرقام على الأقل
+            <input
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              inputMode="numeric"
+              dir="ltr"
+              className="mt-1 w-full rounded-lg border px-3 py-2"
+            />
+          </label>
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <button
+            onClick={handleSubmit}
+            className="w-full rounded-lg bg-brand-500 px-4 py-2 font-bold text-white hover:bg-brand-600"
+          >
+            متابعة
+          </button>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function FindClinicSearch({
+  profile,
+  activeBooking,
+}: {
+  profile: PatientProfile;
+  activeBooking: ActiveBooking | null;
+}) {
   const [clinics, setClinics] = useState<ClinicDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +159,23 @@ export default function FindClinicPage() {
       <AppBackdrop />
       <div className="relative">
       <BackButton fallbackHref="/" className="mb-3 block text-sm text-brand-600 hover:underline" />
+
+      <PatientAccountBar profile={profile} />
+
+      {activeBooking && (
+        <Link
+          href={`/find/wait?clinic=${encodeURIComponent(activeBooking.clinicSlug)}&appt=${encodeURIComponent(activeBooking.apptId)}`}
+          className="mb-6 block rounded-xl border-2 p-4 transition hover:-translate-y-0.5"
+          style={{ borderColor: "#0F7A6C", background: "#EEF7F6" }}
+        >
+          <div className="text-sm text-gray-500">موعدك الحالي</div>
+          <div className="font-bold" style={{ color: "#0F7A6C" }}>
+            {activeBooking.clinicName} — {activeBooking.startTime}
+          </div>
+          <div className="mt-1 text-xs text-brand-600">فتح شاشة الانتظار ‹</div>
+        </Link>
+      )}
+
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-bold" style={{ color: "#0F7A6C" }}>
           ابحث عن مركزك
