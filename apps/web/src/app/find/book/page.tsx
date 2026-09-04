@@ -8,8 +8,8 @@
 // ensurePatientSession()/bookSlot() the Firebase backend has had since
 // the accounts track was first built - this page is the missing UI in
 // front of it.
-import { Suspense, useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import BackButton from "../../../components/BackButton";
 import AppBackdrop from "../../../components/AppBackdrop";
 import { ensurePatientSession } from "../../../lib/firebase/auth";
@@ -44,6 +44,7 @@ export default function BookClinicPage() {
 }
 
 function BookClinic() {
+  const router = useRouter();
   const slug = useSearchParams().get("clinic") ?? "";
   const date = todayISO();
 
@@ -57,6 +58,15 @@ function BookClinic() {
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<string | null>(null); // startTime of the confirmed request
   const [confirmedApptId, setConfirmedApptId] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState(false);
+  const leaveTimers = useRef<number[]>([]);
+
+  useEffect(
+    () => () => {
+      leaveTimers.current.forEach((t) => window.clearTimeout(t));
+    },
+    []
+  );
 
   const slots = clinic ? generateDaySlots(clinic) : [];
 
@@ -119,12 +129,21 @@ function BookClinic() {
       setConfirmed(selected);
       setConfirmedApptId(apptId);
       setSelected(null);
-      // Best-effort: open the waiting screen as a second window right
-      // away. Some browsers (Safari especially) drop the "triggered by a
-      // real click" grace period after an await, so this can get popup-
-      // blocked — the button rendered in the confirmation card below is
-      // the reliable fallback either way, not just a backup for this.
+      // Best-effort bonus: try a second window too. Some browsers (Safari
+      // especially, and most in-app/PWA webviews) drop the "triggered by a
+      // real click" grace period after an await, so this routinely gets
+      // popup-blocked — a nice-to-have on desktop, not what this flow
+      // actually depends on.
       window.open(waitUrl, "_blank", "noopener,noreferrer");
+      // The reliable, guaranteed path: this same tab shows the
+      // confirmation for a moment, fades out, then moves on to the
+      // waiting screen itself — no popup permission, no extra click.
+      leaveTimers.current.push(
+        window.setTimeout(() => {
+          setLeaving(true);
+          leaveTimers.current.push(window.setTimeout(() => router.push(waitUrl), 320));
+        }, 1400)
+      );
     } catch (err) {
       if (err instanceof SlotTakenError) {
         setError("هذا الموعد حُجز للتو من شخص آخر — اختر وقتاً آخر.");
@@ -162,7 +181,7 @@ function BookClinic() {
   return (
     <main dir="rtl" className="relative min-h-screen mx-auto max-w-2xl p-6">
       <AppBackdrop />
-      <div className="relative">
+      <div className={"relative transition-opacity duration-300 " + (leaving ? "opacity-0" : "opacity-100")}>
       <BackButton fallbackHref="/find" label="رجوع للبحث" />
 
       <h1 className="mt-3 text-xl font-bold" style={{ color: "#0F7A6C" }}>
@@ -176,15 +195,18 @@ function BookClinic() {
       {confirmed && (
         <div className="mb-6 space-y-3 rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">
           <p>تم إرسال طلبك للموعد الساعة {confirmed} — بانتظار تأكيد العيادة.</p>
+          <p className="text-sm text-green-700">جارٍ الانتقال إلى شاشة الانتظار…</p>
           {confirmedApptId && (
-            <a
-              href={`/find/wait?clinic=${encodeURIComponent(clinic.slug)}&appt=${encodeURIComponent(confirmedApptId)}`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={() =>
+                router.push(
+                  `/find/wait?clinic=${encodeURIComponent(clinic.slug)}&appt=${encodeURIComponent(confirmedApptId)}`
+                )
+              }
               className="inline-block rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700"
             >
-              فتح شاشة الانتظار
-            </a>
+              الانتقال الآن
+            </button>
           )}
         </div>
       )}

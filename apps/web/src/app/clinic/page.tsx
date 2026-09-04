@@ -13,7 +13,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import BackButton from "../../components/BackButton";
 import AppBackdrop from "../../components/AppBackdrop";
-import AppointmentStatusBadge from "../../components/AppointmentStatusBadge";
 import { auth } from "../../lib/firebase/config";
 import { markIntentionalSignOut, signOutUser } from "../../lib/firebase/auth";
 import {
@@ -263,7 +262,12 @@ function ReceptionTab({
                 <td className="px-4 py-2">
                   {a ? (
                     <div className="flex items-center gap-2">
-                      <AppointmentStatusBadge status={a.status} />
+                      <span
+                        aria-hidden
+                        className="inline-block h-2.5 w-2.5 flex-none rounded-full"
+                        style={{ backgroundColor: STATUS_DOT[a.status] }}
+                        title={STATUS_LABEL[a.status]}
+                      />
                       <select
                         value={a.status}
                         onChange={(e) => handleStatusChange(a.id, e.target.value as AppointmentStatus)}

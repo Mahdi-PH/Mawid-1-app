@@ -247,14 +247,21 @@ export interface ScheduleUpdate {
 /** Same rule the demo artifact enforces on this same screen: refuses to
  *  save if any still-booked appointment (today or later — a real backend
  *  can't scope this to "today" the way the single-session artifact does)
- *  would fall outside the new grid. */
+ *  would fall outside the new grid.
+ *
+ *  Real bug fixed here: the query used to also filter `where("date", ">=",
+ *  todayISO)` — a second, range clause on top of the clinicSlug equality
+ *  clause — which needs a composite index Firestore never got a chance to
+ *  build (same `datastore.indexAdmin` permission gap already hit by
+ *  adminListPendingClinics()/listAppointmentsForPatient() — see their own
+ *  comments). Firestore's "this query requires an index" error was thrown
+ *  on every single save, so حفظ never actually completed regardless of
+ *  what was typed. Fixed the same way those two were: drop the range
+ *  clause, filter the (small, single-clinic) result client-side instead —
+ *  needs zero indexes. */
 export async function updateClinicSchedule(slug: string, patch: ScheduleUpdate): Promise<void> {
   const todayISO = new Date().toISOString().slice(0, 10);
-  const q = query(
-    collection(db, "appointments"),
-    where("clinicSlug", "==", slug),
-    where("date", ">=", todayISO)
-  );
+  const q = query(collection(db, "appointments"), where("clinicSlug", "==", slug));
   const snap = await getDocs(q);
   const newSlotTimes = new Set(
     generateDaySlots({ ...patch, breakStart: patch.breakStart ?? null, breakEnd: patch.breakEnd ?? null }).map(
@@ -264,7 +271,7 @@ export async function updateClinicSchedule(slug: string, patch: ScheduleUpdate):
 
   const conflicts = snap.docs
     .map((d) => d.data() as AppointmentDoc)
-    .filter((a) => OCCUPYING_STATUSES.has(a.status) && !newSlotTimes.has(a.startTime))
+    .filter((a) => a.date >= todayISO && OCCUPYING_STATUSES.has(a.status) && !newSlotTimes.has(a.startTime))
     .map((a) => `${a.date} ${a.startTime}`)
     .sort();
 

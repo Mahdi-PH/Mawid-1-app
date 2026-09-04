@@ -2147,6 +2147,78 @@ demo artifact already did.
   changes — every fix here was client-side (the rules were already
   correctly strict; the bugs were in how the app called/handled them).
 
+## Reception dot-only status, smoother waiting-screen entry, and a real schedule-save bug
+
+Three follow-ups to the waiting-screen/status-color work above, all
+requested together.
+
+- **Reception table: dot instead of a text badge**. The colored badge
+  next to the status `<select>` (added in the previous pass) duplicated
+  the select's own text, per the user's explicit "بدون كلمة داخلها لان
+  الخيار موجود" — replaced with a plain 10px colored dot (`STATUS_DOT`,
+  `title` attribute for a hover tooltip) in `clinic/page.tsx`'s
+  `ReceptionTab`. `AppointmentStatusBadge` (the text pill) is untouched
+  and still used as-is on `/find/wait`, where there's no adjacent select
+  to make the text redundant.
+- **`/find/book` now guarantees getting the patient to `/find/wait`,
+  not just best-effort**. The previous `window.open()`-only approach
+  routinely fails on real devices: most mobile browsers (and any in-app/
+  PWA webview) drop the "real user gesture" popup allowance the moment an
+  `await` runs first, and `handleConfirm()` has two before ever calling
+  `window.open()`. Kept that call as a harmless bonus, but the actual
+  guaranteed path is now a same-tab transition: the confirmation banner
+  shows for 1.4s ("جارٍ الانتقال إلى شاشة الانتظار…"), fades out over
+  300ms (`transition-opacity`, matching the fade/slide pattern already
+  used elsewhere in this app, e.g. the home screen's role-card exit), then
+  `router.push()`s to `/find/wait` — no popup permission needed, nothing
+  to miss. The card's manual link became an immediate "الانتقال الآن"
+  button (same-tab navigation, not `target="_blank"`) for anyone who
+  doesn't want to wait the 1.4s.
+- **"مدى اكتمال الحجوزات" (today's booking fullness)** now shows on
+  `/find/wait` itself — a small "N من M" stat + progress bar under the
+  status card. Computed with the exact same privacy-safe technique
+  `getSlotAvailability()` already uses for the booking grid (per-slot
+  existence checks, never a real query over other patients' data) — no
+  new data exposure, no `firestore.rules` change, just re-running that
+  same check against the appointment's own clinic/date once `/find/wait`
+  has both loaded.
+- **Real, previously-broken bug fixed: saving إعدادات الدوام (schedule
+  settings) failed on every attempt**, not just sometimes. Root cause:
+  `updateClinicSchedule()`'s conflict-check query filtered
+  `where("clinicSlug","==",slug)` **and** `where("date",">=",todayISO)` —
+  an equality clause plus a range clause on a different field, which
+  needs a composite index. That exact index (`clinicSlug ASC, date ASC,
+  startTime ASC`) **is** declared in `firestore.indexes.json`, but — like
+  every composite index in this project — was never actually deployed,
+  since the service account still lacks `datastore.indexAdmin` (the same
+  documented gap `adminListPendingClinics()` and
+  `listAppointmentsForPatient()` already hit and were fixed for, earlier
+  in this file). So every real save threw Firestore's "this query
+  requires an index" error, caught by `handleSave()`'s generic catch
+  block and shown as an opaque error message — not the friendly
+  `ScheduleConflictError` message, and never actually saving anything,
+  regardless of what was typed. **Fixed the same way those two were**:
+  dropped the `date` range clause from the query (now just
+  `clinicSlug == slug`, a single-field filter that needs no composite
+  index at all) and moved the `date >= todayISO` filtering into the
+  existing client-side `.filter()` alongside the status/slot-time checks
+  — the result set is one clinic's appointments, small enough that this
+  costs nothing extra at this app's scale, same tradeoff already accepted
+  throughout this track.
+- **Verified**: `tsc --noEmit` and `next build` both clean, including the
+  now-larger `/find/book`/`/find/wait` bundles. The composite-index
+  diagnosis for the schedule-save bug was cross-checked against
+  `firestore.indexes.json` (confirms the needed index is declared but,
+  per this file's own repeated notes on the `datastore.indexAdmin` gap,
+  not live) rather than only inferred from reading the query — the same
+  root cause already hit and fixed twice before in this exact codebase.
+  **Not yet re-verified against a live booking/save on `mawid-app-d1d03`
+  this pass** — flagged here rather than assumed; do that alongside the
+  next deploy.
+- **Not yet deployed** — built and committed locally only, per this
+  session's standing practice of holding a live deploy for explicit
+  go-ahead.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

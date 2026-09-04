@@ -16,7 +16,8 @@ import { useSearchParams } from "next/navigation";
 import BackButton from "../../../components/BackButton";
 import AppBackdrop from "../../../components/AppBackdrop";
 import { ensurePatientSession } from "../../../lib/firebase/auth";
-import { getClinic, watchAppointment } from "../../../lib/firebase/firestore";
+import { getClinic, getSlotAvailability, watchAppointment } from "../../../lib/firebase/firestore";
+import { generateDaySlots } from "../../../lib/firebase/slotEngine";
 import { STATUS_COLOR, STATUS_LABEL, STATUS_PATIENT_MESSAGE } from "../../../lib/firebase/statusMeta";
 import type { AppointmentDoc, ClinicDoc } from "../../../lib/firebase/types";
 
@@ -42,10 +43,29 @@ function Wait() {
 
   const [clinic, setClinic] = useState<ClinicDoc | null>(null);
   const [appt, setAppt] = useState<AppointmentDoc | null | undefined>(undefined); // undefined = loading
+  const [capacity, setCapacity] = useState<{ booked: number; total: number } | null>(null);
 
   useEffect(() => {
     if (clinicSlug) getClinic(clinicSlug).then(setClinic);
   }, [clinicSlug]);
+
+  // "مدى اكتمال الحجوزات" — how full today's schedule is. Computed the same
+  // privacy-safe way the booking grid already does (per-slot existence
+  // checks, no other patient's name/phone ever read — see
+  // getSlotAvailability()'s own comment), not a new data exposure.
+  useEffect(() => {
+    if (!clinic || !appt) return;
+    const slots = generateDaySlots(clinic);
+    getSlotAvailability(
+      clinic.slug,
+      appt.date,
+      slots.map((s) => s.startTime)
+    ).then((map) => {
+      const total = slots.length;
+      const free = slots.filter((s) => map[s.startTime]).length;
+      setCapacity({ booked: total - free, total });
+    });
+  }, [clinic, appt]);
 
   useEffect(() => {
     if (!apptId) {
@@ -114,6 +134,26 @@ function Wait() {
           <div className="text-3xl font-extrabold">{STATUS_LABEL[appt.status]}</div>
           <p className="text-sm">{STATUS_PATIENT_MESSAGE[appt.status]}</p>
         </div>
+
+        {capacity && (
+          <div className="mx-auto mt-6 w-full rounded-xl border bg-white p-4 text-right">
+            <div className="mb-1.5 flex items-center justify-between text-sm">
+              <span className="text-gray-500">اكتمال حجوزات اليوم</span>
+              <span className="font-bold" style={{ color: "#0F7A6C" }}>
+                {capacity.booked} من {capacity.total}
+              </span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${capacity.total ? Math.round((capacity.booked / capacity.total) * 100) : 0}%`,
+                  backgroundColor: "#17A892",
+                }}
+              />
+            </div>
+          </div>
+        )}
 
         <p className="mt-6 text-xs text-gray-400">تُحدَّث هذه الشاشة تلقائياً — لا حاجة لإعادة تحميل الصفحة.</p>
       </div>
