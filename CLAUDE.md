@@ -2956,9 +2956,18 @@ live with whatever the clinic's own reception dashboard does.
   anyway), so this was left as a small, disclosed bit of intentionally
   unswept data rather than widening `deleteAppointment()`'s signature
   for a cosmetic-only gap.
-- **Not deployed yet** — committed locally only, per this project's
-  standing practice of holding `firebase deploy` for the user's explicit
-  go-ahead.
+**Deployed** (in a later turn, once the user shared a fresh service-
+account key and asked explicitly): `firestore.rules` was pushed live via
+the direct Rules API technique (ruleset
+`projects/mawid-app-d1d03/rulesets/e8f50589-174f-4053-85e2-095ce2e58b9b`)
+and the rebuilt `apps/web/out/` via `firebase deploy --only hosting`,
+verified FINALIZED (release
+`sites/mawid-app-d1d03/releases/1788560536355000`). The service-account
+key was deleted immediately after, from both the location it was used
+from and the original upload. The "not independently live-verified" gap
+above (two real patients watching their queue position update live as a
+real clinic drives status changes) is unaffected by deploying — still
+worth doing once there's a real clinic/two-patient pair to test with.
 
 ## Next steps if resumed
 
