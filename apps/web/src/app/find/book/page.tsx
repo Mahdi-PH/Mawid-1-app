@@ -12,6 +12,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import BackButton from "../../../components/BackButton";
 import AppBackdrop from "../../../components/AppBackdrop";
+import PatientGate from "../../../components/PatientGate";
 import { ensurePatientSession } from "../../../lib/firebase/auth";
 import {
   bookSlot,
@@ -23,7 +24,7 @@ import {
 } from "../../../lib/firebase/firestore";
 import { generateDaySlots } from "../../../lib/firebase/slotEngine";
 import type { ClinicDoc } from "../../../lib/firebase/types";
-import { getPatientProfile, saveActiveBooking } from "../../../lib/patientLocal";
+import { getPatientProfile, saveActiveBooking, type PatientProfile } from "../../../lib/patientLocal";
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -61,6 +62,9 @@ function BookClinic() {
   const [confirmedApptId, setConfirmedApptId] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
   const leaveTimers = useRef<number[]>([]);
+  // undefined = hasn't checked localStorage yet (avoids a flash of the
+  // gate before we know a saved profile exists, same reasoning as /find).
+  const [profile, setProfile] = useState<PatientProfile | null | undefined>(undefined);
 
   useEffect(
     () => () => {
@@ -69,14 +73,17 @@ function BookClinic() {
     []
   );
 
-  // Prefill from the local patient profile (set once on /find) so a
-  // returning patient never has to retype name/phone here — still
-  // editable, in case this booking is for someone else.
+  // A clinic's own shared public booking link (?clinic=slug) used to skip
+  // straight to the slot grid with no account at all — now it gates on
+  // the same patient identity as /find, prefilling name/phone from
+  // whatever's saved (still editable, in case this booking is for
+  // someone else) rather than asking again if a session is already active.
   useEffect(() => {
-    const profile = getPatientProfile();
-    if (profile) {
-      setName(profile.name);
-      setPhone(profile.phone);
+    const p = getPatientProfile();
+    setProfile(p);
+    if (p) {
+      setName(p.name);
+      setPhone(p.phone);
     }
   }, []);
 
@@ -176,13 +183,34 @@ function BookClinic() {
     }
   }
 
+  if (profile === undefined) {
+    return (
+      <div className="relative min-h-screen">
+        <AppBackdrop />
+      </div>
+    );
+  }
+
+  if (profile === null) {
+    return (
+      <PatientGate
+        backHref="/"
+        onDone={(p) => {
+          setProfile(p);
+          setName(p.name);
+          setPhone(p.phone);
+        }}
+      />
+    );
+  }
+
   if (!slug || clinic === null) {
     return (
       <main dir="rtl" className="relative min-h-screen mx-auto max-w-md p-6 text-center">
         <AppBackdrop />
         <div className="relative">
           <p className="text-red-600">هذه العيادة غير موجودة أو غير متاحة للحجز حالياً.</p>
-          <BackButton fallbackHref="/find" label="رجوع للبحث" className="mt-4 inline-block text-brand-600 hover:underline" />
+          <BackButton fallbackHref="/find" label="رجوع للبحث" alwaysUseFallback className="mt-4 inline-block text-brand-600 hover:underline" />
         </div>
       </main>
     );
@@ -201,7 +229,7 @@ function BookClinic() {
     <main dir="rtl" className="relative min-h-screen mx-auto max-w-2xl p-6">
       <AppBackdrop />
       <div className={"relative transition-opacity duration-300 " + (leaving ? "opacity-0" : "opacity-100")}>
-      <BackButton fallbackHref="/find" label="رجوع للبحث" />
+      <BackButton fallbackHref="/find" label="رجوع للبحث" alwaysUseFallback />
 
       <h1 className="mt-3 text-xl font-bold" style={{ color: "#0F7A6C" }}>
         {clinic.clinicName}

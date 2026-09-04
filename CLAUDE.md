@@ -2390,6 +2390,57 @@ same toggle-link pattern already used by `/signup` for clinic accounts
   `sites/mawid-app-d1d03/releases/1788532533262000`). No `firestore.rules`
   changes — this is client-side/local-storage only.
 
+## Home role-card descriptions removed; direct booking links now gate too; back-button fix
+
+Three more corrections, all requested together.
+
+- **Home screen role cards**: the one-line description under each title
+  ("سجّل مركزك لإدارة الحجوزات..." / "ابحث عن مركزك واطلب موعدك مباشرة...")
+  removed entirely — `ROLE_CARDS` in `app/page.tsx` now carries only
+  `id`/`href`/`title`, per the user's explicit ask to keep just the
+  titles.
+- **`components/PatientGate.tsx`** (new): the patient identity gate
+  (إنشاء حساب / تسجيل دخول) extracted out of `find/page.tsx` into its own
+  component, taking a `backHref` prop — needed so `/find/book` could
+  reuse the exact same gate rather than duplicating it.
+- **Real gap closed: a clinic's own shared public booking link
+  (`/find/book?clinic=<slug>`) used to skip the patient account
+  entirely**, landing straight on the slot grid with no identity at all
+  — inconsistent with `/find`'s own gate, and the reason "طلباتي"/the
+  active-booking pointer never really worked for a patient who only ever
+  arrived via a shared link. `/find/book` now checks
+  `getPatientProfile()` on mount exactly like `/find` does: no session →
+  render `<PatientGate backHref="/" .../>` first (prefilling name/phone
+  from whatever's returned), *then* load the clinic and slot grid.
+- **Real, previously-reported bug fixed: `/find/book`'s back button
+  needed a page refresh to actually reach its destination.** Root cause:
+  its `BackButton` relied on the default `router.back()`-prefers-real-
+  history behavior, which — like `/clinic`'s own back button hit and
+  fixed the same way earlier in this file — can't be trusted on a route
+  that's routinely the *first* page in a tab (a shared clinic link opened
+  fresh). Fixed the same way: both `BackButton` usages in `find/book/
+  page.tsx` (the not-found state and the main booking view) now pass
+  `alwaysUseFallback`, so "رجوع" is a plain, immediate `fallbackHref`
+  navigation every time — no history-length heuristic, no dependence on
+  how the page was reached. The gate's own back button (in
+  `PatientGate.tsx`) is `alwaysUseFallback` too, going straight to `/`
+  — appropriate since arriving via a direct clinic link never visited
+  `/find`'s search page to go back to.
+- **Verified, not just built**: `tsc --noEmit` and `next build` both
+  clean. A Playwright pass confirmed the home screen's cards show only
+  their titles now. A second pass (dev server + the Firebase-domain
+  interception pattern used throughout this file, since this needed a
+  real `getClinic()` read) drove the actual reported bug: opened
+  `/find/book?clinic=<a real nonexistent slug>` fresh, submitted the
+  gate, landed on the not-found state, clicked "رجوع للبحث" **on the
+  first try with no refresh** and landed on `/find` — confirming the fix
+  — then reloaded the same booking URL and confirmed the gate is
+  correctly skipped the second time (session already active from the
+  first visit).
+- **Not yet deployed** — built and committed locally only, per this
+  session's standing practice of holding a live deploy for explicit
+  go-ahead.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

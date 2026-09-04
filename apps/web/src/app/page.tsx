@@ -76,13 +76,11 @@ const ROLE_CARDS = [
     // it already passed.
     href: "/signup",
     title: "إدارة المراكز (عيادات، مراكز تجميل وصالونات)",
-    desc: "سجّل مركزك لإدارة الحجوزات والاستقبال وشاشة صالة الانتظار.",
   },
   {
     id: "find",
     href: "/find",
     title: "البحث عن خدمة أو حجز موعد",
-    desc: "ابحث عن مركزك واطلب موعدك مباشرة — بدون تسجيل حساب.",
   },
 ] as const;
 
@@ -336,7 +334,6 @@ export default function Home() {
               <h2 className="text-lg font-bold" style={{ color: "#0F7A6C" }}>
                 {card.title}
               </h2>
-              <p className="text-sm leading-7 text-neutral-500">{card.desc}</p>
             </Link>
           );
         })}
