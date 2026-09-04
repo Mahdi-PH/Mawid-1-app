@@ -2362,6 +2362,33 @@ together.
   `sites/mawid-app-d1d03/releases/1788531610801000`). No `firestore.rules`
   changes — this is client-side/local-storage only.
 
+## Patient gate: signup/login toggle (real phone+PIN authentication)
+
+The gate on `/find` gained a second side — "إنشاء حساب" or "تسجيل دخول",
+same toggle-link pattern already used by `/signup` for clinic accounts
+(`clinicMode`/"لديك حساب بالفعل؟ سجّل الدخول").
+
+- **`loginWithPhoneAndPin(phone, pin)`** (new, `lib/patientLocal.ts`):
+  the "تسجيل دخول" side asks only for phone + رمز المرور, no name field —
+  a returning patient shouldn't have to retype what's already stored.
+  Matches against whatever profile is already saved on this device; a
+  match activates the session (the stored active booking, if any, stays
+  untouched); a mismatch returns `null` and the gate shows "رقم الهاتف أو
+  رمز المرور غير صحيح" rather than silently creating a blank account
+  under the "login" label — unlike the signup side, this one is meant to
+  actually assert an identity, not just collect one.
+- **"إنشاء حساب" is unchanged** — still name+phone+PIN via `beginSession()`
+  (exact-match resume, otherwise fresh profile), per the earlier pass.
+- **Verified**: `tsc --noEmit` and `next build` both clean. A Playwright
+  pass against the exported `out/` directory drove the real scenario:
+  create an account, sign out, switch to تسجيل الدخول (confirms the name
+  field is gone), submit wrong credentials (confirms the error message),
+  then the correct phone/PIN (confirms it logs back into the same
+  account) — screenshotted for a visual check too.
+- **Not yet deployed** — built and committed locally only, per this
+  session's standing practice of holding a live deploy for explicit
+  go-ahead.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

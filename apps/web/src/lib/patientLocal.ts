@@ -83,6 +83,24 @@ export function beginSession(input: PatientProfile): PatientProfile {
   return matches ? existing! : input;
 }
 
+/** The gate's "تسجيل دخول" side — phone + PIN only, no name (a returning
+ *  patient shouldn't have to retype what's already stored). Returns the
+ *  stored profile and activates the session on a match, leaving the
+ *  active booking untouched; returns null on no match (wrong phone/PIN,
+ *  or nothing stored yet on this device) without changing any stored
+ *  state, so the caller can show an error instead of silently creating a
+ *  blank account under the "login" label. */
+export function loginWithPhoneAndPin(phone: string, pin: string): PatientProfile | null {
+  const existing = readStoredProfile();
+  if (!existing || existing.phone !== phone || existing.pin !== pin) return null;
+  try {
+    localStorage.setItem(SESSION_ACTIVE_KEY, "1");
+  } catch {
+    // ignore
+  }
+  return existing;
+}
+
 /** Sign-out — clears only the "currently active" marker. The saved
  *  profile and active-booking data are left untouched, so signing back in
  *  with the same name/phone/PIN (see beginSession()) brings the same
