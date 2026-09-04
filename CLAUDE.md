@@ -2357,9 +2357,10 @@ together.
   identity. The admin/clinic confirm-popup wiring is mechanical reuse of
   the same already-verified component and wasn't separately re-tested
   live (needs an authenticated session) — flagged rather than assumed.
-- **Not yet deployed** — built and committed locally only, per this
-  session's standing practice of holding a live deploy for explicit
-  go-ahead.
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788531610801000`). No `firestore.rules`
+  changes — this is client-side/local-storage only.
 
 ## Next steps if resumed
 
