@@ -2437,9 +2437,10 @@ Three more corrections, all requested together.
   — then reloaded the same booking URL and confirmed the gate is
   correctly skipped the second time (session already active from the
   first visit).
-- **Not yet deployed** — built and committed locally only, per this
-  session's standing practice of holding a live deploy for explicit
-  go-ahead.
+- **Deployed**: live on `mawid-app-d1d03` via `firebase deploy --only
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788533568407000`). No `firestore.rules`
+  changes — this is client-side only.
 
 ## Next steps if resumed
 
