@@ -2790,9 +2790,18 @@ any time, not only via that prompt.
   `/find/wait` (or `/find`) open, confirming the popup appears, and both
   branches (delete → lands on `/find`; keep → doesn't ask again on
   reload).
-- **Not deployed yet** — committed locally only, per this project's
-  standing practice of holding `firebase deploy` for the user's explicit
-  go-ahead.
+**Deployed** (in a later turn, once the user shared a fresh service-
+account key and asked explicitly): `firestore.rules` was pushed live via
+the direct Rules API technique (ruleset
+`projects/mawid-app-d1d03/rulesets/3a1fcb04-35ca-46b3-88e7-3d331ad18542`)
+and the rebuilt `apps/web/out/` via `firebase deploy --only hosting`,
+verified FINALIZED (release
+`sites/mawid-app-d1d03/releases/1788558164419000`). The service-account
+key was deleted immediately after, from both the location it was used
+from and the original upload. The "not independently live-verified"
+gap above (a real clinic completing a real appointment while a real
+patient watches the prompt appear) is unaffected by deploying — still
+worth doing once there's a real clinic/patient pair to test with.
 
 ## Next steps if resumed
 
