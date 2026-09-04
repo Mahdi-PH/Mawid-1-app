@@ -10,18 +10,25 @@
 // GPS, per the same product decision already made for the artifact.
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { listApprovedClinics } from "../../lib/firebase/firestore";
-import type { ClinicDoc } from "../../lib/firebase/types";
+import ConfirmPopup from "../../components/ConfirmPopup";
+import { ensurePatientSession } from "../../lib/firebase/auth";
+import { deleteAppointment, listApprovedClinics, watchAppointment } from "../../lib/firebase/firestore";
+import type { AppointmentDoc, ClinicDoc } from "../../lib/firebase/types";
 import BackButton from "../../components/BackButton";
 import AppBackdrop from "../../components/AppBackdrop";
 import PatientAccountBar from "../../components/PatientAccountBar";
 import PatientGate from "../../components/PatientGate";
 import {
+  clearActiveBooking,
   getActiveBooking,
   getPatientProfile,
+  isEndPromptDismissed,
+  markEndPromptDismissed,
   type ActiveBooking,
   type PatientProfile,
 } from "../../lib/patientLocal";
+
+const TERMINAL_STATUSES = new Set(["completed", "cancelled", "no_show"]);
 
 export default function FindClinicPage() {
   // undefined = hasn't checked localStorage yet (avoids a flash of the
@@ -61,7 +68,7 @@ export default function FindClinicPage() {
 
 function FindClinicSearch({
   profile,
-  activeBooking,
+  activeBooking: initialActiveBooking,
 }: {
   profile: PatientProfile;
   activeBooking: ActiveBooking | null;
@@ -70,6 +77,10 @@ function FindClinicSearch({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const [activeBooking, setActiveBooking] = useState(initialActiveBooking);
+  const [showEndPrompt, setShowEndPrompt] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     listApprovedClinics()
@@ -77,6 +88,51 @@ function FindClinicSearch({
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
+
+  // Covers the same "انتهى موعدك، هل تريد حذف الحجز؟" prompt as
+  // /find/wait, but for a patient who lands back on /find directly
+  // (closed the waiting-screen tab, or never opened it) instead of
+  // reopening the specific appointment's own page — live via onSnapshot,
+  // not a one-time fetch, so it still fires if the clinic finishes the
+  // visit while this tab happens to be open.
+  useEffect(() => {
+    if (!activeBooking) return;
+    let unsubscribe: (() => void) | undefined;
+    let cancelled = false;
+    ensurePatientSession().finally(() => {
+      if (cancelled) return;
+      unsubscribe = watchAppointment(activeBooking.apptId, (appt) => {
+        if (!appt) return;
+        if (TERMINAL_STATUSES.has(appt.status)) clearActiveBooking();
+        if (appt.status === "completed" && !isEndPromptDismissed(appt.id)) setShowEndPrompt(true);
+      });
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, [activeBooking]);
+
+  async function handleDeleteBooking() {
+    if (!activeBooking) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteAppointment(activeBooking.apptId);
+      clearActiveBooking();
+      markEndPromptDismissed(activeBooking.apptId);
+      setActiveBooking(null);
+      setShowEndPrompt(false);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : String(err));
+      setDeleting(false);
+    }
+  }
+
+  function handleKeepBooking() {
+    if (activeBooking) markEndPromptDismissed(activeBooking.apptId);
+    setShowEndPrompt(false);
+  }
 
   const filtered = useMemo(() => {
     const needle = q.trim();
@@ -153,7 +209,18 @@ function FindClinicSearch({
           </Link>
         ))}
       </div>
+      {deleteError && <p className="mt-3 text-sm text-red-600">{deleteError}</p>}
       </div>
+
+      <ConfirmPopup
+        open={showEndPrompt}
+        title="انتهى موعدك، هل تريد حذف الحجز؟"
+        confirmLabel="نعم، حذف الحجز"
+        cancelLabel="لا، إبقاء السجل"
+        busy={deleting}
+        onConfirm={handleDeleteBooking}
+        onCancel={handleKeepBooking}
+      />
     </main>
   );
 }

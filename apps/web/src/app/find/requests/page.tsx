@@ -9,11 +9,12 @@
 import { useEffect, useState } from "react";
 import BackButton from "../../../components/BackButton";
 import AppBackdrop from "../../../components/AppBackdrop";
+import ConfirmPopup from "../../../components/ConfirmPopup";
 import PatientAccountBar from "../../../components/PatientAccountBar";
 import { ensurePatientSession } from "../../../lib/firebase/auth";
-import { listAppointmentsForPatient } from "../../../lib/firebase/firestore";
+import { deleteAppointment, listAppointmentsForPatient } from "../../../lib/firebase/firestore";
 import type { AppointmentDoc, AppointmentStatus } from "../../../lib/firebase/types";
-import { getPatientProfile, type PatientProfile } from "../../../lib/patientLocal";
+import { clearActiveBooking, getActiveBooking, getPatientProfile, type PatientProfile } from "../../../lib/patientLocal";
 
 const STATUS_LABEL: Record<AppointmentStatus, string> = {
   requested: "بانتظار تأكيد العيادة",
@@ -29,6 +30,9 @@ export default function MyRequestsPage() {
   const [appts, setAppts] = useState<AppointmentDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<PatientProfile | null>(null);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     setProfile(getPatientProfile());
@@ -40,6 +44,24 @@ export default function MyRequestsPage() {
       .then(setAppts)
       .finally(() => setLoading(false));
   }, []);
+
+  // The "يدوياً" half of "حذف الحجز تلقائياً أو يدوياً" — a finished
+  // appointment can be deleted from this list at any time, not only via
+  // the automatic end-of-visit prompt on /find or /find/wait.
+  async function handleDelete(apptId: string) {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteAppointment(apptId);
+      setAppts((prev) => prev.filter((a) => a.id !== apptId));
+      if (getActiveBooking()?.apptId === apptId) clearActiveBooking();
+      setConfirmingDeleteId(null);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
     <main dir="rtl" className="relative min-h-screen mx-auto max-w-2xl p-6">
@@ -58,6 +80,8 @@ export default function MyRequestsPage() {
         </p>
       )}
 
+      {deleteError && <p className="mb-3 text-sm text-red-600">{deleteError}</p>}
+
       <div className="space-y-3">
         {appts.map((a) => (
           <div key={a.id} className="rounded-xl border bg-white p-4">
@@ -68,10 +92,28 @@ export default function MyRequestsPage() {
             <div className="text-sm text-gray-500">
               {a.date} — {a.startTime}
             </div>
+            {a.status === "completed" && (
+              <button
+                onClick={() => setConfirmingDeleteId(a.id)}
+                className="mt-2 text-xs text-red-600 hover:underline"
+              >
+                حذف الحجز
+              </button>
+            )}
           </div>
         ))}
       </div>
       </div>
+
+      <ConfirmPopup
+        open={confirmingDeleteId !== null}
+        title="حذف هذا الحجز نهائياً؟"
+        message="لن تتمكن من التراجع عن هذا الإجراء."
+        confirmLabel="حذف"
+        busy={deleting}
+        onConfirm={() => confirmingDeleteId && handleDelete(confirmingDeleteId)}
+        onCancel={() => setConfirmingDeleteId(null)}
+      />
     </main>
   );
 }

@@ -2677,6 +2677,123 @@ What *was* verified, and how:
 - Not yet load-tested or used with a real camera/real patient in a real
   clinic visit — see "Verification" above.
 
+**Deployed** (in a later turn, once the user shared a fresh service-
+account key and asked explicitly): `firestore.rules` was pushed live via
+the direct Rules API technique (ruleset
+`projects/mawid-app-d1d03/rulesets/a92289c4-5a7e-434b-98e5-f8073e4141be`)
+and the rebuilt `apps/web/out/` via `firebase deploy --only hosting`,
+verified FINALIZED (release
+`sites/mawid-app-d1d03/releases/1788556485011000`). The service-account
+key was deleted immediately after (both the copy used for the deploy and
+the original upload). The camera-scanning path is still not verified with
+a real camera — see "Verification" above — that gap is unaffected by
+deploying.
+
+## Patient end-of-visit deletion: automatic prompt + manual delete
+
+The user's next request: when a clinic marks an appointment "منتهي"
+(completed), the patient's own screen should offer to delete that
+appointment — "انتهى موعدك، هل تريد حذف الحجز؟" with نعم/لا — and a
+patient should also be able to delete a finished appointment manually at
+any time, not only via that prompt.
+
+- **firestore.rules**: `appointments/{apptId}`'s `delete` rule, previously
+  `isAdmin()` only, now also allows the patient themselves —
+  `isSignedIn() && resource.data.patientUid == request.auth.uid &&
+  resource.data.status == "completed"`. Deliberately scoped to
+  `"completed"` only, not every terminal status: letting a patient delete
+  a still-`"requested"`/`"booked"` appointment, or one the clinic marked
+  `"cancelled"`/`"no_show"`, would let them erase a record the clinic
+  still needs or dodge a no-show being on file — neither was asked for,
+  only "delete once it's actually finished." No new collection, no schema
+  change — `deleteAppointment()` (already existed in `firestore.ts`, used
+  until now only by the admin dashboard) is the one function every new
+  call site below reuses.
+- **The prompt fires from two places, live, not polled** — both reuse the
+  same `ConfirmPopup` component (which gained an optional `busy` prop in
+  this pass, disabling both buttons and showing "…" while the delete
+  request is in flight, so a slow network can't be double-submitted):
+  - **`/find/wait`** (the patient's live status screen, already
+    `onSnapshot`-subscribed to this exact appointment): a new effect
+    shows the popup the instant `appt.status` flips to `"completed"`,
+    provided this appointment hasn't already been dismissed (see below).
+    "نعم، حذف الحجز" calls `deleteAppointment()`, clears the local
+    `ActiveBooking` pointer, and `router.push("/find")` — "redirect
+    smoothly to the home/search screen" from the spec. "لا، إبقاء السجل"
+    just records the dismissal and closes the popup; the appointment
+    stays exactly as-is (already effectively inactive/historical, since
+    `/find/requests` — see below — already lists every appointment
+    regardless of status, so a completed-but-kept one is already sitting
+    in that "قسم السجلات السابقة" by construction, no separate flag or
+    move needed).
+  - **`/find`**: a patient who closed the waiting-screen tab (or never
+    opened it) would otherwise never see this. `/find` now subscribes
+    (`watchAppointment`, live `onSnapshot`) to whatever appointment the
+    local `ActiveBooking` pointer names, purely to catch this transition
+    even from the search screen — the same popup, same two handlers,
+    scoped to this component's own state rather than `/find/wait`'s.
+    Reaching a terminal status here also calls `clearActiveBooking()`
+    (mirroring the exact same cleanup `/find/wait` already did), so the
+    "موعدك الحالي" card can't keep pointing at a finished visit.
+- **"لا حاجة لإعادة إظهار الإشعار" is a real per-appointment guarantee,
+  not just "don't ask twice in one session"**: `lib/patientLocal.ts`
+  gained `isEndPromptDismissed(apptId)`/`markEndPromptDismissed(apptId)`
+  — a small `localStorage`-backed list (capped at the 30 most recent, so
+  it can't grow unbounded over a long-lived browser profile) of
+  appointment ids the patient has already answered "لا" for. Both prompt
+  sites check this before showing anything, so choosing "keep" once means
+  it never asks again for that same appointment, on either screen, even
+  after a reload — matching "دون إزعاج المراجع بإشعارات متكررة" exactly.
+  Choosing "نعم" needs no such flag: once the appointment doc itself is
+  gone, there's nothing left to prompt about, on any screen.
+- **Manual delete, the other half of "تلقائياً أو يدوياً"**:
+  `/find/requests` (already listing every one of the patient's
+  appointments, at every status — this project's existing, if informal,
+  "قسم السجلات السابقة") now shows a small "حذف الحجز" text button under
+  any entry whose status is `"completed"`, opening the same `ConfirmPopup`
+  pattern ("حذف هذا الحجز نهائياً؟" / "لن تتمكن من التراجع عن هذا
+  الإجراء.") before actually deleting. Deleting here removes the row from
+  the list immediately (no full reload) and also clears the active-
+  booking pointer if it happened to be the one just deleted.
+- **Verified against a real, locally-running Firestore emulator**, not
+  just read through by eye — a dedicated 5-assertion script (three
+  distinct signed-in-anonymous identities: two patients, one clinic
+  owner) confirmed exactly the intended shape of the new rule: a patient
+  cannot delete their own still-`"booked"` appointment; a patient cannot
+  delete a *different* patient's completed appointment; the owning
+  clinic itself cannot delete a patient's completed appointment (deletion
+  is patient-or-admin only, never the clinic); a patient *can* delete
+  their own completed appointment; a second, unrelated patient can
+  likewise delete their own. All 5 passed. Test fixtures were seeded via
+  the emulator's own `Authorization: Bearer owner` REST bypass (since
+  several of the fixtures — e.g. a `"booked"` appointment belonging to
+  someone else — couldn't legitimately be created through the real
+  `create` rule at all, and that's not what this script was testing
+  anyway) — the actual assertions all went through the normal client SDK
+  under each identity's own real auth token, unchanged. Emulator and the
+  scratch test script were fully cleaned up after (nothing left in the
+  repo).
+- `tsc --noEmit` (via `next build`) and the static export build are both
+  clean.
+- **Not independently live-verified**: a local Playwright pass against
+  the exported `out/` confirmed no console/page errors and correct
+  fallback rendering (`/find`'s gate, `/find/requests`'s empty state,
+  `/find/wait`'s not-found state with no `?appt=`) — but this sandbox's
+  own network egress to Firebase's Auth/Firestore domains isn't reliably
+  reachable from a bare headless browser outside the request-interception
+  pattern used elsewhere in this file for live dev-server passes, so the
+  actual end-to-end prompt-appears-live-and-deletes-successfully flow
+  was **not** exercised against the real project this pass — same class
+  of gap as the camera-scanning path in the Patient Passport feature
+  above. Recommended before treating this as fully verified: a real
+  clinic marking a real appointment "completed" while a real patient has
+  `/find/wait` (or `/find`) open, confirming the popup appears, and both
+  branches (delete → lands on `/find`; keep → doesn't ask again on
+  reload).
+- **Not deployed yet** — committed locally only, per this project's
+  standing practice of holding `firebase deploy` for the user's explicit
+  go-ahead.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

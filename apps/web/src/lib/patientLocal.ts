@@ -140,3 +140,39 @@ export function clearActiveBooking(): void {
     // ignore
   }
 }
+
+const DISMISSED_END_PROMPTS_KEY = "mawid_dismissed_end_prompts";
+/** How many recent "keep this record" choices to remember — old enough
+ *  entries are trimmed so this can't grow without bound over a long-lived
+ *  browser profile. */
+const MAX_DISMISSED_END_PROMPTS = 30;
+
+/** The end-of-visit "انتهى موعدك، هل تريد حذف الحجز؟" prompt (see
+ *  find/wait/page.tsx and find/page.tsx) must only ask once per finished
+ *  appointment — choosing "لا، إبقاء السجل" records that here so the same
+ *  completed appointment never asks again on a later visit. Choosing
+ *  "نعم، حذف الحجز" never needs this: once the appointment doc itself is
+ *  deleted, there's nothing left to prompt about. */
+export function isEndPromptDismissed(apptId: string): boolean {
+  try {
+    const raw = localStorage.getItem(DISMISSED_END_PROMPTS_KEY);
+    const list: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) && list.includes(apptId);
+  } catch {
+    return false;
+  }
+}
+
+export function markEndPromptDismissed(apptId: string): void {
+  try {
+    const raw = localStorage.getItem(DISMISSED_END_PROMPTS_KEY);
+    const list: unknown = raw ? JSON.parse(raw) : [];
+    const next = (Array.isArray(list) ? list.filter((x): x is string => typeof x === "string") : []).filter(
+      (id) => id !== apptId
+    );
+    next.push(apptId);
+    localStorage.setItem(DISMISSED_END_PROMPTS_KEY, JSON.stringify(next.slice(-MAX_DISMISSED_END_PROMPTS)));
+  } catch {
+    // ignore — worst case the prompt asks again next visit
+  }
+}

@@ -203,7 +203,19 @@ service cloud.firestore {
       // clinic-side edit belong to that clinic's own owner, or admin.
       allow update: if isAdmin() || ownsClinic(resource.data.clinicSlug);
 
-      allow delete: if isAdmin();
+      // A patient may delete their OWN appointment once it's "completed" —
+      // the end-of-visit "هل تريد حذف الحجز؟" prompt (automatic) and the
+      // "طلباتي" list's own manual delete button (see lib/firebase/
+      // firestore.ts deleteAppointment()) both rely on this. Deliberately
+      // scoped to "completed" only, not every terminal status: a patient
+      // deleting a still-"requested"/"booked" appointment (or one the
+      // clinic marked "cancelled"/"no_show") would let them erase a record
+      // the clinic still needs, or dodge a no-show being on file — none of
+      // that was asked for, only "delete once it's actually finished."
+      allow delete: if isAdmin()
+                    || (isSignedIn()
+                        && resource.data.patientUid == request.auth.uid
+                        && resource.data.status == "completed");
     }
 
     // ---------------------------------------------------------------

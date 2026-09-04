@@ -12,16 +12,24 @@
 // the patient sees the clinic mark them "arrived"/"in_progress" in real
 // time with no manual refresh.
 import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import BackButton from "../../../components/BackButton";
 import AppBackdrop from "../../../components/AppBackdrop";
+import ConfirmPopup from "../../../components/ConfirmPopup";
 import PatientAccountBar from "../../../components/PatientAccountBar";
 import { ensurePatientSession } from "../../../lib/firebase/auth";
-import { getClinic, getSlotAvailability, watchAppointment } from "../../../lib/firebase/firestore";
+import { deleteAppointment, getClinic, getSlotAvailability, watchAppointment } from "../../../lib/firebase/firestore";
 import { generateDaySlots } from "../../../lib/firebase/slotEngine";
 import { STATUS_COLOR, STATUS_LABEL, STATUS_PATIENT_MESSAGE } from "../../../lib/firebase/statusMeta";
 import type { AppointmentDoc, ClinicDoc } from "../../../lib/firebase/types";
-import { clearActiveBooking, getActiveBooking, getPatientProfile, type PatientProfile } from "../../../lib/patientLocal";
+import {
+  clearActiveBooking,
+  getActiveBooking,
+  getPatientProfile,
+  isEndPromptDismissed,
+  markEndPromptDismissed,
+  type PatientProfile,
+} from "../../../lib/patientLocal";
 
 const TERMINAL_STATUSES = new Set(["completed", "cancelled", "no_show"]);
 
@@ -41,6 +49,7 @@ export default function WaitPage() {
 }
 
 function Wait() {
+  const router = useRouter();
   const params = useSearchParams();
   const apptId = params.get("appt") ?? "";
   const clinicSlug = params.get("clinic") ?? "";
@@ -49,6 +58,9 @@ function Wait() {
   const [appt, setAppt] = useState<AppointmentDoc | null | undefined>(undefined); // undefined = loading
   const [capacity, setCapacity] = useState<{ booked: number; total: number } | null>(null);
   const [profile, setProfile] = useState<PatientProfile | null>(null);
+  const [showEndPrompt, setShowEndPrompt] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     setProfile(getPatientProfile());
@@ -65,6 +77,37 @@ function Wait() {
     const active = getActiveBooking();
     if (active?.apptId === appt.id) clearActiveBooking();
   }, [appt]);
+
+  // "انتهى موعدك، هل تريد حذف الحجز؟" — the moment the clinic marks this
+  // appointment "completed" (live, via the onSnapshot listener below this
+  // page already has), offer to delete it. Only asks once per appointment
+  // — "لا، إبقاء السجل" records the choice via markEndPromptDismissed() so
+  // a later visit to this same finished appointment doesn't ask again.
+  useEffect(() => {
+    if (!appt || appt.status !== "completed") return;
+    if (isEndPromptDismissed(appt.id)) return;
+    setShowEndPrompt(true);
+  }, [appt]);
+
+  async function handleDeleteBooking() {
+    if (!appt) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteAppointment(appt.id);
+      clearActiveBooking();
+      markEndPromptDismissed(appt.id);
+      router.push("/find");
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : String(err));
+      setDeleting(false);
+    }
+  }
+
+  function handleKeepBooking() {
+    if (appt) markEndPromptDismissed(appt.id);
+    setShowEndPrompt(false);
+  }
 
   // "مدى اكتمال الحجوزات" — how full today's schedule is. Computed the same
   // privacy-safe way the booking grid already does (per-slot existence
@@ -175,7 +218,18 @@ function Wait() {
         )}
 
         <p className="mt-6 text-xs text-gray-400">تُحدَّث هذه الشاشة تلقائياً — لا حاجة لإعادة تحميل الصفحة.</p>
+        {deleteError && <p className="mt-3 text-sm text-red-600">{deleteError}</p>}
       </div>
+
+      <ConfirmPopup
+        open={showEndPrompt}
+        title="انتهى موعدك، هل تريد حذف الحجز؟"
+        confirmLabel="نعم، حذف الحجز"
+        cancelLabel="لا، إبقاء السجل"
+        busy={deleting}
+        onConfirm={handleDeleteBooking}
+        onCancel={handleKeepBooking}
+      />
     </main>
   );
 }
