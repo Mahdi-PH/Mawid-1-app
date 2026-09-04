@@ -111,3 +111,107 @@ export interface AppointmentDoc {
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
+
+// ---------------------------------------------------------------------
+// Universal Patient Passport — QR-code medical archive (patient_records).
+//
+// Patient_ID here is deliberately the patient's existing Firebase
+// Anonymous Auth uid (the same identity ensurePatientSession()/bookSlot()
+// already use for appointments), NOT a phone-verified identity — real SMS
+// verification (Firebase Phone Auth) was scoped out for this pass because
+// it requires the paid Blaze plan to send live SMS in production, the same
+// wall this project already hit with Firebase Storage (see CLAUDE.md).
+// The user explicitly chose to keep the existing unverified local session
+// as the identity for now rather than adopt Blaze. This means Patient_ID is
+// only as trustworthy as "whoever currently holds this anonymous browser
+// session" — disclosed here and in the UI, not hidden, same as every other
+// local-only limitation already documented for this app (lib/patientLocal.ts).
+//
+// File storage (X-ray images, PDF reports) is also out of scope this pass —
+// only text-based Medical_History/Previous_Prescriptions entries exist; see
+// the "Lab_Reports_URLs" gap noted in CLAUDE.md when this was scoped.
+// ---------------------------------------------------------------------
+
+/** patient_records/{patientId} — patientId == the patient's own Firebase
+ *  Auth uid (doc id). One profile doc per patient; the actual medical
+ *  history/prescriptions live in the entries/ subcollection below, not as
+ *  arrays on this doc, so "read-only archive, append-only new entries" can
+ *  be enforced by firestore.rules per-entry rather than by trying to prove
+ *  an array write only appended (which Firestore rules can't express). */
+export interface PatientRecordDoc {
+  patientId: string;
+  fullName: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export type RecordEntryType = "history" | "prescription";
+export type RecordEntryAuthor = "patient" | "clinic";
+
+/** patient_records/{patientId}/entries/{entryId} — one immutable entry per
+ *  medical-history note or prescription/report. Never updated or deleted
+ *  once created (firestore.rules denies both to everyone but admin) — a
+ *  correction is a new entry, not an edit, so the archive a doctor reads
+ *  can never be silently altered after the fact. authorType "clinic"
+ *  entries are only writable while that clinic holds an active
+ *  AccessGrantDoc for this patient (see access_grants below); "patient"
+ *  entries are self-reported notes the patient adds to their own record. */
+export interface RecordEntryDoc {
+  id: string;
+  type: RecordEntryType;
+  text: string;
+  authorType: RecordEntryAuthor;
+  /** Set only for authorType "clinic" — denormalized so the patient's own
+   *  history view can show which clinic/doctor wrote each entry without an
+   *  extra lookup. */
+  clinicOwnerUid: string | null;
+  clinicSlug: string | null;
+  clinicName: string | null;
+  createdAt: Timestamp;
+}
+
+export type AccessRequestStatus = "awaiting_scan" | "claimed" | "approved" | "denied" | "expired";
+
+/** access_requests/{requestId} — requestId is a random, unguessable id
+ *  (acts as the QR code's own short-lived bearer secret, since this
+ *  project has no Cloud Functions/backend to issue a real signed token on
+ *  the Spark plan — see docs/firebase-setup.md). Encoded into the QR
+ *  alongside patientId + expiresAt; scanning it lets a clinic "claim" the
+ *  request (proving it physically saw this exact, still-valid code), which
+ *  then surfaces an approve/deny prompt on the patient's own open screen —
+ *  the "temporary access permission" step this feature requires. Always
+ *  short-lived (a few minutes) regardless of how long the resulting grant
+ *  (access_grants) lasts. */
+export interface AccessRequestDoc {
+  id: string;
+  patientId: string;
+  status: AccessRequestStatus;
+  createdAt: Timestamp;
+  expiresAt: Timestamp;
+  claimedByOwnerUid: string | null;
+  claimedByClinicSlug: string | null;
+  claimedByClinicName: string | null;
+  claimedAt: Timestamp | null;
+}
+
+export type AccessGrantStatus = "active" | "revoked" | "denied";
+
+/** access_grants/{patientId}_{clinicOwnerUid} — deterministic id (one
+ *  live grant per patient/clinic pair at a time, the same "compute the id,
+ *  let Firestore itself arbitrate" pattern appointments/{...} already
+ *  uses for double-booking) so firestore.rules can check "does this exact
+ *  clinic currently have an active, unexpired grant for this exact
+ *  patient" with a single get(), no query. Created only by the patient,
+ *  only in response to approving a claimed AccessRequestDoc — never
+ *  self-granted by a clinic. Read-only access to the archive; the doctor
+ *  may still create new entries (see RecordEntryDoc) while a grant is
+ *  active, which is not a write to this document itself. */
+export interface AccessGrantDoc {
+  patientId: string;
+  clinicOwnerUid: string;
+  clinicSlug: string;
+  clinicName: string;
+  status: AccessGrantStatus;
+  grantedAt: Timestamp;
+  expiresAt: Timestamp;
+}

@@ -2496,6 +2496,187 @@ entirely and didn't touch this.
   `sites/mawid-app-d1d03/releases/1788534499449000`). No `firestore.rules`
   changes — this is client-side only.
 
+## Universal Patient Passport — QR-code medical archive
+
+A large new feature requested by name: "الأرشيف الطبي الموحد للمراجع عبر
+QR Code". Scope was narrowed by two explicit `AskUserQuestion` decisions
+before any code was written, both because the obvious "full spec"
+implementation would have immediately hit walls this project already
+knows about:
+
+- **Text-only record, no file storage this pass.** Lab_Reports_URLs[]/
+  X-ray/PDF uploads need Firebase Storage, which (see "Pivoted away from
+  Firebase Storage entirely" above) requires the paid Blaze plan even to
+  enable — the user chose to build only the text-based
+  Medical_History/Previous_Prescriptions record for now and defer file
+  storage until a Blaze decision is made.
+- **Patient_ID stays the existing unverified local identity, not real SMS
+  verification.** Real Firebase Phone Auth (SMS OTP) was the first choice
+  discussed, but turned out to hit the *exact same* Blaze-plan wall as
+  Storage — Google requires Blaze to send real SMS in production, even
+  within Blaze's own free quota. Told to the user before writing any auth
+  code (not discovered mid-build like the Storage case was); they chose
+  to stay on Spark and keep the existing anonymous-auth-based identity
+  rather than adopt Blaze for this. **Disclosed limitation, not hidden**:
+  "Patient_ID" is the patient's Firebase Anonymous Auth uid — the same
+  identity `ensurePatientSession()`/`bookSlot()` already use for
+  appointments — so it is only as trustworthy as "whoever currently holds
+  this anonymous browser session," exactly like every other patient-side
+  identity in this app. A real clinical deployment would need real
+  identity verification; this is a working prototype of the QR/consent/
+  access-grant mechanics on top of today's identity layer, not a claim
+  that the identity itself is medical-grade.
+
+### Data model (`apps/web/src/lib/firebase/types.ts`, `firestore.ts` → new `passport.ts`)
+
+No Cloud Functions exist anywhere in this project (Cloud Functions itself
+requires Blaze to deploy at all, same family of constraint) — so, like
+everything else in this Firebase track, the whole feature is client SDK +
+`firestore.rules` only, no server-signed tokens:
+
+- **`patient_records/{patientId}`** (patientId == the patient's own auth
+  uid, doc id) — just a profile doc (`fullName` + timestamps). Medical
+  history/prescriptions are **not** arrays on this doc — Firestore
+  security rules can't express "this array write only appended, never
+  edited an existing element," so instead:
+- **`patient_records/{patientId}/entries/{entryId}`** — one immutable
+  document per history note or prescription/report
+  (`type: "history"|"prescription"`, `text`, `authorType: "patient"|
+  "clinic"`, denormalized `clinicOwnerUid`/`clinicSlug`/`clinicName` when
+  clinic-authored). `firestore.rules` denies `update`/`delete` to
+  everyone but admin — a correction is a new entry, never an edit of an
+  old one, which is what actually makes "the doctor gets read-only access
+  to the old archive" true rather than just a UI convention.
+- **`access_requests/{requestId}`** — the QR code's own short-lived (5
+  minute) claim ticket, random id. This is the closest thing to "a
+  temporary signing key" this project can build without a backend: the
+  id's randomness + a tight expiry are the actual security, not
+  cryptographic signing. A patient creates one when tapping "إظهار رمز
+  الدخول"; a clinic "claims" it by scanning, which is what surfaces the
+  approve/deny prompt on the patient's own still-open screen — there's no
+  push notification system in this app (see the SMS/Storage disclosures
+  above — same "no paid backend service" posture), so approval only works
+  while the patient's own device is present and listening
+  (`onSnapshot`), which matches the real physical scenario ("show the
+  clinic your phone screen") this feature is actually for.
+- **`access_grants/{patientId}_{clinicOwnerUid}`** — the actual
+  permission a clinic's read access depends on, deterministic id (same
+  "compute the id, let Firestore arbitrate" trick `appointments/{...}`
+  already uses for double-booking). Only ever created/renewed by the
+  patient themselves, in response to approving a claimed request — a
+  clinic can never self-grant. Capped server-side (`firestore.rules`) at
+  65 minutes out from `request.time` on every create/update, so even a
+  tampered client can't mint a long-lived pass; the app itself always
+  requests 30 minutes (`ACCESS_GRANT_MINUTES` in `passport.ts`), standing
+  in for "the duration of the consultation" since there's no way for this
+  app to know when a real consultation actually ends.
+
+### UI
+
+- **`/find/passport`** ("بطاقتي الصحية", linked from `/find` next to
+  "طلباتي"): the patient's own passport — "إظهار رمز الدخول" generates an
+  `access_requests` ticket and renders it as a QR (via the `qrcode` npm
+  package) encoding `{patientId, requestId, exp}`; a live listener flips
+  the screen to an approve/deny prompt the instant a clinic claims it,
+  then to a confirmation once approved. Also lists the patient's own
+  medical history/prescriptions (read + a "أضف ملاحظة" box for a
+  self-reported entry) and any currently-active grants with a per-grant
+  "إلغاء الوصول" revoke button.
+- **`/clinic`'s new "مسح سجل المراجع" tab** (`components/
+  ScanPatientTab.tsx`): camera-based scanning via `getUserMedia` +
+  `jsqr` (a small, dependency-light pure-JS QR decoder — no native camera
+  plugin needed since this is a web app), with a manual-paste fallback
+  for a desktop dev machine or a browser that denies camera permission
+  (clearly labeled as a fallback, not hidden as if it were the real
+  flow). After claiming a scanned ticket, the tab waits
+  (`onSnapshot`-driven, no polling) for the patient's approval, then shows
+  that patient's record read-only plus a form to append a new
+  prescription/report — exactly the "read old archive, write new entries
+  only" split the spec asked for, enforced independently by
+  `firestore.rules`, not just by what buttons this UI shows.
+
+### Verification
+
+No live-project verification this pass — no fresh Firebase service-
+account key was on hand this session (this project's standing practice is
+the user shares one fresh each time it's needed, then it's deleted
+immediately after use), so nothing was deployed or tested against the
+real `mawid-app-d1d03` project.
+
+What *was* verified, and how:
+
+- `tsc --noEmit` (via `next build`'s own typecheck) and the static export
+  build are both clean; `/find/passport` and `/clinic`'s new tab compile
+  and are included in the static export.
+- **The actual security-critical part — `firestore.rules` — was verified
+  against a real, locally-running Firestore emulator** (the emulator jar
+  was already cached in this sandbox from earlier work in this project;
+  Java was available), not just read through by eye. A 22-assertion script
+  (three real signed-in-anonymous identities: one patient, two separate
+  clinics) exercised the whole flow end-to-end and every negative case:
+  patient creates their own record; a clinic with no grant can't read it;
+  a clinic can't self-create a grant; a patient's access-request ticket
+  respects its expiry bound; a clinic claims a ticket and the patient
+  approves it; the granted clinic can then read the record and append a
+  new prescription entry; the granted clinic **cannot** edit the record's
+  `fullName` or edit/delete the entry it just wrote (the read-only/
+  append-only guarantee, actually checked, not assumed); an unrelated
+  second clinic still can't read the record or forge an entry under the
+  granted clinic's identity; revoking a grant immediately cuts off
+  access; a clinic can't re-activate its own revoked grant; a patient can
+  add their own self-reported entry. All 22 passed.
+  - **A real bug was caught by this exact test run, in the test harness
+    itself, not the rules**: the first pass showed 3 unexplained
+    failures where a write that should have succeeded (a clinic claiming
+    its own scanned ticket; that same clinic later trying — and rightly
+    failing — to reactivate its own revoked grant) was denied. Root
+    cause, found by reading the Firestore emulator's own debug log
+    (`firestore-debug.log`) and then directly inspecting the stored
+    documents via the emulator's REST API with the debug `Authorization:
+    Bearer owner` bypass: a `DocumentReference` created against one
+    signed-in Firebase app instance (the patient's) was being reused to
+    perform a write that was supposed to come from a *different* signed-
+    in instance (a clinic's) — Firestore always executes a write using
+    the credentials of the specific SDK instance the reference belongs
+    to, not whichever instance the test code "intended." Once each write
+    used a reference obtained from the correct actor's own client, all
+    22 assertions passed. Disclosed here rather than silently fixed and
+    forgotten, since it's a good illustration of exactly the kind of
+    cross-actor mistake these rules are designed to prevent for real —
+    caught in the test harness first.
+  - Emulator + scratch test files were fully cleaned up after (no jar,
+    log, or test script left in the repo).
+- **Not verified**: the camera-scanning path itself (`getUserMedia` +
+  `jsqr`) was not exercised with a real camera/real QR image in this
+  pass — only confirmed to render its "تعذّر الوصول إلى الكاميرا" fallback
+  UI cleanly in a headless browser with no camera, and to not throw. The
+  manual-paste fallback path is what should be used to exercise the
+  claim/approve/read/append flow live once this is deployed, until it's
+  tried with a real phone camera.
+- **Not deployed** — `firestore.rules` and the rebuilt `apps/web/out/`
+  are committed but not pushed to the live `mawid-app-d1d03` project;
+  same standing practice as every other feature in this file (hold
+  `firebase deploy` for the user's explicit go-ahead), doubly true here
+  since this feature was never verified live.
+
+### Disclosed limitations (read before treating this as production-ready)
+
+- No file/image attachments (X-rays, PDF reports) — text only, see the
+  Blaze-plan scoping decision above.
+- Patient_ID is unverified anonymous-auth identity, not a real, checked
+  phone/legal identity — see the Blaze-plan scoping decision above.
+- No push notifications — the patient-approval step only works while the
+  patient's own device has `/find/passport` open and listening; this
+  matches the real in-person "show the clinic your screen" scenario the
+  feature is built for, but there is no way to approve a request
+  remotely or after closing the tab.
+- The QR "signing key" is an unguessable random Firestore document id
+  plus a short server-checked expiry, not a real cryptographic signature
+  — adequate against casual replay/guessing, not against a
+  sophisticated attacker with write access to the patient's own device.
+- Not yet load-tested or used with a real camera/real patient in a real
+  clinic visit — see "Verification" above.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

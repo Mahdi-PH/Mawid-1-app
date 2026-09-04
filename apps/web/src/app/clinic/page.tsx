@@ -31,12 +31,13 @@ import { generateDaySlots } from "../../lib/firebase/slotEngine";
 import { STATUS_DOT, STATUS_LABEL } from "../../lib/firebase/statusMeta";
 import { OCCUPYING_STATUSES } from "../../lib/firebase/types";
 import type { AppointmentDoc, AppointmentStatus, ClinicDoc } from "../../lib/firebase/types";
+import ScanPatientTab from "../../components/ScanPatientTab";
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-type Tab = "reception" | "tv" | "settings" | "subscription";
+type Tab = "reception" | "tv" | "settings" | "subscription" | "scan";
 
 export default function ClinicDashboardPage() {
   const [clinic, setClinic] = useState<ClinicDoc | null | undefined>(undefined);
@@ -174,6 +175,7 @@ export default function ClinicDashboardPage() {
             [
               ["reception", "الاستقبال"],
               ["tv", "شاشة الانتظار"],
+              ["scan", "مسح سجل المراجع"],
               ["settings", "إعدادات الدوام"],
               ["subscription", "خطة الاشتراك"],
             ] as [Tab, string][]
@@ -205,6 +207,7 @@ export default function ClinicDashboardPage() {
           <ReceptionTab clinic={clinic} appts={appts} onChanged={() => reloadAppts(clinic)} />
         )}
         {tab === "tv" && <WaitingRoomTv appts={appts} />}
+        {tab === "scan" && <ScanPatientTab clinic={clinic} />}
         {tab === "settings" && (
           <SettingsTab clinic={clinic} onSaved={(c) => { setClinic(c); reloadAppts(c); }} />
         )}

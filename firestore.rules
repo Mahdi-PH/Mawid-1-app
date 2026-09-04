@@ -66,6 +66,28 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------
+    // Universal Patient Passport (QR-code medical archive) helpers.
+    // A clinic's read access to patient_records/{patientId} — and its
+    // ability to add (never edit) an entries/ doc — depends entirely on
+    // an access_grants/{patientId}_{clinicOwnerUid} document existing,
+    // being "active", and not yet expired. That grant is only ever
+    // created by the patient themselves (see access_grants' own create
+    // rule below) after approving a claimed access_requests ticket — a
+    // clinic can never grant itself access. Deterministic grant id (same
+    // "compute the id, let Firestore itself arbitrate" trick appointments
+    // already use) means this is one get() per check, no query.
+    function hasActiveGrant(patientId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/access_grants/$(patientId + '_' + request.auth.uid)) &&
+        get(/databases/$(database)/documents/access_grants/$(patientId + '_' + request.auth.uid)).data.status == "active" &&
+        get(/databases/$(database)/documents/access_grants/$(patientId + '_' + request.auth.uid)).data.expiresAt > request.time;
+    }
+    function isValidEntryShape(data) {
+      return data.type in ["history", "prescription"]
+        && data.text is string && data.text.size() > 0 && data.text.size() <= 4000;
+    }
+
+    // ---------------------------------------------------------------
     // users/{uid} — one document per registered account (admin or
     // clinic; anonymous patients are never written here, only to
     // appointments, to avoid a write for every anonymous visitor).
@@ -180,6 +202,138 @@ service cloud.firestore {
       // Status transitions (confirm/arrive/complete/cancel) and any
       // clinic-side edit belong to that clinic's own owner, or admin.
       allow update: if isAdmin() || ownsClinic(resource.data.clinicSlug);
+
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // patient_records/{patientId} — patientId == the patient's own
+    // Firebase Auth uid (see types.ts for why this is the anonymous-auth
+    // uid, not a phone-verified identity, this pass). The profile doc
+    // itself (fullName) is only ever writable by the patient — a clinic's
+    // grant lets it read this doc and add new entries/ docs below, never
+    // touch the profile fields.
+    // ---------------------------------------------------------------
+    match /patient_records/{patientId} {
+      allow read: if isAdmin() || isOwner(patientId) || hasActiveGrant(patientId);
+
+      allow create: if isOwner(patientId)
+                    && request.resource.data.patientId == patientId
+                    && request.resource.data.fullName is string
+                    && request.resource.data.fullName.size() > 0
+                    && request.resource.data.fullName.size() <= 200;
+
+      allow update: if isAdmin()
+                    || (isOwner(patientId)
+                        && request.resource.data.patientId == resource.data.patientId
+                        && request.resource.data.fullName is string
+                        && request.resource.data.fullName.size() > 0
+                        && request.resource.data.fullName.size() <= 200);
+
+      allow delete: if isAdmin() || isOwner(patientId);
+
+      // entries/{entryId} — one immutable doc per medical-history note or
+      // prescription/report. "authorType" decides who may create one:
+      // the patient (their own self-reported note) or a clinic currently
+      // holding an active grant (a doctor's new prescription/report,
+      // appended here rather than editing anything above). Never
+      // updatable/deletable by anyone but admin, once written — the
+      // "read-only archive" guarantee this whole feature exists to give.
+      match /entries/{entryId} {
+        allow read: if isAdmin() || isOwner(patientId) || hasActiveGrant(patientId);
+
+        allow create: if isAdmin()
+                      || (isOwner(patientId)
+                          && request.resource.data.authorType == "patient"
+                          && request.resource.data.clinicOwnerUid == null
+                          && request.resource.data.clinicSlug == null
+                          && request.resource.data.clinicName == null
+                          && isValidEntryShape(request.resource.data))
+                      || (hasActiveGrant(patientId)
+                          && request.resource.data.authorType == "clinic"
+                          && request.resource.data.clinicOwnerUid == request.auth.uid
+                          && request.resource.data.clinicSlug is string
+                          && request.resource.data.clinicName is string
+                          && isValidEntryShape(request.resource.data));
+
+        allow update: if isAdmin();
+        allow delete: if isAdmin();
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // access_requests/{requestId} — the QR code's own short-lived claim
+    // ticket. Holds no medical content (just a pointer + expiry), so any
+    // signed-in visitor may read one — a clinic needs to read it the
+    // instant it scans a code, before it has any established relationship
+    // with that patient. See lib/firebase/passport.ts for the full flow.
+    // ---------------------------------------------------------------
+    match /access_requests/{requestId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+                    && request.resource.data.patientId == request.auth.uid
+                    && request.resource.data.status == "awaiting_scan"
+                    && request.resource.data.expiresAt is timestamp
+                    && request.resource.data.expiresAt > request.time
+                    && request.resource.data.expiresAt < request.time + duration.value(10, 'm')
+                    && request.resource.data.claimedByOwnerUid == null
+                    && request.resource.data.claimedByClinicSlug == null
+                    && request.resource.data.claimedByClinicName == null;
+
+      allow update: if isAdmin()
+                    // A clinic claiming a still-open, unexpired ticket —
+                    // the one write a clinic may ever make on this doc.
+                    || (isSignedIn()
+                        && resource.data.status == "awaiting_scan"
+                        && resource.data.expiresAt > request.time
+                        && request.resource.data.status == "claimed"
+                        && request.resource.data.patientId == resource.data.patientId
+                        && request.resource.data.expiresAt == resource.data.expiresAt
+                        && request.resource.data.claimedByOwnerUid == request.auth.uid)
+                    // The patient approving/denying their own claimed ticket.
+                    || (isOwner(resource.data.patientId)
+                        && resource.data.status == "claimed"
+                        && (request.resource.data.status == "approved" || request.resource.data.status == "denied")
+                        && request.resource.data.patientId == resource.data.patientId
+                        && request.resource.data.claimedByOwnerUid == resource.data.claimedByOwnerUid);
+
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // access_grants/{patientId}_{clinicOwnerUid} — the actual time-boxed
+    // permission a hasActiveGrant() check above reads. Only ever created
+    // or extended by the patient themselves, in response to approving a
+    // claimed access_requests ticket — a clinic can never self-grant or
+    // self-extend its own access. Every create/update caps expiresAt at
+    // 65 minutes out (comfortably above ACCESS_GRANT_MINUTES=30 in
+    // passport.ts, so a normal grant always validates, while still ruling
+    // out a tampered client minting an indefinite pass).
+    // ---------------------------------------------------------------
+    match /access_grants/{grantDocId} {
+      allow read: if isAdmin()
+                  || (isSignedIn() && request.auth.uid == resource.data.clinicOwnerUid)
+                  || (isSignedIn() && request.auth.uid == resource.data.patientId);
+
+      allow create: if isSignedIn()
+                    && grantDocId == request.resource.data.patientId + '_' + request.resource.data.clinicOwnerUid
+                    && request.resource.data.patientId == request.auth.uid
+                    && request.resource.data.status == "active"
+                    && request.resource.data.expiresAt is timestamp
+                    && request.resource.data.expiresAt > request.time
+                    && request.resource.data.expiresAt < request.time + duration.value(65, 'm');
+
+      allow update: if isAdmin()
+                    || (isOwner(resource.data.patientId)
+                        && request.resource.data.patientId == resource.data.patientId
+                        && request.resource.data.clinicOwnerUid == resource.data.clinicOwnerUid
+                        && (
+                          (request.resource.data.status == "active"
+                            && request.resource.data.expiresAt > request.time
+                            && request.resource.data.expiresAt < request.time + duration.value(65, 'm'))
+                          || request.resource.data.status == "revoked"
+                        ));
 
       allow delete: if isAdmin();
     }

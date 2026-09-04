@@ -113,9 +113,14 @@ function FindClinicSearch({
         <h1 className="text-xl font-bold" style={{ color: "#0F7A6C" }}>
           ابحث عن مركزك
         </h1>
-        <Link href="/find/requests" className="text-sm text-brand-600 hover:underline">
-          طلباتي
-        </Link>
+        <div className="flex gap-3 text-sm">
+          <Link href="/find/passport" className="text-brand-600 hover:underline">
+            بطاقتي الصحية
+          </Link>
+          <Link href="/find/requests" className="text-brand-600 hover:underline">
+            طلباتي
+          </Link>
+        </div>
       </div>
 
       <input
