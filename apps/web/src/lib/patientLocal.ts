@@ -1,0 +1,178 @@
+// Local (per-browser) patient session convenience layer — NOT a real
+// backend account. Patients still never get a password-based account (see
+// lib/firebase/auth.ts ensurePatientSession(); CLAUDE.md's explicit,
+// user-confirmed "anonymous forever" decision) - actual booking writes
+// are still scoped by Firebase's persisted anonymous uid, unchanged. This
+// file only saves the name/phone/PIN a patient already typed once so
+// /find doesn't ask again on a return visit in the same browser, and
+// remembers their most recent active booking so it can offer a fast way
+// back into its waiting screen. The PIN has no server-side verification —
+// it's a locally-stored field, matched client-side only (see
+// beginSession()) — not a real credential.
+export interface PatientProfile {
+  name: string;
+  phone: string;
+  pin: string;
+}
+
+export interface ActiveBooking {
+  clinicSlug: string;
+  clinicName: string;
+  apptId: string;
+  date: string;
+  startTime: string;
+}
+
+const PROFILE_KEY = "mawid_patient_profile";
+const SESSION_ACTIVE_KEY = "mawid_patient_session_active";
+const ACTIVE_BOOKING_KEY = "mawid_patient_active_booking";
+
+function readStoredProfile(): PatientProfile | null {
+  try {
+    const raw = localStorage.getItem(PROFILE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.name === "string" && typeof parsed?.phone === "string" && typeof parsed?.pin === "string") {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function isSessionActive(): boolean {
+  try {
+    return localStorage.getItem(SESSION_ACTIVE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** What the UI should treat as "currently signed in" — the stored profile,
+ *  but only once a session has actually been started via beginSession().
+ *  Sign-out (signOutPatient()) clears just the active flag, never the
+ *  stored profile itself, so the data survives and a matching re-entry
+ *  restores it exactly — see beginSession(). */
+export function getPatientProfile(): PatientProfile | null {
+  return isSessionActive() ? readStoredProfile() : null;
+}
+
+/** Called when the entry gate on /find is submitted. If the typed name/
+ *  phone/PIN match an already-stored profile, this resumes that same
+ *  local account — its remembered active booking, if any, stays intact —
+ *  instead of overwriting it, which is the whole reason the PIN exists.
+ *  A non-matching submission (or no stored profile yet) starts a fresh
+ *  local profile and clears any previous one's active booking, since that
+ *  booking belonged to a different identity on this device. Returns the
+ *  profile now in effect (the restored one, on a match). */
+export function beginSession(input: PatientProfile): PatientProfile {
+  const existing = readStoredProfile();
+  const matches = !!existing && existing.name === input.name && existing.phone === input.phone && existing.pin === input.pin;
+  try {
+    if (!matches) {
+      localStorage.setItem(PROFILE_KEY, JSON.stringify(input));
+      localStorage.removeItem(ACTIVE_BOOKING_KEY);
+    }
+    localStorage.setItem(SESSION_ACTIVE_KEY, "1");
+  } catch {
+    // Private browsing / blocked storage: the gate will just show again
+    // next visit — no crash, matching this app's usual fail-open pattern
+    // for localStorage elsewhere (see app/page.tsx's splash flag).
+  }
+  return matches ? existing! : input;
+}
+
+/** The gate's "تسجيل دخول" side — phone + PIN only, no name (a returning
+ *  patient shouldn't have to retype what's already stored). Returns the
+ *  stored profile and activates the session on a match, leaving the
+ *  active booking untouched; returns null on no match (wrong phone/PIN,
+ *  or nothing stored yet on this device) without changing any stored
+ *  state, so the caller can show an error instead of silently creating a
+ *  blank account under the "login" label. */
+export function loginWithPhoneAndPin(phone: string, pin: string): PatientProfile | null {
+  const existing = readStoredProfile();
+  if (!existing || existing.phone !== phone || existing.pin !== pin) return null;
+  try {
+    localStorage.setItem(SESSION_ACTIVE_KEY, "1");
+  } catch {
+    // ignore
+  }
+  return existing;
+}
+
+/** Sign-out — clears only the "currently active" marker. The saved
+ *  profile and active-booking data are left untouched, so signing back in
+ *  with the same name/phone/PIN (see beginSession()) brings the same
+ *  account back rather than starting over. */
+export function signOutPatient(): void {
+  try {
+    localStorage.removeItem(SESSION_ACTIVE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+export function getActiveBooking(): ActiveBooking | null {
+  try {
+    const raw = localStorage.getItem(ACTIVE_BOOKING_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveActiveBooking(booking: ActiveBooking): void {
+  try {
+    localStorage.setItem(ACTIVE_BOOKING_KEY, JSON.stringify(booking));
+  } catch {
+    // ignore
+  }
+}
+
+/** Cleared once an appointment reaches a terminal status (see
+ *  find/wait/page.tsx) — a legitimate business-logic clear, unrelated to
+ *  sign-out, which never touches this on its own. */
+export function clearActiveBooking(): void {
+  try {
+    localStorage.removeItem(ACTIVE_BOOKING_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+const DISMISSED_END_PROMPTS_KEY = "mawid_dismissed_end_prompts";
+/** How many recent "keep this record" choices to remember — old enough
+ *  entries are trimmed so this can't grow without bound over a long-lived
+ *  browser profile. */
+const MAX_DISMISSED_END_PROMPTS = 30;
+
+/** The end-of-visit "انتهى موعدك، هل تريد حذف الحجز؟" prompt (see
+ *  find/wait/page.tsx and find/page.tsx) must only ask once per finished
+ *  appointment — choosing "لا، إبقاء السجل" records that here so the same
+ *  completed appointment never asks again on a later visit. Choosing
+ *  "نعم، حذف الحجز" never needs this: once the appointment doc itself is
+ *  deleted, there's nothing left to prompt about. */
+export function isEndPromptDismissed(apptId: string): boolean {
+  try {
+    const raw = localStorage.getItem(DISMISSED_END_PROMPTS_KEY);
+    const list: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) && list.includes(apptId);
+  } catch {
+    return false;
+  }
+}
+
+export function markEndPromptDismissed(apptId: string): void {
+  try {
+    const raw = localStorage.getItem(DISMISSED_END_PROMPTS_KEY);
+    const list: unknown = raw ? JSON.parse(raw) : [];
+    const next = (Array.isArray(list) ? list.filter((x): x is string => typeof x === "string") : []).filter(
+      (id) => id !== apptId
+    );
+    next.push(apptId);
+    localStorage.setItem(DISMISSED_END_PROMPTS_KEY, JSON.stringify(next.slice(-MAX_DISMISSED_END_PROMPTS)));
+  } catch {
+    // ignore — worst case the prompt asks again next visit
+  }
+}

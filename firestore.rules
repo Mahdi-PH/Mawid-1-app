@@ -1,0 +1,430 @@
+rules_version = '2';
+
+// موعد (Mawid) — Firestore security rules.
+//
+// Model: three roles carried as a custom auth claim (request.auth.token.admin
+// / .clinic), never as a client-writable field, so nobody can grant
+// themselves privileges by just writing a different value into their own
+// document:
+//   - admin:   full read/write everywhere (claim set only by the seed
+//              script / Admin SDK, see scripts/seed-admin.mjs).
+//   - clinic:  a signed-in clinic/beauty-center account; can manage only
+//              the clinic document it owns (ownerUid == its uid) and that
+//              clinic's own appointments. Every new signup starts
+//              clinics/{slug}.status == "pending" with a license image on
+//              file; only admin (via the dashboard's approve/reject
+//              buttons) can move it to "approved"/"rejected" — a clinic
+//              can never write its own approval status.
+//   - patient: any signed-in user (including anonymous — patients never
+//              create a password account in this app, see
+//              lib/firebase/auth.ts ensureSignedIn()) who can read/write
+//              only appointments carrying their own uid as patientUid.
+//
+// Double-booking guard: appointment documents are keyed deterministically
+// as `${clinicSlug}_${date}_${startTime}`, and every booking write happens
+// inside a client-side Firestore transaction that first reads that exact
+// document (see lib/firebase/firestore.ts bookSlot()). Firestore serializes
+// transactions that touch the same document, so two concurrent bookings for
+// the same slot can never both commit — this is the same guarantee the
+// Postgres slotLockKey unique index gives the real apps/server backend,
+// implemented Firestore-natively instead of via a DB constraint.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return isSignedIn() && ("admin" in request.auth.token) && request.auth.token.admin == true;
+    }
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+    function ownsClinic(clinicSlug) {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/clinics/$(clinicSlug)).data.ownerUid == request.auth.uid;
+    }
+    function isDateString(s) {
+      return s is string && s.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+    function isTimeString(s) {
+      return s is string && s.matches('^[0-9]{2}:[0-9]{2}$');
+    }
+    // No App Check on the Spark plan here, so anonymous patient writes are
+    // otherwise unrateable — these checks don't stop a determined attacker
+    // but they do reject garbage shapes/oversized fields cheaply, and the
+    // id-matches-tuple check keeps every stored appointment usable by the
+    // double-booking transaction that reads it. See docs/firebase-setup.md
+    // for adding App Check as the real abuse mitigation later.
+    function isValidApptCreate(apptId, data) {
+      return isDateString(data.date)
+        && isTimeString(data.startTime)
+        && isTimeString(data.endTime)
+        && apptId == data.clinicSlug + '_' + data.date + '_' + data.startTime
+        && data.patientName is string && data.patientName.size() > 0 && data.patientName.size() <= 120
+        && data.patientPhone is string && data.patientPhone.size() > 0 && data.patientPhone.size() <= 30;
+    }
+
+    // ---------------------------------------------------------------
+    // Universal Patient Passport (QR-code medical archive) helpers.
+    // A clinic's read access to patient_records/{patientId} — and its
+    // ability to add (never edit) an entries/ doc — depends entirely on
+    // an access_grants/{patientId}_{clinicOwnerUid} document existing,
+    // being "active", and not yet expired. That grant is only ever
+    // created by the patient themselves (see access_grants' own create
+    // rule below) after approving a claimed access_requests ticket — a
+    // clinic can never grant itself access. Deterministic grant id (same
+    // "compute the id, let Firestore itself arbitrate" trick appointments
+    // already use) means this is one get() per check, no query.
+    function hasActiveGrant(patientId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/access_grants/$(patientId + '_' + request.auth.uid)) &&
+        get(/databases/$(database)/documents/access_grants/$(patientId + '_' + request.auth.uid)).data.status == "active" &&
+        get(/databases/$(database)/documents/access_grants/$(patientId + '_' + request.auth.uid)).data.expiresAt > request.time;
+    }
+    function isValidEntryShape(data) {
+      return data.type in ["history", "prescription"]
+        && data.text is string && data.text.size() > 0 && data.text.size() <= 4000;
+    }
+
+    // The live patient-facing queue board (clinic_queue_slots/{apptId} —
+    // same id as its matching appointments doc). A signed-in patient may
+    // write only their OWN slot's entry, proven by an exists()+get() check
+    // against the real appointments doc it mirrors (same style as
+    // hasActiveGrant() above) — this is what lets bookSlot() create the
+    // very first "requested" entry for a brand-new booking, before the
+    // clinic has ever touched it.
+    function isValidQueueStatus(v) {
+      return v in ["requested", "booked", "arrived", "in_progress", "completed", "no_show", "cancelled"];
+    }
+    function matchingAppointment(data) {
+      return get(/databases/$(database)/documents/appointments/$(data.clinicSlug + '_' + data.date + '_' + data.startTime));
+    }
+    function ownsMatchingAppointment(data) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/appointments/$(data.clinicSlug + '_' + data.date + '_' + data.startTime)) &&
+        matchingAppointment(data).data.patientUid == request.auth.uid;
+    }
+
+    // ---------------------------------------------------------------
+    // users/{uid} — one document per registered account (admin or
+    // clinic; anonymous patients are never written here, only to
+    // appointments, to avoid a write for every anonymous visitor).
+    // ---------------------------------------------------------------
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+
+      // A brand-new user may create only their OWN doc, and only as
+      // "clinic" — "admin" can never be self-assigned client-side.
+      allow create: if isOwner(uid)
+                    && request.resource.data.role == "clinic"
+                    && request.resource.data.uid == uid;
+
+      // Nobody may change their own role after creation (prevents a
+      // clinic from promoting itself); admin can edit anything.
+      allow update: if isAdmin()
+                    || (isOwner(uid) && request.resource.data.role == resource.data.role);
+
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // clinics/{slug} — slug IS the document id (same "unique username"
+    // concept as the demo artifact's accUsername), which is what makes
+    // creation collision-proof: two clinics racing for the same slug
+    // hit the same document and only one create() can win.
+    // ---------------------------------------------------------------
+    match /clinics/{slug} {
+      // Public directory: unauthenticated patients must be able to
+      // browse clinics and see today's schedule before booking.
+      allow read: if true;
+
+      // Same charset as the demo artifact's username field, so a slug
+      // chosen there stays valid here too: letters, digits, _ and -.
+      // Every new clinic/beauty-center starts "pending" with a license
+      // image on file — there is no client-side path to "approved",
+      // enforced below in the update rule, not here.
+      //
+      // licenseImageUrl holds a compressed base64 data: URL, not a
+      // Firebase Storage link - Storage now requires the paid Blaze plan
+      // to enable at all, so the image lives inline on this document
+      // instead (see lib/firebase/licenseImage.ts). The 900,000-char cap
+      // here mirrors that file's own pre-write check, leaving headroom
+      // under Firestore's 1 MiB total document size limit.
+      allow create: if isSignedIn()
+                    && slug.matches('^[A-Za-z0-9_-]{3,32}$')
+                    && request.resource.data.ownerUid == request.auth.uid
+                    // email is denormalized for the admin dashboard's
+                    // pending-list; must match the account's own verified
+                    // address, not an arbitrary string.
+                    && request.resource.data.email == request.auth.token.email
+                    && request.resource.data.status == "pending"
+                    && request.resource.data.subscriptionEndsAt == null
+                    && request.resource.data.subscriptionStartedAt == null
+                    // "Dynamic Entity Specialization" — every new clinic
+                    // must pick exactly one of these three, no free-form
+                    // value; see lib/firebase/terminology.ts for what
+                    // each one drives. Purely a display/classification
+                    // field otherwise — it never participates in any
+                    // appointment/queue query or security check, so it
+                    // carries no cross-tenant-isolation responsibility of
+                    // its own (that isolation is entirely clinicSlug/
+                    // ownerUid-based, unchanged by this field).
+                    && request.resource.data.entityType in ['clinic', 'beauty', 'salon']
+                    && request.resource.data.licenseImageUrl is string
+                    && request.resource.data.licenseImageUrl.size() > 0
+                    && request.resource.data.licenseImageUrl.size() < 900000
+                    && !exists(/databases/$(database)/documents/clinics/$(slug));
+
+      // The owner can edit their own profile/schedule freely, but never
+      // their own approval status or subscription expiry — only admin
+      // (via the dashboard's approve/reject/renew actions) can move
+      // status out of "pending" or push subscriptionEndsAt forward;
+      // there's no real payment gateway (see /subscribe), so a clinic
+      // extending its own access would be the whole enforcement
+      // pointless. Reading resource.data directly here (rather than
+      // calling ownsClinic(), which re-fetches the same document via
+      // get()) saves a read.
+      allow update: if isAdmin()
+                    || (isSignedIn()
+                        && resource.data.ownerUid == request.auth.uid
+                        && request.resource.data.status == resource.data.status
+                        && request.resource.data.subscriptionEndsAt == resource.data.subscriptionEndsAt
+                        && request.resource.data.subscriptionStartedAt == resource.data.subscriptionStartedAt
+                        // Not locked to admin-only like status/subscription
+                        // above — a clinic may freely re-classify its own
+                        // entityType later (no app UI does this yet), but
+                        // never to a value outside the three real ones.
+                        && request.resource.data.entityType in ['clinic', 'beauty', 'salon']);
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // appointments/{apptId} — apptId = `${clinicSlug}_${date}_${startTime}`.
+    // ---------------------------------------------------------------
+    match /appointments/{apptId} {
+      // resource == null covers the one case bookSlot()'s transaction
+      // actually needs: reading a NOT-YET-EXISTING appointment doc (the
+      // double-booking existence check) as an anonymous patient who is
+      // neither that clinic's owner nor admin. A nonexistent document has
+      // no data to protect, so this doesn't loosen access to anyone
+      // else's real booking - once the doc exists, this clause is false
+      // and the three conditions below are the only way in, same as
+      // before. Appointment ids are deterministic
+      // (`${clinicSlug}_${date}_${startTime}`) and computable from public
+      // clinic data, so without this, any other patient's slot being
+      // *taken* would be undiscoverable except by a failed create - this
+      // just lets that same fact ("is this exact id already claimed?")
+      // be checked with a plain read too, which is what a client-side
+      // transaction naturally does before writing.
+      allow read: if isAdmin()
+                  || (isSignedIn() && resource.data.patientUid == request.auth.uid)
+                  || ownsClinic(resource.data.clinicSlug)
+                  || (isSignedIn() && resource == null);
+
+      // A patient may only ever create an appointment under their own
+      // uid, for a clinic that actually exists, starting life as
+      // "requested" — a clinic confirms it via update, never create.
+      allow create: if isAdmin() || (
+                    isSignedIn() &&
+                    request.resource.data.patientUid == request.auth.uid &&
+                    request.resource.data.status == "requested" &&
+                    exists(/databases/$(database)/documents/clinics/$(request.resource.data.clinicSlug)) &&
+                    isValidApptCreate(apptId, request.resource.data)
+                  );
+
+      // Status transitions (confirm/arrive/complete/cancel) and any
+      // clinic-side edit belong to that clinic's own owner, or admin.
+      allow update: if isAdmin() || ownsClinic(resource.data.clinicSlug);
+
+      // A patient may delete their OWN appointment once it's "completed" —
+      // the end-of-visit "هل تريد حذف الحجز؟" prompt (automatic) and the
+      // "طلباتي" list's own manual delete button (see lib/firebase/
+      // firestore.ts deleteAppointment()) both rely on this. Deliberately
+      // scoped to "completed" only, not every terminal status: a patient
+      // deleting a still-"requested"/"booked" appointment (or one the
+      // clinic marked "cancelled"/"no_show") would let them erase a record
+      // the clinic still needs, or dodge a no-show being on file — none of
+      // that was asked for, only "delete once it's actually finished."
+      allow delete: if isAdmin()
+                    || (isSignedIn()
+                        && resource.data.patientUid == request.auth.uid
+                        && resource.data.status == "completed");
+    }
+
+    // ---------------------------------------------------------------
+    // clinic_queue_slots/{apptId} — the live, PII-free queue board a
+    // patient's own /find/wait screen reads to show "دورك رقم N" / how
+    // many appointments are still ahead of theirs today. Same id as the
+    // appointments doc it mirrors. Holds only clinicSlug/date/startTime/
+    // status — never patientName/patientPhone — which is exactly what
+    // makes the public `allow read: if isSignedIn()` below safe: there is
+    // no PII in this collection to leak.
+    // ---------------------------------------------------------------
+    match /clinic_queue_slots/{slotId} {
+      allow read: if isSignedIn();
+
+      // Two writers, kept structurally separate:
+      //   - the owning clinic (any status, any time — its own reception
+      //     dashboard driving real status transitions);
+      //   - the booking patient, but ONLY for their own slot (proven by
+      //     ownsMatchingAppointment()), and ONLY setting the status their
+      //     real appointments doc already has — a patient can never write
+      //     appointments/{apptId}.status directly (that update rule is
+      //     ownsClinic-only), so requiring the queue-slot's status to
+      //     match it exactly means a patient can never forge their own
+      //     queue standing either, even on their own slot. This is what
+      //     lets bookSlot() create the very first entry (status
+      //     "requested", which is also what it just wrote to the real
+      //     appointments doc in the same call).
+      allow create: if isAdmin()
+                    || ownsClinic(request.resource.data.clinicSlug)
+                    || (ownsMatchingAppointment(request.resource.data)
+                        && isValidQueueStatus(request.resource.data.status)
+                        && request.resource.data.status == matchingAppointment(request.resource.data).data.status);
+
+      allow update: if isAdmin()
+                    || ownsClinic(resource.data.clinicSlug)
+                    || (ownsMatchingAppointment(resource.data)
+                        && request.resource.data.clinicSlug == resource.data.clinicSlug
+                        && request.resource.data.date == resource.data.date
+                        && request.resource.data.startTime == resource.data.startTime
+                        && isValidQueueStatus(request.resource.data.status)
+                        && request.resource.data.status == matchingAppointment(resource.data).data.status);
+
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // patient_records/{patientId} — patientId == the patient's own
+    // Firebase Auth uid (see types.ts for why this is the anonymous-auth
+    // uid, not a phone-verified identity, this pass). The profile doc
+    // itself (fullName) is only ever writable by the patient — a clinic's
+    // grant lets it read this doc and add new entries/ docs below, never
+    // touch the profile fields.
+    // ---------------------------------------------------------------
+    match /patient_records/{patientId} {
+      allow read: if isAdmin() || isOwner(patientId) || hasActiveGrant(patientId);
+
+      allow create: if isOwner(patientId)
+                    && request.resource.data.patientId == patientId
+                    && request.resource.data.fullName is string
+                    && request.resource.data.fullName.size() > 0
+                    && request.resource.data.fullName.size() <= 200;
+
+      allow update: if isAdmin()
+                    || (isOwner(patientId)
+                        && request.resource.data.patientId == resource.data.patientId
+                        && request.resource.data.fullName is string
+                        && request.resource.data.fullName.size() > 0
+                        && request.resource.data.fullName.size() <= 200);
+
+      allow delete: if isAdmin() || isOwner(patientId);
+
+      // entries/{entryId} — one immutable doc per medical-history note or
+      // prescription/report. "authorType" decides who may create one:
+      // the patient (their own self-reported note) or a clinic currently
+      // holding an active grant (a doctor's new prescription/report,
+      // appended here rather than editing anything above). Never
+      // updatable/deletable by anyone but admin, once written — the
+      // "read-only archive" guarantee this whole feature exists to give.
+      match /entries/{entryId} {
+        allow read: if isAdmin() || isOwner(patientId) || hasActiveGrant(patientId);
+
+        allow create: if isAdmin()
+                      || (isOwner(patientId)
+                          && request.resource.data.authorType == "patient"
+                          && request.resource.data.clinicOwnerUid == null
+                          && request.resource.data.clinicSlug == null
+                          && request.resource.data.clinicName == null
+                          && isValidEntryShape(request.resource.data))
+                      || (hasActiveGrant(patientId)
+                          && request.resource.data.authorType == "clinic"
+                          && request.resource.data.clinicOwnerUid == request.auth.uid
+                          && request.resource.data.clinicSlug is string
+                          && request.resource.data.clinicName is string
+                          && isValidEntryShape(request.resource.data));
+
+        allow update: if isAdmin();
+        allow delete: if isAdmin();
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // access_requests/{requestId} — the QR code's own short-lived claim
+    // ticket. Holds no medical content (just a pointer + expiry), so any
+    // signed-in visitor may read one — a clinic needs to read it the
+    // instant it scans a code, before it has any established relationship
+    // with that patient. See lib/firebase/passport.ts for the full flow.
+    // ---------------------------------------------------------------
+    match /access_requests/{requestId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+                    && request.resource.data.patientId == request.auth.uid
+                    && request.resource.data.status == "awaiting_scan"
+                    && request.resource.data.expiresAt is timestamp
+                    && request.resource.data.expiresAt > request.time
+                    && request.resource.data.expiresAt < request.time + duration.value(10, 'm')
+                    && request.resource.data.claimedByOwnerUid == null
+                    && request.resource.data.claimedByClinicSlug == null
+                    && request.resource.data.claimedByClinicName == null;
+
+      allow update: if isAdmin()
+                    // A clinic claiming a still-open, unexpired ticket —
+                    // the one write a clinic may ever make on this doc.
+                    || (isSignedIn()
+                        && resource.data.status == "awaiting_scan"
+                        && resource.data.expiresAt > request.time
+                        && request.resource.data.status == "claimed"
+                        && request.resource.data.patientId == resource.data.patientId
+                        && request.resource.data.expiresAt == resource.data.expiresAt
+                        && request.resource.data.claimedByOwnerUid == request.auth.uid)
+                    // The patient approving/denying their own claimed ticket.
+                    || (isOwner(resource.data.patientId)
+                        && resource.data.status == "claimed"
+                        && (request.resource.data.status == "approved" || request.resource.data.status == "denied")
+                        && request.resource.data.patientId == resource.data.patientId
+                        && request.resource.data.claimedByOwnerUid == resource.data.claimedByOwnerUid);
+
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // access_grants/{patientId}_{clinicOwnerUid} — the actual time-boxed
+    // permission a hasActiveGrant() check above reads. Only ever created
+    // or extended by the patient themselves, in response to approving a
+    // claimed access_requests ticket — a clinic can never self-grant or
+    // self-extend its own access. Every create/update caps expiresAt at
+    // 65 minutes out (comfortably above ACCESS_GRANT_MINUTES=30 in
+    // passport.ts, so a normal grant always validates, while still ruling
+    // out a tampered client minting an indefinite pass).
+    // ---------------------------------------------------------------
+    match /access_grants/{grantDocId} {
+      allow read: if isAdmin()
+                  || (isSignedIn() && request.auth.uid == resource.data.clinicOwnerUid)
+                  || (isSignedIn() && request.auth.uid == resource.data.patientId);
+
+      allow create: if isSignedIn()
+                    && grantDocId == request.resource.data.patientId + '_' + request.resource.data.clinicOwnerUid
+                    && request.resource.data.patientId == request.auth.uid
+                    && request.resource.data.status == "active"
+                    && request.resource.data.expiresAt is timestamp
+                    && request.resource.data.expiresAt > request.time
+                    && request.resource.data.expiresAt < request.time + duration.value(65, 'm');
+
+      allow update: if isAdmin()
+                    || (isOwner(resource.data.patientId)
+                        && request.resource.data.patientId == resource.data.patientId
+                        && request.resource.data.clinicOwnerUid == resource.data.clinicOwnerUid
+                        && (
+                          (request.resource.data.status == "active"
+                            && request.resource.data.expiresAt > request.time
+                            && request.resource.data.expiresAt < request.time + duration.value(65, 'm'))
+                          || request.resource.data.status == "revoked"
+                        ));
+
+      allow delete: if isAdmin();
+    }
+  }
+}

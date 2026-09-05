@@ -1,0 +1,122 @@
+name: Android Build (TWA APK)
+
+# Builds the android/ Trusted Web Activity wrapper around the live
+# https://mawid-app-d1d03.web.app PWA. Runs here (not in the Claude Code
+# sandbox that authored it) because that sandbox's network policy blocks
+# dl.google.com, so the Android Gradle plugin / SDK can never be resolved
+# there - GitHub-hosted runners have full internet access and the Android
+# SDK preinstalled, so this is where the actual build has to happen.
+#
+# The debug APK always builds, with zero configuration, using Android's own
+# auto-generated debug keystore - good enough to sideload for testing.
+# The release APK only builds once the four ANDROID_KEYSTORE_* repo secrets
+# below are set (Settings -> Secrets and variables -> Actions):
+#   ANDROID_KEYSTORE_BASE64    - `base64 -w0 mawid-release.keystore`
+#   ANDROID_KEYSTORE_PASSWORD
+#   ANDROID_KEY_ALIAS
+#   ANDROID_KEY_PASSWORD
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/mawid-clinic-booking-mvp-td9qxz
+    paths:
+      - "android/**"
+      - ".github/workflows/android-build.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # needed to publish/update the android-latest release below
+    defaults:
+      run:
+        working-directory: android
+    env:
+      # `secrets` isn't allowed directly inside step `if:` expressions, so
+      # this job-level env (which IS allowed there) is the switch that
+      # decides whether the release-signing steps below run.
+      HAS_RELEASE_SECRETS: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: mawid-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Decode release keystore
+        if: ${{ env.HAS_RELEASE_SECRETS == 'true' }}
+        # -d -i (ignore-garbage) strips anything that isn't valid base64
+        # (stray whitespace, \r from Windows line endings, a trailing
+        # newline picked up during copy/paste into the GitHub secret) -
+        # base64 -d alone failed twice in a row here with "invalid input"
+        # even after the secret was reportedly re-copied, so this is
+        # explicit defense against that instead of relying on a perfect
+        # paste. Then verify the result actually looks like a keystore: a
+        # modern keytool PKCS12 keystore is DER/ASN.1, so it starts with
+        # byte 0x30 (a SEQUENCE tag) - NOT "PK" (that's the ZIP magic
+        # number, which this is not; an earlier version of this check
+        # wrongly looked for "PK" and rejected a perfectly valid decode).
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d -i > app/release.keystore
+          first_byte=$(od -An -tx1 -N1 app/release.keystore | tr -d ' \n')
+          if [ ! -s app/release.keystore ] || [ "$first_byte" != "30" ]; then
+            echo "::error::Decoded release.keystore is empty or not a valid keystore file (first byte: 0x${first_byte:-none}, expected 0x30) - ANDROID_KEYSTORE_BASE64 secret is likely wrong (re-run: base64 -w0 mawid-release.keystore and replace the secret value exactly, no surrounding quotes)."
+            exit 1
+          fi
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+
+      - name: Build release APK
+        if: ${{ env.HAS_RELEASE_SECRETS == 'true' }}
+        env:
+          ANDROID_KEYSTORE_PATH: release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Upload release APK
+        if: ${{ env.HAS_RELEASE_SECRETS == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mawid-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+
+      # Actions artifacts (uploaded above) expire (~90 days) and can only be
+      # downloaded by someone logged into GitHub via the workflow run page -
+      # inconvenient to keep re-sharing. This publishes the same APK(s) to
+      # one stable, rolling GitHub Release instead, so there's always a
+      # single permanent link. Also the only way to actually get this file
+      # to the user at all from a Claude Code session: this sandbox's
+      # network policy blocks the Azure Blob Storage host Actions artifact
+      # downloads redirect to, but not github.com's own Releases feature.
+      - name: Publish APK(s) to the stable "android-latest" release
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete android-latest --yes --cleanup-tag 2>/dev/null || true
+          ASSETS=()
+          [ -f android/app/build/outputs/apk/debug/app-debug.apk ] && \
+            ASSETS+=("android/app/build/outputs/apk/debug/app-debug.apk#mawid-debug.apk")
+          [ -f android/app/build/outputs/apk/release/app-release.apk ] && \
+            ASSETS+=("android/app/build/outputs/apk/release/app-release.apk#mawid-release.apk")
+          gh release create android-latest "${ASSETS[@]}" \
+            --title "Mawid Android APK (latest)" \
+            --target "${GITHUB_SHA}" \
+            --notes "Auto-published by the Android Build workflow from commit ${GITHUB_SHA}. This TWA just displays https://mawid-app-d1d03.web.app, so a web-only change doesn't need a rebuild - only changes under android/** or to this workflow do. mawid-release.apk is the signed build for real installs (only present once the ANDROID_KEYSTORE_* secrets are set); mawid-debug.apk always builds and is fine for quick sideload testing."

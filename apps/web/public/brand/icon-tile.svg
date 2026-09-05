@@ -1,0 +1,22 @@
+<!-- Rounded-tile variant for contexts that don't apply their own icon mask
+     (website headers, README, Windows tile art, print). For actual iOS /
+     Android / Windows store submission use icon.svg (full-bleed square)
+     instead - see icon.svg's comment. -->
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="شعار موعد">
+  <defs>
+    <radialGradient id="mawid-bg-tile" cx="32%" cy="28%" r="85%">
+      <stop offset="0%" stop-color="#17a892"/>
+      <stop offset="55%" stop-color="#0f7a6c"/>
+      <stop offset="100%" stop-color="#0a5a4f"/>
+    </radialGradient>
+    <clipPath id="mawid-round">
+      <rect x="0" y="0" width="512" height="512" rx="115" ry="115"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#mawid-round)">
+    <rect x="0" y="0" width="512" height="512" fill="url(#mawid-bg-tile)"/>
+    <g transform="translate(31.04,-48) scale(6.08)">
+      <path d="M46,18 C36,18 28,26 27,36 C26,42 22,44 18,46 C23,49 25,54 25,60 L28,70 C31,77 38,82 47,82 L47,66 C47,66 40,60 40,50 C40,38 46,30 56,28" fill="#f5fbf9"/>
+    </g>
+  </g>
+</svg>
