@@ -3089,9 +3089,16 @@ re-login; and do a general bug-audit pass.
   tools, then a real admin approving/rejecting that same clinic's pending
   request while the clinic's tab stays open, confirming the notification
   actually appears.
-- **Not deployed** — committed only, per this project's standing
-  practice of holding `firebase deploy` for the user's next explicit
-  "انشرها الآن" go-ahead.
+- **Deployed** (in a later turn, once the user shared a fresh service-
+  account key and asked explicitly): no `firestore.rules` changes were
+  needed this segment, so only the rebuilt `apps/web/out/` was pushed via
+  `firebase deploy --only hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788615342398000`). The service-account
+  key was deleted immediately after — both the copy used for the deploy
+  and the original upload — along with several older leftover
+  service-account key uploads found sitting in the same session-scratch
+  location from earlier turns, cleaned up as good hygiene rather than
+  left around unused.
 
 ## Next steps if resumed
 
