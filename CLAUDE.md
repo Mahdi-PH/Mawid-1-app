@@ -3352,12 +3352,15 @@ saying "مريض"/"طبيب"/"وصفة طبية" even for a barbershop or beauty
   and confirming the wording actually adapts, would be the natural
   live check once there's a real test clinic/patient pair to use.
 - **Deployed** (in a later turn, once the user shared a fresh service-
-  account key and asked explicitly): `firestore.rules` was pushed live
-  via the direct Rules API technique and the rebuilt `apps/web/out/` via
-  `firebase deploy --only hosting`, both verified live — see the commit
-  this section shipped with for the exact ruleset/release ids. The
-  service-account key was deleted immediately after, both the copy used
-  for the deploy and the original upload.
+  account key with no accompanying text — read, per this project's
+  established pattern, as "deploy this once ready"): `firestore.rules`
+  was pushed live via the direct Rules API technique (ruleset
+  `projects/mawid-app-d1d03/rulesets/3bad399f-2985-4b1d-b136-31cebf4a0fa5`)
+  and the rebuilt `apps/web/out/` via `firebase deploy --only hosting`,
+  verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788621296694000`). The service-account
+  key was deleted immediately after — both the copy used for the deploy
+  and the original upload.
 
 ## Next steps if resumed
 
