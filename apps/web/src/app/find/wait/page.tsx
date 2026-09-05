@@ -24,7 +24,8 @@ import PatientAccountBar from "../../../components/PatientAccountBar";
 import { ensurePatientSession } from "../../../lib/firebase/auth";
 import { deleteAppointment, getClinic, watchAppointment } from "../../../lib/firebase/firestore";
 import { computeQueueStanding, watchClinicQueue } from "../../../lib/firebase/queue";
-import { STATUS_COLOR, STATUS_LABEL, STATUS_PATIENT_MESSAGE } from "../../../lib/firebase/statusMeta";
+import { STATUS_COLOR, statusLabel, statusPatientMessage } from "../../../lib/firebase/statusMeta";
+import { getTerminology } from "../../../lib/firebase/terminology";
 import type { AppointmentDoc, ClinicDoc, ClinicQueueSlotDoc } from "../../../lib/firebase/types";
 import {
   clearActiveBooking,
@@ -138,6 +139,7 @@ function Wait() {
 
   const standing = appt ? computeQueueStanding(queueSlots, appt.startTime) : null;
   const estimatedWaitMin = standing ? standing.aheadCount * (clinic?.slotMin ?? 15) : null;
+  const terms = getTerminology(clinic?.entityType);
 
   useEffect(() => {
     if (!apptId) {
@@ -197,6 +199,11 @@ function Wait() {
         <p className="mb-1 text-sm text-gray-500">
           {appt.patientName} — موعدك اليوم الساعة {appt.startTime}
         </p>
+        {clinic?.doctorName && (
+          <p className="mb-1 text-xs text-gray-400">
+            {terms.practitionerNoun}: {clinic.doctorName}
+          </p>
+        )}
 
         <div
           className={"mx-auto mt-6 flex w-full flex-col items-center gap-3 rounded-2xl border-2 p-8 " + STATUS_COLOR[appt.status]}
@@ -207,8 +214,8 @@ function Wait() {
               <span className="relative inline-flex h-3 w-3 rounded-full bg-blue-600" />
             </span>
           )}
-          <div className="text-3xl font-extrabold">{STATUS_LABEL[appt.status]}</div>
-          <p className="text-sm">{STATUS_PATIENT_MESSAGE[appt.status]}</p>
+          <div className="text-3xl font-extrabold">{statusLabel(appt.status, terms)}</div>
+          <p className="text-sm">{statusPatientMessage(appt.status, terms)}</p>
         </div>
 
         {standing && (
@@ -224,7 +231,7 @@ function Wait() {
               <div className="text-2xl font-extrabold" style={{ color: "#0F7A6C" }}>
                 {standing.aheadCount}
               </div>
-              <div className="text-xs text-gray-400">مراجع</div>
+              <div className="text-xs text-gray-400">{terms.visitorNoun}</div>
             </div>
             {estimatedWaitMin !== null && (
               <div className="col-span-2 rounded-xl border bg-white p-4 text-sm text-gray-500">

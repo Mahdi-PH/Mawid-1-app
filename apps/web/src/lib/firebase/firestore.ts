@@ -23,7 +23,7 @@ import { compressLicenseImageToDataUrl } from "./licenseImage";
 import { syncQueueSlot } from "./queue";
 import { generateDaySlots, resolveSlotEndTime } from "./slotEngine";
 import { OCCUPYING_STATUSES } from "./types";
-import type { AppointmentDoc, AppointmentStatus, ClinicDoc, ClinicStatus, UserDoc } from "./types";
+import type { AppointmentDoc, AppointmentStatus, ClinicDoc, ClinicStatus, EntityType, UserDoc } from "./types";
 
 export class SlugTakenError extends Error {
   constructor(slug: string) {
@@ -87,6 +87,10 @@ export interface RegisterClinicInput {
   email: string;
   password: string;
   clinicName: string;
+  /** Required, no default — the signup form forces this choice (see
+   *  SignupClient.tsx). Drives every dynamic-terminology swap this app
+   *  makes; see EntityType's own comment in types.ts. */
+  entityType: EntityType;
   /** The business-license image file, straight from a file input —
    *  registerClinic() compresses it to a data: URL itself (see
    *  licenseImage.ts) and stores it inline on the clinic doc; there is no
@@ -167,8 +171,14 @@ export async function registerClinic(input: RegisterClinicInput): Promise<{ slug
         ownerUid: uid,
         email: input.email,
         clinicName: input.clinicName,
-        doctorName: input.doctorName || "الطبيب المناوب",
-        specialty: input.specialty || "عيادة عامة",
+        entityType: input.entityType,
+        // Defaults differ by entityType since the signup form doesn't
+        // collect these two fields at all yet — a salon/beauty-center
+        // getting "الطبيب المناوب" ("duty doctor") as its own default
+        // practitioner name would be a visible mismatch, not just a
+        // cosmetic nit.
+        doctorName: input.doctorName || (input.entityType === "clinic" ? "الطبيب المناوب" : "المختص المناوب"),
+        specialty: input.specialty || (input.entityType === "clinic" ? "عيادة عامة" : "خدمات تجميل عامة"),
         gov: input.gov ?? null,
         district: input.district ?? null,
         street: input.street ?? null,

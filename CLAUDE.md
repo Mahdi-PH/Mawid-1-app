@@ -3244,6 +3244,121 @@ architect": three precise cosmetic/structural fixes to `/clinic`.
   key was deleted immediately after — both the copy used for the deploy
   and the original upload.
 
+## Dynamic Entity Specialization — clinic vs. beauty center vs. salon terminology
+
+Requested by name, addressed to "a scalable-architecture and UI/UX
+developer": the app should adapt its whole vocabulary depending on what
+kind of business a registered center actually is, instead of always
+saying "مريض"/"طبيب"/"وصفة طبية" even for a barbershop or beauty salon.
+
+- **`ClinicDoc.entityType: "clinic" | "beauty" | "salon"`** (new required
+  field, `lib/firebase/types.ts`) — chosen once, mandatorily, at signup
+  (`SignupClient.tsx`'s new three-button نوع المركز selector, right under
+  the clinic-name field, validated the same way every other required
+  signup field already is) and persisted permanently on the clinic's own
+  document. `registerClinic()` writes it straight through; it also now
+  supplies sensible defaults for `doctorName`/`specialty` when left blank
+  at signup ("الطبيب المناوب"/"عيادة عامة" for a clinic, "المختص
+  المناوب"/"خدمات تجميل عامة" for beauty/salon) — a small, disclosed
+  side effect of having the type on hand at that exact point, not a
+  separately requested feature.
+- **One shared terminology dictionary, not per-file duplication**:
+  `lib/firebase/terminology.ts` (new) exports `getTerminology(entityType)`
+  returning a typed `Terminology` object (`personNoun`, `visitorNoun`/
+  `visitorNounPlural`/`visitorPossessivePlural`, `practitionerNoun`,
+  `centerNoun`/`centerPossessive`, `recordLabel`, `prescriptionNoun`,
+  `noteNoun`, `addEntryTitle`/`addEntryPlaceholder`). "beauty" and
+  "salon" deliberately share one identical wordset (`SALON_TERMS`) per
+  the user's own explicit grouping in the request — the two are
+  distinguished only by their own signup-selector/display label
+  (`ENTITY_TYPE_LABEL`), never by wording. Every consumer calls this one
+  function rather than switching on `entityType` itself, so the two
+  term-sets can never drift out of sync file-to-file.
+- **Every real surface this actually reaches, dynamized together**:
+  `/clinic`'s reception table (patient-column header, status dot
+  tooltip, status `<select>` options) and waiting-room TV ("الحالي عند
+  X" / empty-state wording); `ClinicAccountDrawer`'s menu labels ("مسح
+  سجل X", "رابط X") and its `ClinicLinkTab`'s booking-link copy;
+  `ScanPatientTab` (the claim-request wording, the granted read-only
+  record view's labels, its add-entry form's type buttons/placeholder/
+  submit button); and the patient-facing `/find/wait` screen (a new
+  practitioner-name line, the live status pill's label/message, the
+  "أمامك N ..." tile's noun) — so a salon's own patient never sees
+  "الطبيب" or "الوصفة الطبية" anywhere in its own booking loop.
+  `statusMeta.ts` gained `statusLabel()`/`statusPatientMessage()`
+  (entityType-aware wrappers around the existing `STATUS_LABEL`/
+  `STATUS_PATIENT_MESSAGE` constants, which are kept as-is and still used
+  unwrapped wherever there's no single clinic to resolve against).
+- **Deliberately scoped out, and why**: `/find/requests` (طلباتي) and
+  `admin/user/page.tsx` both list a patient's/clinic's appointments
+  *across potentially many different clinics* in one flat list — there
+  is no single `entityType` to resolve wording against without
+  denormalizing it onto every `AppointmentDoc`, which wasn't asked for,
+  so both keep the plain `STATUS_LABEL` constant, unwrapped. `/find/
+  passport` (the Universal Patient Passport) also keeps its existing
+  generic "الطبيب"/"موظف الاستقبال" wording untouched on purpose — a
+  patient's one QR code can be scanned by any clinic type, so that
+  screen is inherently clinic-type-agnostic by design, not an oversight.
+- **Backward compatibility, disclosed not silently patched**: every
+  clinic doc created before this feature shipped has no `entityType`
+  field at all in Firestore, despite the TypeScript type now marking it
+  required — `getTerminology()` treats any missing or unrecognized value
+  as `"clinic"` rather than crashing, so every pre-existing clinic keeps
+  today's exact wording with zero migration needed. No backfill script
+  was written; not requested, and the fallback already makes one
+  unnecessary.
+- **`firestore.rules`**: `clinics/{slug}`'s `create` rule now requires
+  `entityType in ['clinic', 'beauty', 'salon']` — no free-form value can
+  ever be written. The owner branch of `update` gained the same
+  validation, but deliberately **not** locked to admin-only the way
+  `status`/`subscriptionEndsAt` are — this is purely a display/
+  classification field with no security weight, so a clinic may freely
+  re-classify itself later (no app UI does this yet, but the rule
+  permits it). Per the request's own item 4 concern about data isolation
+  between clinics/salons: `entityType` never participates in any
+  appointment/queue query, ownership check, or cross-tenant boundary
+  anywhere in the app — that isolation is, and remains, entirely
+  `clinicSlug`/`ownerUid`-based, completely unaffected by this field, so
+  no existing security check needed to change to accommodate it.
+- **Verified against a real, locally-running Firestore emulator** (same
+  jar/technique as every rules change in this file) — a dedicated
+  6-assertion script (four distinct owner identities, each created via
+  `createUserWithEmailAndPassword` immediately before its own write,
+  since account creation auto-signs-in as the new user and would
+  otherwise invalidate an earlier "current session" assumption)
+  confirmed: create with `entityType: "clinic"` succeeds; create with
+  `"salon"` succeeds; create with an invalid value (`"hospital"`) is
+  denied; create with the field missing entirely is denied; the owner
+  can update their own `entityType` to another valid value; the owner
+  cannot update it to an invalid value. All 6 passed. Emulator + scratch
+  test script fully cleaned up after.
+- **`tsc --noEmit` (via `next build`) and the static export build are
+  both clean** — bundle sizes grew as expected for the three touched
+  routes (`/clinic` 56.5 kB → 57 kB, `/find/wait` 4.19 kB → 4.7 kB,
+  `/signup` 4.72 kB → 5.33 kB).
+- **Verified visually, not just by a clean build**: a local Playwright
+  pass against the exported `out/` screenshotted `/signup`'s new
+  نوع المركز selector in both its default (unselected) state and after
+  clicking "مركز تجميل" — confirmed the three-button grid renders
+  correctly under the clinic-name field and the teal border/background
+  highlight actually applies on selection, with zero console errors.
+  Screenshots and the test script were deleted after use, same standing
+  practice as every other scratch verification file in this project.
+- **Not independently live-verified**: no live Firestore/Auth run
+  against the real `mawid-app-d1d03` project was done for this feature
+  specifically (the emulator test above is what stands in for the rules
+  validation) — a real signup picking each of the three entityType
+  options, followed by opening `/clinic`/`/find/wait` for that account
+  and confirming the wording actually adapts, would be the natural
+  live check once there's a real test clinic/patient pair to use.
+- **Deployed** (in a later turn, once the user shared a fresh service-
+  account key and asked explicitly): `firestore.rules` was pushed live
+  via the direct Rules API technique and the rebuilt `apps/web/out/` via
+  `firebase deploy --only hosting`, both verified live — see the commit
+  this section shipped with for the exact ruleset/release ids. The
+  service-account key was deleted immediately after, both the copy used
+  for the deploy and the original upload.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

@@ -23,6 +23,7 @@ import {
   AccessRequestError,
 } from "../lib/firebase/passport";
 import { decodeQrPayload, InvalidQrPayloadError } from "../lib/qrPassport";
+import { getTerminology } from "../lib/firebase/terminology";
 import type { AccessGrantDoc, ClinicDoc, PatientRecordDoc, RecordEntryDoc, RecordEntryType } from "../lib/firebase/types";
 
 type Phase =
@@ -36,6 +37,7 @@ export default function ScanPatientTab({ clinic }: { clinic: ClinicDoc }) {
   const [phase, setPhase] = useState<Phase>({ step: "scanning" });
   const [error, setError] = useState<string | null>(null);
   const unsubscribers = useRef<(() => void)[]>([]);
+  const terms = getTerminology(clinic.entityType);
 
   const cleanupWatchers = useCallback(() => {
     unsubscribers.current.forEach((u) => u());
@@ -88,14 +90,14 @@ export default function ScanPatientTab({ clinic }: { clinic: ClinicDoc }) {
 
   return (
     <div className="mx-auto max-w-xl">
-      {phase.step === "scanning" && <Scanner onDecoded={handleDecoded} error={error} />}
+      {phase.step === "scanning" && <Scanner onDecoded={handleDecoded} error={error} visitorNoun={terms.visitorNoun} />}
 
       {phase.step === "waiting" && (
         <div className="rounded-xl border bg-white p-6 text-center">
           <p className="mb-2 font-bold" style={{ color: "#0F7A6C" }}>
-            بانتظار موافقة المراجع…
+            بانتظار موافقة {terms.visitorNoun}…
           </p>
-          <p className="mb-4 text-sm text-gray-500">اطلب من المراجع تأكيد منح الوصول من شاشته.</p>
+          <p className="mb-4 text-sm text-gray-500">اطلب من {terms.visitorNoun} تأكيد منح الوصول من شاشته.</p>
           <button onClick={reset} className="text-sm text-gray-400 hover:underline">
             إلغاء
           </button>
@@ -104,7 +106,7 @@ export default function ScanPatientTab({ clinic }: { clinic: ClinicDoc }) {
 
       {phase.step === "denied" && (
         <div className="rounded-xl border bg-white p-6 text-center">
-          <p className="mb-4 text-red-600">رفض المراجع طلب الوصول.</p>
+          <p className="mb-4 text-red-600">رفض {terms.visitorNoun} طلب الوصول.</p>
           <button onClick={reset} className="text-sm text-brand-600 hover:underline">
             مسح رمز آخر
           </button>
@@ -137,7 +139,15 @@ export default function ScanPatientTab({ clinic }: { clinic: ClinicDoc }) {
  *  a manual-paste fallback — a desktop dev machine or a browser that denies
  *  camera permission still needs some way to exercise this flow, and this
  *  keeps that path honestly labeled rather than hidden. */
-function Scanner({ onDecoded, error }: { onDecoded: (raw: string) => void; error: string | null }) {
+function Scanner({
+  onDecoded,
+  error,
+  visitorNoun,
+}: {
+  onDecoded: (raw: string) => void;
+  error: string | null;
+  visitorNoun: string;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number | null>(null);
@@ -195,7 +205,7 @@ function Scanner({ onDecoded, error }: { onDecoded: (raw: string) => void; error
 
   return (
     <div className="rounded-xl border bg-white p-4">
-      <div className="mb-3 font-bold">وجّه الكاميرا نحو رمز QR الخاص بالمراجع</div>
+      <div className="mb-3 font-bold">وجّه الكاميرا نحو رمز QR الخاص بال{visitorNoun}</div>
       <div className="relative mx-auto mb-3 aspect-square max-w-xs overflow-hidden rounded-lg bg-gray-900">
         <video ref={videoRef} muted playsInline className="h-full w-full object-cover" />
       </div>
@@ -238,6 +248,7 @@ function GrantedRecordView({
   onExpired: () => void;
   onDone: () => void;
 }) {
+  const terms = getTerminology(clinic.entityType);
   const [record, setRecord] = useState<PatientRecordDoc | null | undefined>(undefined);
   const [entries, setEntries] = useState<RecordEntryDoc[]>([]);
   const [secondsLeft, setSecondsLeft] = useState(0);
@@ -294,13 +305,15 @@ function GrantedRecordView({
       </div>
 
       <div className="rounded-xl border bg-white p-4">
-        <div className="mb-3 font-bold">السجل الطبي (للقراءة فقط)</div>
-        {entries.length === 0 && <p className="text-sm text-gray-400">لا يوجد سجل طبي سابق لهذا المراجع.</p>}
+        <div className="mb-3 font-bold">{terms.recordLabel} (للقراءة فقط)</div>
+        {entries.length === 0 && (
+          <p className="text-sm text-gray-400">لا يوجد {terms.recordLabel} سابق لهذا {terms.visitorNoun}.</p>
+        )}
         <div className="space-y-2">
           {entries.map((e) => (
             <div key={e.id} className="rounded-lg border p-3 text-sm">
               <div className="mb-1 flex items-center justify-between text-xs text-gray-400">
-                <span>{e.type === "prescription" ? "وصفة طبية" : "ملاحظة/تقرير"}</span>
+                <span>{e.type === "prescription" ? terms.prescriptionNoun : terms.noteNoun}</span>
                 <span>{e.createdAt?.toDate().toLocaleDateString("ar")}</span>
               </div>
               <p>{e.text}</p>
@@ -311,19 +324,19 @@ function GrantedRecordView({
       </div>
 
       <div className="rounded-xl border bg-white p-4">
-        <div className="mb-3 font-bold">إضافة وصفة أو تقرير جديد</div>
+        <div className="mb-3 font-bold">{terms.addEntryTitle}</div>
         <div className="mb-2 flex gap-2 text-sm">
           <button
             onClick={() => setNewType("prescription")}
             className={"flex-1 rounded-lg border px-3 py-2 " + (newType === "prescription" ? "border-brand-600 bg-brand-50 text-brand-700" : "")}
           >
-            وصفة طبية
+            {terms.prescriptionNoun}
           </button>
           <button
             onClick={() => setNewType("history")}
             className={"flex-1 rounded-lg border px-3 py-2 " + (newType === "history" ? "border-brand-600 bg-brand-50 text-brand-700" : "")}
           >
-            ملاحظة/تقرير
+            {terms.noteNoun}
           </button>
         </div>
         <textarea
@@ -331,7 +344,7 @@ function GrantedRecordView({
           onChange={(e) => setNewText(e.target.value)}
           rows={3}
           className="mb-2 w-full rounded-lg border px-3 py-2 text-sm"
-          placeholder="اكتب تفاصيل الوصفة أو الملاحظة…"
+          placeholder={terms.addEntryPlaceholder}
         />
         {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
         <button
@@ -339,7 +352,7 @@ function GrantedRecordView({
           disabled={busy || !newText.trim()}
           className="w-full rounded-lg bg-brand-500 px-4 py-2 font-bold text-white hover:bg-brand-600 disabled:opacity-50"
         >
-          {busy ? "جارٍ الحفظ…" : "إضافة إلى السجل"}
+          {busy ? "جارٍ الحفظ…" : `إضافة إلى ${terms.recordLabel}`}
         </button>
       </div>
     </div>

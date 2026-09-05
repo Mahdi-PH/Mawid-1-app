@@ -21,16 +21,23 @@ import ConfirmPopup from "./ConfirmPopup";
 import ScanPatientTab from "./ScanPatientTab";
 import { ScheduleForm, SubscriptionTab } from "./ClinicSettingsTools";
 import { markIntentionalSignOut, signOutUser } from "../lib/firebase/auth";
+import { getTerminology } from "../lib/firebase/terminology";
 import type { ClinicDoc } from "../lib/firebase/types";
 
 type Tool = "scan" | "schedule" | "subscription" | "link";
 
-const TOOLS: { id: Tool; label: string; icon: string }[] = [
-  { id: "scan", label: "مسح سجل المراجع", icon: "📷" },
-  { id: "schedule", label: "إعدادات أوقات الدوام", icon: "🕒" },
-  { id: "subscription", label: "خطة الاشتراك", icon: "💳" },
-  { id: "link", label: "رابط العيادة", icon: "🔗" },
-];
+/** Menu labels depend on the clinic's own entityType (e.g. "مسح سجل
+ *  المراجع" vs "مسح سجل الزبون") — a plain function of `terms` rather
+ *  than a module-level constant, computed fresh each render (cheap: four
+ *  short strings). */
+function buildTools(terms: ReturnType<typeof getTerminology>): { id: Tool; label: string; icon: string }[] {
+  return [
+    { id: "scan", label: `مسح سجل ${terms.personNoun}`, icon: "📷" },
+    { id: "schedule", label: "إعدادات أوقات الدوام", icon: "🕒" },
+    { id: "subscription", label: "خطة الاشتراك", icon: "💳" },
+    { id: "link", label: `رابط ${terms.centerNoun}`, icon: "🔗" },
+  ];
+}
 
 export default function ClinicAccountDrawer({
   open,
@@ -47,6 +54,8 @@ export default function ClinicAccountDrawer({
   const [activeTool, setActiveTool] = useState<Tool | null>(null);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const terms = getTerminology(clinic.entityType);
+  const TOOLS = buildTools(terms);
 
   if (!open) return null;
 
@@ -159,6 +168,7 @@ export default function ClinicAccountDrawer({
  *  relocated. */
 function ClinicLinkTab({ clinic }: { clinic: ClinicDoc }) {
   const [copied, setCopied] = useState(false);
+  const terms = getTerminology(clinic.entityType);
   const bookingLink =
     typeof window !== "undefined"
       ? `${window.location.origin}/find/book?clinic=${encodeURIComponent(clinic.slug)}`
@@ -167,9 +177,9 @@ function ClinicLinkTab({ clinic }: { clinic: ClinicDoc }) {
   return (
     <div className="space-y-4">
       <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
-        <div className="mb-2 font-bold text-gray-800">رابط الحجز العام لعيادتك</div>
+        <div className="mb-2 font-bold text-gray-800">رابط الحجز العام {terms.centerPossessive}</div>
         <p className="mb-3 text-sm text-gray-500">
-          شارك هذا الرابط مع مراجعيك — يفتح مباشرة صفحة حجز موعد لدى عيادتك.
+          شارك هذا الرابط مع {terms.visitorPossessivePlural} — يفتح مباشرة صفحة حجز موعد {terms.centerPossessive}.
         </p>
         <input
           readOnly

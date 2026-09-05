@@ -11,7 +11,11 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { isConfiguredAdminEmail, signInWithEmail } from "../../lib/firebase/auth";
 import { registerClinic, SlugTakenError } from "../../lib/firebase/firestore";
+import { ENTITY_TYPE_LABEL } from "../../lib/firebase/terminology";
+import type { EntityType } from "../../lib/firebase/types";
 import { saveSignupAccountPdf } from "../../lib/pdf/saveAccountPdf";
+
+const ENTITY_TYPE_OPTIONS: EntityType[] = ["clinic", "beauty", "salon"];
 import BackButton from "../../components/BackButton";
 import AppBackdrop from "../../components/AppBackdrop";
 
@@ -31,6 +35,10 @@ export default function SignupClient() {
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
   const [clinicName, setClinicName] = useState("");
+  // Required, no default — "Dynamic Entity Specialization" needs every
+  // new account to make this choice explicitly, since it's what every
+  // later terminology swap (see lib/firebase/terminology.ts) keys off.
+  const [entityType, setEntityType] = useState<EntityType | "">("");
   const [gov, setGov] = useState("");
   const [district, setDistrict] = useState("");
   const [street, setStreet] = useState("");
@@ -101,6 +109,7 @@ export default function SignupClient() {
     setError(null);
 
     if (!clinicName.trim()) return setError("أدخل اسم العيادة أو مركز التجميل");
+    if (!entityType) return setError("اختر نوع المركز");
     if (!/^[^\s@]+@gmail\.com$/i.test(email.trim())) return setError("أدخل عنوان Gmail صحيحاً (example@gmail.com)");
     if (password.length < 8) return setError("كلمة المرور 8 أحرف على الأقل");
     if (password !== password2) return setError("كلمتا المرور غير متطابقتين");
@@ -119,6 +128,7 @@ export default function SignupClient() {
         email: email.trim(),
         password,
         clinicName: clinicName.trim(),
+        entityType: entityType as EntityType,
         licenseImageFile: licenseFile,
         gov: gov.trim() || null,
         district: gov.trim() ? district.trim() : null,
@@ -224,6 +234,31 @@ export default function SignupClient() {
               className="mt-1 w-full rounded-lg border px-3 py-2"
             />
           </label>
+        )}
+
+        {!isAdminEmail && !isClinicLogin && (
+          <div className="mb-4">
+            <div className="mb-1 text-sm">نوع المركز</div>
+            <div className="grid grid-cols-3 gap-2">
+              {ENTITY_TYPE_OPTIONS.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setEntityType(t)}
+                  className={
+                    "rounded-lg border px-2 py-2 text-sm font-bold " +
+                    (entityType === t ? "border-brand-600 bg-brand-50 text-brand-700" : "text-gray-600")
+                  }
+                  style={entityType === t ? { borderColor: "#0F7A6C", color: "#0F7A6C" } : undefined}
+                >
+                  {ENTITY_TYPE_LABEL[t]}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-gray-400">
+              يحدّد هذا الاختيار المصطلحات المستخدمة في حسابك (مريض/زبون، طبيب/أخصائي تجميل، وغيرها).
+            </p>
+          </div>
         )}
 
         <label className="mb-3 block text-sm">

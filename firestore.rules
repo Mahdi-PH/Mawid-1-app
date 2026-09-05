@@ -161,6 +161,16 @@ service cloud.firestore {
                     && request.resource.data.status == "pending"
                     && request.resource.data.subscriptionEndsAt == null
                     && request.resource.data.subscriptionStartedAt == null
+                    // "Dynamic Entity Specialization" — every new clinic
+                    // must pick exactly one of these three, no free-form
+                    // value; see lib/firebase/terminology.ts for what
+                    // each one drives. Purely a display/classification
+                    // field otherwise — it never participates in any
+                    // appointment/queue query or security check, so it
+                    // carries no cross-tenant-isolation responsibility of
+                    // its own (that isolation is entirely clinicSlug/
+                    // ownerUid-based, unchanged by this field).
+                    && request.resource.data.entityType in ['clinic', 'beauty', 'salon']
                     && request.resource.data.licenseImageUrl is string
                     && request.resource.data.licenseImageUrl.size() > 0
                     && request.resource.data.licenseImageUrl.size() < 900000
@@ -180,7 +190,12 @@ service cloud.firestore {
                         && resource.data.ownerUid == request.auth.uid
                         && request.resource.data.status == resource.data.status
                         && request.resource.data.subscriptionEndsAt == resource.data.subscriptionEndsAt
-                        && request.resource.data.subscriptionStartedAt == resource.data.subscriptionStartedAt);
+                        && request.resource.data.subscriptionStartedAt == resource.data.subscriptionStartedAt
+                        // Not locked to admin-only like status/subscription
+                        // above — a clinic may freely re-classify its own
+                        // entityType later (no app UI does this yet), but
+                        // never to a value outside the three real ones.
+                        && request.resource.data.entityType in ['clinic', 'beauty', 'salon']);
       allow delete: if isAdmin();
     }
 

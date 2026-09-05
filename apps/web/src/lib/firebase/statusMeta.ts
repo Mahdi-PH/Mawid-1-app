@@ -6,6 +6,7 @@
 // badge, see components/StatusBadge.tsx) — extended with "requested",
 // a Firestore-only status the Postgres model has no equivalent for.
 import type { AppointmentStatus } from "./types";
+import type { Terminology } from "./terminology";
 
 export const STATUS_LABEL: Record<AppointmentStatus, string> = {
   requested: "بانتظار تأكيد",
@@ -48,3 +49,20 @@ export const STATUS_PATIENT_MESSAGE: Record<AppointmentStatus, string> = {
   no_show: "تم تسجيلك كغياب لهذا الموعد.",
   cancelled: "تم إلغاء هذا الموعد.",
 };
+
+/** Entity-aware variants of STATUS_LABEL/STATUS_PATIENT_MESSAGE — every
+ *  status except "in_progress" reads identically for a clinic and a
+ *  salon ("مؤكَّد"/"وصل"/… name a state of the appointment, not a person),
+ *  so only that one entry is ever actually swapped, per terms.
+ *  practitionerNoun. Used wherever a screen already knows which specific
+ *  clinic it's showing (the reception table, /find/wait) — a
+ *  multi-clinic list (e.g. /find/requests) has no single entityType to
+ *  resolve against and keeps the plain constants above instead; see
+ *  CLAUDE.md for that scoping decision. */
+export function statusLabel(status: AppointmentStatus, terms: Terminology): string {
+  return status === "in_progress" ? `عند ${terms.practitionerNoun}` : STATUS_LABEL[status];
+}
+
+export function statusPatientMessage(status: AppointmentStatus, terms: Terminology): string {
+  return status === "in_progress" ? `حان دورك الآن — تفضّل عند ${terms.practitionerNoun}.` : STATUS_PATIENT_MESSAGE[status];
+}

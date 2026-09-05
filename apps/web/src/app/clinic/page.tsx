@@ -21,7 +21,8 @@ import {
   watchClinicByOwner,
 } from "../../lib/firebase/firestore";
 import { generateDaySlots } from "../../lib/firebase/slotEngine";
-import { STATUS_DOT, STATUS_LABEL } from "../../lib/firebase/statusMeta";
+import { STATUS_DOT, STATUS_LABEL, statusLabel } from "../../lib/firebase/statusMeta";
+import { getTerminology } from "../../lib/firebase/terminology";
 import { OCCUPYING_STATUSES } from "../../lib/firebase/types";
 import type { AppointmentDoc, AppointmentStatus, ClinicDoc, ClinicStatus } from "../../lib/firebase/types";
 import {
@@ -211,7 +212,7 @@ export default function ClinicDashboardPage() {
        *  of stretching to the page's physical edges. */}
       <main className="relative mx-auto max-w-3xl p-6">
         {tab === "reception" && <ReceptionTab clinic={clinic} appts={appts} />}
-        {tab === "tv" && <WaitingRoomTv appts={appts} />}
+        {tab === "tv" && <WaitingRoomTv clinic={clinic} appts={appts} />}
       </main>
 
       <ClinicAccountDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} clinic={clinic} onScheduleSaved={setClinic} />
@@ -266,6 +267,7 @@ function GearIcon() {
 function ReceptionTab({ clinic, appts }: { clinic: ClinicDoc; appts: AppointmentDoc[] }) {
   const slots = generateDaySlots(clinic);
   const byTime = new Map(appts.map((a) => [a.startTime, a]));
+  const terms = getTerminology(clinic.entityType);
 
   async function handleStatusChange(appt: AppointmentDoc, status: AppointmentStatus) {
     await setAppointmentStatus(appt, status);
@@ -277,7 +279,7 @@ function ReceptionTab({ clinic, appts }: { clinic: ClinicDoc; appts: Appointment
         <thead>
           <tr className="border-b text-right text-gray-500">
             <th className="px-4 py-2 font-medium">الوقت</th>
-            <th className="px-4 py-2 font-medium">المريض</th>
+            <th className="px-4 py-2 font-medium">{terms.personNoun}</th>
             <th className="px-4 py-2 font-medium">الحالة</th>
           </tr>
         </thead>
@@ -306,7 +308,7 @@ function ReceptionTab({ clinic, appts }: { clinic: ClinicDoc; appts: Appointment
                         aria-hidden
                         className="inline-block h-2.5 w-2.5 flex-none rounded-full"
                         style={{ backgroundColor: STATUS_DOT[a.status] }}
-                        title={STATUS_LABEL[a.status]}
+                        title={statusLabel(a.status, terms)}
                       />
                       <select
                         value={a.status}
@@ -316,7 +318,7 @@ function ReceptionTab({ clinic, appts }: { clinic: ClinicDoc; appts: Appointment
                       >
                         {(Object.keys(STATUS_LABEL) as AppointmentStatus[]).map((st) => (
                           <option key={st} value={st}>
-                            {STATUS_LABEL[st]}
+                            {statusLabel(st, terms)}
                           </option>
                         ))}
                       </select>
@@ -334,7 +336,8 @@ function ReceptionTab({ clinic, appts }: { clinic: ClinicDoc; appts: Appointment
   );
 }
 
-function WaitingRoomTv({ appts }: { appts: AppointmentDoc[] }) {
+function WaitingRoomTv({ clinic, appts }: { clinic: ClinicDoc; appts: AppointmentDoc[] }) {
+  const terms = getTerminology(clinic.entityType);
   const queue = appts
     .filter((a) => OCCUPYING_STATUSES.has(a.status) && a.status !== "completed")
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
@@ -344,7 +347,7 @@ function WaitingRoomTv({ appts }: { appts: AppointmentDoc[] }) {
   return (
     <div dir="rtl" className="mx-auto max-w-3xl text-center">
       <div className="mb-8 rounded-2xl border-4 p-10" style={{ borderColor: "#0F7A6C" }}>
-        <div className="mb-2 text-sm text-gray-500">الحالي عند الطبيب</div>
+        <div className="mb-2 text-sm text-gray-500">الحالي عند {terms.practitionerNoun}</div>
         <div className="text-5xl font-bold" style={{ color: "#0F7A6C" }}>
           {current ? current.patientName : "—"}
         </div>
@@ -360,7 +363,7 @@ function WaitingRoomTv({ appts }: { appts: AppointmentDoc[] }) {
             <span className="font-mono text-gray-400">{a.startTime}</span>
           </div>
         ))}
-        {waiting.length === 0 && <p className="text-gray-400">لا يوجد مراجعون بالانتظار حالياً.</p>}
+        {waiting.length === 0 && <p className="text-gray-400">لا يوجد {terms.visitorNounPlural} بالانتظار حالياً.</p>}
       </div>
     </div>
   );

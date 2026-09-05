@@ -30,6 +30,20 @@ export interface UserDoc {
  *  admin-only writes) since approval has to mean something. */
 export type ClinicStatus = "pending" | "approved" | "rejected";
 
+/** The center's own type, chosen once, required, at signup — drives every
+ *  terminology swap this app makes (see lib/firebase/terminology.ts):
+ *  "عيادة" (clinic) keeps the existing medical wording (مريض/طبيب/وصفة…);
+ *  "beauty"/"salon" both switch to the same salon-style wording
+ *  (زبون/حلاق أو أخصائي تجميل/جلسة…) — the two are distinguished from each
+ *  other only by their own display label (see ENTITY_TYPE_LABEL), not by
+ *  separate terminology, matching the user's own explicit grouping of the
+ *  two under one wording set. Purely a display/classification field —
+ *  appointment and queue-board isolation between clinics is already fully
+ *  guaranteed by clinicSlug/ownerUid scoping everywhere else in this file
+ *  and in firestore.rules, completely independent of this field, so it
+ *  carries zero cross-tenant-isolation responsibility of its own. */
+export type EntityType = "clinic" | "beauty" | "salon";
+
 /** clinics/{slug} — slug is both the document id and the public booking
  *  username, e.g. #book/alnoor-demo in the artifact's link scheme. */
 export interface ClinicDoc {
@@ -39,6 +53,14 @@ export interface ClinicDoc {
    *  list doesn't need a lookup per row. */
   email: string;
   clinicName: string;
+  /** Required at signup, no default — see EntityType's own comment above.
+   *  Docs created before this field existed simply lack it at runtime
+   *  despite this non-optional type (Firestore is schemaless; TypeScript
+   *  can't see the gap) — every reader goes through
+   *  lib/firebase/terminology.ts's getTerminology(), which treats a
+   *  missing/unrecognized value as "clinic" so an old doc silently keeps
+   *  today's medical wording rather than crashing or showing "undefined". */
+  entityType: EntityType;
   doctorName: string;
   specialty: string;
   gov: string | null;
