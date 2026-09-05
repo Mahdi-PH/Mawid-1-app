@@ -3465,8 +3465,10 @@ established.
   `adminRefreshBus` with no manual reload.
 - **Deployed**: no `firestore.rules` changes needed — only the rebuilt
   `apps/web/out/` was pushed via `firebase deploy --only hosting`,
-  verified FINALIZED. The service-account key was deleted immediately
-  after — both the copy used for the deploy and the original upload.
+  verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788622941310000`). The service-account
+  key was deleted immediately after — both the copy used for the deploy
+  and the original upload.
 
 ## Next steps if resumed
 
