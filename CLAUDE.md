@@ -3236,9 +3236,13 @@ architect": three precise cosmetic/structural fixes to `/clinic`.
   this file. Recommended before treating this as fully verified: a real
   clinic account signed into `/clinic`, opening the drawer, and using
   its new "رابط العيادة" tool to confirm the copied link is correct.
-- **Not deployed** — committed only, per this project's standing
-  practice of holding `firebase deploy` for the user's next explicit
-  "انشرها الآن" go-ahead.
+- **Deployed** (in a later turn, once the user shared a fresh service-
+  account key and asked explicitly): no `firestore.rules` changes were
+  needed for this pass, so only the rebuilt `apps/web/out/` was pushed
+  via `firebase deploy --only hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788617483905000`). The service-account
+  key was deleted immediately after — both the copy used for the deploy
+  and the original upload.
 
 ## Next steps if resumed
 
