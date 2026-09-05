@@ -3168,10 +3168,13 @@ appointment shown there with status "انتهى"/completed) showed a raw
   fresh emulator/live run. Worth a real live check next time a key is
   shared: delete an already-deleted appointment twice in a row and
   confirm the second attempt no longer errors.
-- **Committed, not yet deployed** — same standing practice as every other
-  fix in this file: `firebase deploy` waits for the user's next explicit
-  "انشرها الآن" with a fresh service-account key, since the one from the
-  prior turn was already deleted.
+- **Deployed** (in a later turn, once the user shared a fresh service-
+  account key and asked explicitly): no `firestore.rules` changes were
+  needed for this fix, so only the rebuilt `apps/web/out/` was pushed via
+  `firebase deploy --only hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788616436086000`). The service-account
+  key was deleted immediately after — both the copy used for the deploy
+  and the original upload.
 
 ## Next steps if resumed
 
