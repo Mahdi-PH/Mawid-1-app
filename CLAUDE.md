@@ -3100,6 +3100,79 @@ re-login; and do a general bug-audit pass.
   location from earlier turns, cleaned up as good hygiene rather than
   left around unused.
 
+## Real bug: "Missing or insufficient permissions" deleting an already-gone appointment
+
+The user reported, with screenshots from their own live installed app: (1)
+tapping "موعدك الحالي" on `/find` opened `/find/wait` showing "تعذّر
+العثور على هذا الحجز" (not found); (2) separately, pressing "حذف الحجز"
+(on `/find/requests`, the only screen with that exact button, for an
+appointment shown there with status "انتهى"/completed) showed a raw
+`Missing or insufficient permissions.` error instead of deleting it.
+
+- **Root cause, reasoned from the rules and code, not guessed**:
+  `deleteAppointment()` (`firestore.ts`) called `deleteDoc()` directly with
+  no existence check. `firestore.rules`' patient-delete rule reads
+  `resource.data.patientUid`/`resource.data.status` — evaluating that
+  against a document that's **already gone** (deleted a moment earlier by
+  the exact same automatic end-of-visit prompt on `/find`, or by a stale
+  one-shot `listAppointmentsForPatient()` fetch on `/find/requests` that
+  had loaded the row before an earlier deletion actually landed) makes the
+  rule deny with a plain `Missing or insufficient permissions.` — Firestore
+  reports this identically to a real ownership violation, from the
+  client's point of view, even though "the appointment is already gone" is
+  exactly the end state a delete call wants. This is fully consistent with
+  both screenshots: the same already-deleted appointment reads back as
+  "not found" via `watchAppointment()`'s existing null-on-error handling
+  on `/find/wait`, and as a delete-time permission error on
+  `/find/requests`, which was reading from an independent one-shot fetch
+  rather than the same live subscription.
+- **Fix**: `deleteAppointment()` now calls `getDoc()` first — allowed even
+  for a nonexistent doc, per the read rule's own `resource == null` clause
+  (the same clause `getSlotAvailability()`'s per-slot existence checks
+  already rely on) — and returns immediately if the document doesn't
+  exist, instead of attempting (and having denied) a delete against it.
+  A real permission violation (someone else's appointment, or one not yet
+  "completed") still surfaces normally, since that document genuinely
+  exists and the read itself succeeds before the delete is even attempted.
+  This one shared function is reused by all three call sites
+  (`/find`, `/find/wait`, `/find/requests`), so the fix covers all of them
+  at once.
+- **Self-healing added on top, so the same stale appointment can't keep
+  sending the patient back into this loop**: both `/find`'s own live
+  `watchAppointment()` subscription and `/find/wait`'s existing one now
+  clear the local `ActiveBooking` pointer the moment the watched
+  appointment resolves to `null` (gone or denied — `watchAppointment()`
+  can't tell the two apart, and neither case is ever usable again), not
+  only on a genuine terminal-status transition as before. Previously
+  nothing cleared the pointer for this case at all, so "موعدك الحالي"
+  would keep linking to the same dead appointment indefinitely until the
+  patient manually found and used `/find/requests`' delete button — which
+  itself was the thing throwing the error.
+- **The reported appointment could not be deleted from here directly**:
+  no Firebase service-account key was attached to this report, and by this
+  point in the session the previous one had already been deleted per this
+  project's own standing key-hygiene practice. Per the root-cause analysis
+  above, this isn't actually needed — the appointment is already gone
+  server-side; what was broken was purely the client mishandling that
+  already-gone state. The self-healing fix means the user's own next
+  visit to `/find` (or `/find/wait`, or `/find/requests`) clears the
+  stale local pointer automatically, with nothing left to manually
+  delete.
+- **Verified**: `tsc --noEmit` (via `next build`) and the static export
+  build both clean. A local Playwright smoke pass against the exported
+  `out/` confirmed zero console/page errors on `/`, `/find`, `/clinic`,
+  and `/admin`. **Not independently live-verified against the real
+  project this pass** (no service-account key on hand) — the fix's logic
+  was validated by re-reading `firestore.rules`' exact delete/read clauses
+  against the exact error message and screenshots reported, not by a
+  fresh emulator/live run. Worth a real live check next time a key is
+  shared: delete an already-deleted appointment twice in a row and
+  confirm the second attempt no longer errors.
+- **Committed, not yet deployed** — same standing practice as every other
+  fix in this file: `firebase deploy` waits for the user's next explicit
+  "انشرها الآن" with a fresh service-account key, since the one from the
+  prior turn was already deleted.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

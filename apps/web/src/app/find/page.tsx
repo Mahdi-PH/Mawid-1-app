@@ -102,7 +102,16 @@ function FindClinicSearch({
     ensurePatientSession().finally(() => {
       if (cancelled) return;
       unsubscribe = watchAppointment(activeBooking.apptId, (appt) => {
-        if (!appt) return;
+        if (!appt) {
+          // Resolves to null both for a genuinely deleted appointment and
+          // for a denied read (see watchAppointment()'s own comment) —
+          // either way, "موعدك الحالي" can never point anywhere useful
+          // again, so clear it here instead of leaving this card stuck
+          // linking to a dead /find/wait page forever.
+          clearActiveBooking();
+          setActiveBooking(null);
+          return;
+        }
         if (TERMINAL_STATUSES.has(appt.status)) clearActiveBooking();
         if (appt.status === "completed" && !isEndPromptDismissed(appt.id)) setShowEndPrompt(true);
       });

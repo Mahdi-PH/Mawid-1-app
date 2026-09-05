@@ -82,6 +82,18 @@ function Wait() {
     if (active?.apptId === appt.id) clearActiveBooking();
   }, [appt]);
 
+  // Self-heals a stale "موعدك الحالي" pointer: watchAppointment() resolves
+  // to null both for a genuinely nonexistent doc and for a denied read
+  // (see its own comment in firestore.ts) — either way, this appointment
+  // can never be shown again, so if /find's active-booking pointer still
+  // names it, clear it here too rather than leaving /find stuck offering
+  // a dead link back to this same not-found page forever.
+  useEffect(() => {
+    if (appt !== null || !apptId) return;
+    const active = getActiveBooking();
+    if (active?.apptId === apptId) clearActiveBooking();
+  }, [appt, apptId]);
+
   // "انتهى موعدك، هل تريد حذف الحجز؟" — the moment the clinic marks this
   // appointment "completed" (live, via the onSnapshot listener below this
   // page already has), offer to delete it. Only asks once per appointment

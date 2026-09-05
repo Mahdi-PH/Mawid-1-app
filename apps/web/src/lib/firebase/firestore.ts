@@ -433,8 +433,27 @@ export async function setAppointmentStatus(
   syncQueueSlot(appt.clinicSlug, appt.date, appt.startTime, status);
 }
 
+/** Idempotent by design, not just by accident: the patient-delete rule
+ *  (`appointments/{apptId}`'s `allow delete`) reads `resource.data.
+ *  patientUid`/`resource.data.status` — evaluating that against a
+ *  document that's ALREADY gone (deleted a moment earlier from another
+ *  tab, or by a stale list that fetched before a previous delete landed)
+ *  makes the rule deny with a plain "Missing or insufficient
+ *  permissions", indistinguishable from a real ownership violation from
+ *  the client's point of view. Since "the appointment no longer exists"
+ *  is exactly the end state every caller of this function wants, a
+ *  getDoc() first — allowed even for a nonexistent doc by the read
+ *  rule's own `resource == null` clause — turns a delete-of-something-
+ *  already-deleted into a silent no-op instead of a confusing error a
+ *  patient can't act on. A real permission violation (someone else's
+ *  appointment, or one not yet "completed") still surfaces normally,
+ *  since that document DOES exist and the read succeeds before the
+ *  delete is even attempted. */
 export async function deleteAppointment(appointmentId: string): Promise<void> {
-  await deleteDoc(doc(db, "appointments", appointmentId));
+  const ref = doc(db, "appointments", appointmentId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+  await deleteDoc(ref);
 }
 
 export async function listAppointmentsForClinic(clinicSlug: string, date: string): Promise<AppointmentDoc[]> {
