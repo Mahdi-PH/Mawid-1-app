@@ -1,62 +1,72 @@
 "use client";
 
-// The clinic reception dashboard — the missing piece that meant a clinic
-// could sign up via /signup, get approved, and then have nowhere real to
-// go. Three tabs, matching the demo artifact's view-clinic screen
-// exactly: الاستقبال (reception timeline), شاشة الانتظار (waiting-room
-// TV), إعدادات الدوام (schedule settings) - reusing firestore.ts
-// functions that already existed for this (listAppointmentsForClinic,
-// setAppointmentStatus, updateClinicSchedule) with no UI in front of them
-// until now, same story as /find.
-import { useCallback, useEffect, useState } from "react";
+// The clinic reception dashboard. Restructured per the user's explicit
+// ask: only الاستقبال (reception) and شاشة الانتظار (waiting-room TV) stay
+// as top-level tabs for daily work — مسح سجل المراجع، إعدادات الدوام، and
+// خطة الاشتراك moved into a single "إعدادات الحساب" drawer opened from a
+// gear icon pinned to the screen's physical top-left corner (see
+// components/ClinicAccountDrawer.tsx), sign-out included at its bottom.
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import BackButton from "../../components/BackButton";
 import AppBackdrop from "../../components/AppBackdrop";
-import ConfirmPopup from "../../components/ConfirmPopup";
+import ClinicAccountDrawer from "../../components/ClinicAccountDrawer";
 import { auth } from "../../lib/firebase/config";
-import { markIntentionalSignOut, signOutUser } from "../../lib/firebase/auth";
 import {
-  getClinicByOwner,
   isSubscriptionActive,
-  listAppointmentsForClinic,
   setAppointmentStatus,
   subscriptionDaysLeft,
-  SUBSCRIPTION_PAYMENT_ACCOUNT,
   SUBSCRIPTION_WARNING_DAYS,
-  updateClinicSchedule,
-  ScheduleConflictError,
+  watchAppointmentsForClinic,
+  watchClinicByOwner,
 } from "../../lib/firebase/firestore";
 import { generateDaySlots } from "../../lib/firebase/slotEngine";
 import { STATUS_DOT, STATUS_LABEL } from "../../lib/firebase/statusMeta";
 import { OCCUPYING_STATUSES } from "../../lib/firebase/types";
-import type { AppointmentDoc, AppointmentStatus, ClinicDoc } from "../../lib/firebase/types";
-import ScanPatientTab from "../../components/ScanPatientTab";
+import type { AppointmentDoc, AppointmentStatus, ClinicDoc, ClinicStatus } from "../../lib/firebase/types";
+import {
+  canRequestNotificationPermission,
+  notificationPermission,
+  notifyClinicStatusChange,
+  requestNotificationPermission,
+} from "../../lib/notifications";
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-type Tab = "reception" | "tv" | "settings" | "subscription" | "scan";
+type Tab = "reception" | "tv";
 
 export default function ClinicDashboardPage() {
   const [clinic, setClinic] = useState<ClinicDoc | null | undefined>(undefined);
   const [tab, setTab] = useState<Tab>("reception");
   const [appts, setAppts] = useState<AppointmentDoc[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const prevStatusRef = useRef<ClinicStatus | undefined>(undefined);
 
-  const reloadAppts = useCallback(async (c: ClinicDoc) => {
-    setAppts(await listAppointmentsForClinic(c.slug, todayISO()));
-  }, []);
-
+  // Live, not a one-shot fetch: an admin approving/rejecting the clinic
+  // (or renewing its subscription) now reflects on this already-open
+  // dashboard immediately — and is what actually lets the notification
+  // below fire the instant it happens rather than only on the next visit.
   useEffect(() => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
-    getClinicByOwner(uid).then((c) => {
+    return watchClinicByOwner(uid, (c) => {
+      if (prevStatusRef.current === "pending" && c && c.status !== "pending") {
+        notifyClinicStatusChange(c.status === "approved" ? "approved" : "rejected", c.clinicName);
+      }
+      prevStatusRef.current = c?.status;
       setClinic(c);
-      if (c) reloadAppts(c);
     });
-  }, [reloadAppts]);
+  }, []);
+
+  // Live too — a new patient booking, or this same clinic's own status
+  // write, shows up with no manual reload either way.
+  useEffect(() => {
+    if (!clinic) return;
+    return watchAppointmentsForClinic(clinic.slug, todayISO(), setAppts);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clinic?.slug]);
 
   if (clinic === undefined) {
     return (
@@ -98,6 +108,7 @@ export default function ClinicDashboardPage() {
               ? "طلب تسجيلك قيد المراجعة من قبل الإدارة — سيتفعّل حسابك بعد الموافقة على الإجازة المرفوعة."
               : "تعذّر تفعيل هذا الحساب. تواصل مع الإدارة لمزيد من التفاصيل."}
           </p>
+          {clinic.status === "pending" && <NotificationOptIn />}
           <Link
             href="/"
             className="inline-block w-full rounded-lg bg-brand-500 py-3 text-center font-bold text-white hover:bg-brand-600"
@@ -113,7 +124,7 @@ export default function ClinicDashboardPage() {
   // account is fully closed until admin manually renews it (see
   // /admin's "تجديد شهر" button; there's no real payment gateway, so
   // renewal is always this human confirmation step after the clinic pays
-  // via the account number shown on /clinic's own "خطة الاشتراك" tab).
+  // via the account number shown in "خطة الاشتراك" in the settings drawer).
   if (!isSubscriptionActive(clinic)) {
     return (
       <div className="relative min-h-screen">
@@ -146,51 +157,55 @@ export default function ClinicDashboardPage() {
     <div className="relative min-h-screen bg-gray-50">
       <AppBackdrop />
       <header className="sticky top-0 z-10 border-b bg-white px-6 py-3">
-        <BackButton
-          fallbackHref="/"
-          alwaysUseFallback
-          className="mb-2 block text-sm text-brand-600 hover:underline"
-        />
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="font-bold" style={{ color: "#0F7A6C" }}>
-            {clinic.clinicName}
-          </h1>
-          <div className="flex items-center gap-2 text-sm">
-            <input
-              readOnly
-              value={bookingLink}
-              dir="ltr"
-              className="w-64 rounded-lg border bg-gray-50 px-2 py-1 text-xs text-gray-500"
-            />
-            <button
-              onClick={() => navigator.clipboard?.writeText(bookingLink)}
-              className="rounded-lg border px-3 py-1 hover:bg-gray-50"
-            >
-              نسخ
-            </button>
+        <button
+          type="button"
+          onClick={() => setDrawerOpen(true)}
+          aria-label="إعدادات الحساب"
+          className="absolute left-3 top-3 flex h-9 w-9 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
+        >
+          <GearIcon />
+        </button>
+
+        <div className="pl-11">
+          <BackButton fallbackHref="/" alwaysUseFallback className="mb-2 block text-sm text-brand-600 hover:underline" />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="font-bold" style={{ color: "#0F7A6C" }}>
+              {clinic.clinicName}
+            </h1>
+            <div className="flex items-center gap-2 text-sm">
+              <input
+                readOnly
+                value={bookingLink}
+                dir="ltr"
+                className="w-64 rounded-lg border bg-gray-50 px-2 py-1 text-xs text-gray-500"
+              />
+              <button
+                onClick={() => navigator.clipboard?.writeText(bookingLink)}
+                className="rounded-lg border px-3 py-1 hover:bg-gray-50"
+              >
+                نسخ
+              </button>
+            </div>
           </div>
-        </div>
-        <div className="mt-3 flex gap-2">
-          {(
-            [
-              ["reception", "الاستقبال"],
-              ["tv", "شاشة الانتظار"],
-              ["scan", "مسح سجل المراجع"],
-              ["settings", "إعدادات الدوام"],
-              ["subscription", "خطة الاشتراك"],
-            ] as [Tab, string][]
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              onClick={() => setTab(id)}
-              className={
-                "rounded-lg px-4 py-2 text-sm font-bold " +
-                (tab === id ? "bg-brand-500 text-white" : "text-gray-600 hover:bg-gray-100")
-              }
-            >
-              {label}
-            </button>
-          ))}
+          <div className="mt-3 flex gap-2">
+            {(
+              [
+                ["reception", "الاستقبال"],
+                ["tv", "شاشة الانتظار"],
+              ] as [Tab, string][]
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setTab(id)}
+                className={
+                  "rounded-lg px-4 py-2 text-sm font-bold " +
+                  (tab === id ? "bg-brand-500 text-white" : "text-gray-600 hover:bg-gray-100")
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 
@@ -203,36 +218,65 @@ export default function ClinicDashboardPage() {
       )}
 
       <main className="relative p-6">
-        {tab === "reception" && (
-          <ReceptionTab clinic={clinic} appts={appts} onChanged={() => reloadAppts(clinic)} />
-        )}
+        {tab === "reception" && <ReceptionTab clinic={clinic} appts={appts} />}
         {tab === "tv" && <WaitingRoomTv appts={appts} />}
-        {tab === "scan" && <ScanPatientTab clinic={clinic} />}
-        {tab === "settings" && (
-          <SettingsTab clinic={clinic} onSaved={(c) => { setClinic(c); reloadAppts(c); }} />
-        )}
-        {tab === "subscription" && <SubscriptionTab clinic={clinic} />}
-        {error && <p className="mt-4 text-red-600">{error}</p>}
       </main>
+
+      <ClinicAccountDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} clinic={clinic} onScheduleSaved={setClinic} />
     </div>
   );
 }
 
-function ReceptionTab({
-  clinic,
-  appts,
-  onChanged,
-}: {
-  clinic: ClinicDoc;
-  appts: AppointmentDoc[];
-  onChanged: () => void;
-}) {
+/** Opt-in — never auto-prompts for permission with no context, which
+ *  browsers increasingly block anyway. Only shown on the pending-approval
+ *  screen, since that's the one moment "علم المركز فوراً" actually
+ *  matters. Disclosed in its own confirmation line once granted: this
+ *  only works while this tab/app is open, not after it's fully closed —
+ *  see lib/notifications.ts for why. */
+function NotificationOptIn() {
+  const [permission, setPermission] = useState<NotificationPermission | null>(null);
+
+  useEffect(() => {
+    setPermission(notificationPermission());
+  }, []);
+
+  if (!canRequestNotificationPermission() || permission === "denied") return null;
+
+  if (permission === "granted") {
+    return (
+      <p className="mb-4 text-xs text-green-700">
+        ✓ سيصلك تنبيه فور تغيّر حالة حسابك، طالما هذه الصفحة مفتوحة على جهازك.
+      </p>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={async () => setPermission(await requestNotificationPermission())}
+      className="mb-4 w-full rounded-lg border border-brand-300 px-4 py-2 text-sm text-brand-700 hover:bg-brand-50"
+      style={{ borderColor: "#0F7A6C", color: "#0F7A6C" }}
+    >
+      🔔 فعّل التنبيهات لإعلامك فور الموافقة
+    </button>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
+function ReceptionTab({ clinic, appts }: { clinic: ClinicDoc; appts: AppointmentDoc[] }) {
   const slots = generateDaySlots(clinic);
   const byTime = new Map(appts.map((a) => [a.startTime, a]));
 
   async function handleStatusChange(appt: AppointmentDoc, status: AppointmentStatus) {
     await setAppointmentStatus(appt, status);
-    onChanged();
   }
 
   return (
@@ -325,198 +369,6 @@ function WaitingRoomTv({ appts }: { appts: AppointmentDoc[] }) {
           </div>
         ))}
         {waiting.length === 0 && <p className="text-gray-400">لا يوجد مراجعون بالانتظار حالياً.</p>}
-      </div>
-    </div>
-  );
-}
-
-const SLOT_OPTIONS: (5 | 10 | 15 | 20)[] = [5, 10, 15, 20];
-
-function SettingsTab({ clinic, onSaved }: { clinic: ClinicDoc; onSaved: (c: ClinicDoc) => void }) {
-  const router = useRouter();
-  const [workStart, setWorkStart] = useState(clinic.workStart);
-  const [workEnd, setWorkEnd] = useState(clinic.workEnd);
-  const [slotMin, setSlotMin] = useState<5 | 10 | 15 | 20>(clinic.slotMin);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
-  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
-
-  async function handleSignOut() {
-    setConfirmingSignOut(false);
-    setSigningOut(true);
-    try {
-      // Marked before signOutUser() so clinic/layout.tsx's own auth effect
-      // (which also reacts to becoming signed-out, to redirect an expired/
-      // never-started session to /signup) knows this particular sign-out
-      // was deliberate and should land on the home screen instead.
-      markIntentionalSignOut();
-      await signOutUser();
-      router.push("/");
-    } catch (err) {
-      setSigningOut(false);
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  async function handleSave() {
-    setError(null);
-    setSaved(false);
-    setBusy(true);
-    try {
-      await updateClinicSchedule(clinic.slug, { workStart, workEnd, slotMin });
-      onSaved({ ...clinic, workStart, workEnd, slotMin });
-      setSaved(true);
-    } catch (err) {
-      if (err instanceof ScheduleConflictError) {
-        setError(`لا يمكن حفظ هذا التعديل — يوجد مواعيد محجوزة تقع خارج الدوام الجديد: ${err.conflictingTimes.join("، ")}. ألغِ أو أجّل هذه المواعيد أولاً.`);
-      } else {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="max-w-md space-y-4 rounded-xl border bg-white p-6">
-      <div className="grid grid-cols-2 gap-4">
-        <label className="block text-sm">
-          بداية الدوام
-          <input
-            type="time"
-            value={workStart}
-            onChange={(e) => setWorkStart(e.target.value)}
-            className="mt-1 w-full rounded-lg border px-3 py-2"
-          />
-        </label>
-        <label className="block text-sm">
-          نهاية الدوام
-          <input
-            type="time"
-            value={workEnd}
-            onChange={(e) => setWorkEnd(e.target.value)}
-            className="mt-1 w-full rounded-lg border px-3 py-2"
-          />
-        </label>
-      </div>
-      <label className="block text-sm">
-        مدة الموعد الواحد
-        <select
-          value={slotMin}
-          onChange={(e) => setSlotMin(Number(e.target.value) as 5 | 10 | 15 | 20)}
-          className="mt-1 w-full rounded-lg border px-3 py-2"
-        >
-          {SLOT_OPTIONS.map((m) => (
-            <option key={m} value={m}>
-              {m} دقائق
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {saved && <p className="text-sm text-green-700">تم الحفظ.</p>}
-
-      <button
-        onClick={handleSave}
-        disabled={busy}
-        className="w-full rounded-lg bg-brand-500 px-4 py-2 text-white hover:bg-brand-600 disabled:opacity-50"
-      >
-        {busy ? "جارٍ الحفظ…" : "حفظ"}
-      </button>
-
-      <div className="border-t pt-4">
-        <button
-          onClick={() => setConfirmingSignOut(true)}
-          disabled={signingOut}
-          className="w-full rounded-lg border border-red-300 px-4 py-2 text-red-600 hover:bg-red-50 disabled:opacity-50"
-        >
-          {signingOut ? "جارٍ تسجيل الخروج…" : "تسجيل خروج من الحساب"}
-        </button>
-      </div>
-
-      <ConfirmPopup
-        open={confirmingSignOut}
-        title="هل تريد تسجيل الخروج؟"
-        confirmLabel="تأكيد الخروج"
-        onConfirm={handleSignOut}
-        onCancel={() => setConfirmingSignOut(false)}
-      />
-    </div>
-  );
-}
-
-function formatSubscriptionDate(ts: ClinicDoc["subscriptionEndsAt"]): string {
-  if (!ts) return "—";
-  return ts.toDate().toLocaleDateString("ar", { year: "numeric", month: "long", day: "numeric" });
-}
-
-/** "خطة الاشتراك" — the subscription plan's own tab, next to إعدادات
- *  الدوام. Shows the clinic its own start-to-end subscription window plus
- *  the payment account number: per the user's explicit ask, the payment
- *  account now lives ONLY here (after login), not on the pre-signup
- *  /subscribe screen. Read-only — renewal itself stays a manual admin
- *  action (/admin's "تجديد شهر" button) since there's no real payment
- *  gateway; this tab is where the clinic checks its own dates and where to
- *  send the transfer, not a self-service renew control. */
-function SubscriptionTab({ clinic }: { clinic: ClinicDoc }) {
-  const [copied, setCopied] = useState(false);
-  const daysLeft = subscriptionDaysLeft(clinic);
-
-  return (
-    <div className="mx-auto max-w-md space-y-4">
-      <div className="rounded-2xl border-2 bg-white p-6" style={{ borderColor: "#0F7A6C" }}>
-        <div className="mb-2 text-sm font-bold" style={{ color: "#0F7A6C" }}>
-          الخطة المجانية
-        </div>
-        <p className="text-sm leading-7 text-gray-600">
-          إدارة كاملة للحجوزات، الاستقبال، وشاشة صالة الانتظار. السعر بعد انتهاء الخطة المجانية{" "}
-          <span className="font-bold">لم يُحدَّد بعد</span> وسيُعلن لاحقاً.
-        </p>
-        <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-          <div className="rounded-lg bg-gray-50 p-3">
-            <div className="text-xs text-gray-400">بداية الاشتراك</div>
-            <div className="font-bold">{formatSubscriptionDate(clinic.subscriptionStartedAt)}</div>
-          </div>
-          <div className="rounded-lg bg-gray-50 p-3">
-            <div className="text-xs text-gray-400">نهاية الاشتراك</div>
-            <div className="font-bold">{formatSubscriptionDate(clinic.subscriptionEndsAt)}</div>
-          </div>
-        </div>
-        {daysLeft !== null && (
-          <p className={"mt-3 text-sm font-bold " + (daysLeft <= SUBSCRIPTION_WARNING_DAYS ? "text-amber-700" : "text-gray-500")}>
-            {daysLeft > 0 ? `متبقٍ ${daysLeft === 1 ? "يوم واحد" : `${daysLeft} أيام`} على الاشتراك.` : "اشتراكك ينتهي اليوم."}
-          </p>
-        )}
-      </div>
-
-      <div className="rounded-2xl border bg-white p-6">
-        <div className="mb-2 font-bold">الدفع بعد انتهاء الخطة المجانية</div>
-        <p className="mb-3 text-sm text-gray-500">
-          عند اقتراب موعد الانتهاء، حوّل قيمة الاشتراك (سيُعلن عنها لاحقاً) إلى الحساب التالي، ثم تواصل مع الإدارة
-          لتفعيل التجديد:
-        </p>
-        <div className="flex items-center gap-2">
-          <input
-            readOnly
-            value={SUBSCRIPTION_PAYMENT_ACCOUNT}
-            dir="ltr"
-            className="w-full rounded-lg border bg-gray-50 px-3 py-2 font-mono text-sm"
-          />
-          <button
-            onClick={() => {
-              navigator.clipboard?.writeText(SUBSCRIPTION_PAYMENT_ACCOUNT);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            }}
-            className="shrink-0 rounded-lg border px-4 py-2 text-sm hover:bg-gray-50"
-          >
-            {copied ? "تم النسخ" : "نسخ"}
-          </button>
-        </div>
-        <p className="mt-3 text-xs text-gray-400">طريقة الدفع هنا تجريبية وقابلة للتغيير لاحقاً.</p>
       </div>
     </div>
   );

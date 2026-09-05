@@ -217,6 +217,20 @@ export async function getClinicByOwner(ownerUid: string): Promise<ClinicDoc | nu
   return snap.empty ? null : (snap.docs[0].data() as ClinicDoc);
 }
 
+/** Live variant of getClinicByOwner() — used by /clinic so an admin
+ *  approving/rejecting the clinic (or renewing its subscription) reflects
+ *  on the clinic's own already-open dashboard immediately, with no manual
+ *  refresh. Same query shape (single equality filter), so this needs no
+ *  rules change and no composite index, identical to the one-shot version. */
+export function watchClinicByOwner(ownerUid: string, onChange: (clinic: ClinicDoc | null) => void): () => void {
+  const q = query(collection(db, "clinics"), where("ownerUid", "==", ownerUid));
+  return onSnapshot(
+    q,
+    (snap) => onChange(snap.empty ? null : (snap.docs[0].data() as ClinicDoc)),
+    () => onChange(null)
+  );
+}
+
 /** The patient-facing directory: single-field equality only (no orderBy),
  *  same reasoning as adminListPendingClinics() — avoids needing a
  *  composite index, and the result set is small enough to sort
@@ -431,6 +445,30 @@ export async function listAppointmentsForClinic(clinicSlug: string, date: string
   );
   const snap = await getDocs(q);
   return snap.docs.map((d) => d.data() as AppointmentDoc);
+}
+
+/** Live variant of listAppointmentsForClinic() — /clinic's reception/TV
+ *  tabs read from this instead of a one-shot fetch re-run manually after
+ *  each local status change, so a *different* event (a new patient
+ *  booking, or the same clinic's own write landing) shows up with no
+ *  manual reload either. Same two-equality-filter query shape, so this
+ *  needs no rules change and no composite index, identical to the
+ *  one-shot version. */
+export function watchAppointmentsForClinic(
+  clinicSlug: string,
+  date: string,
+  onChange: (appts: AppointmentDoc[]) => void
+): () => void {
+  const q = query(
+    collection(db, "appointments"),
+    where("clinicSlug", "==", clinicSlug),
+    where("date", "==", date)
+  );
+  return onSnapshot(
+    q,
+    (snap) => onChange(snap.docs.map((d) => d.data() as AppointmentDoc)),
+    () => onChange([])
+  );
 }
 
 /** Single-field equality only (no orderBy) - same reasoning as

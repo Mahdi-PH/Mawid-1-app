@@ -5,7 +5,7 @@
 // It is a different artifact from google-services.json/GoogleService-Info.plist,
 // which are for native Android/iOS apps — see docs/firebase-setup.md.
 import { getApp, getApps, initializeApp, type FirebaseOptions } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { browserLocalPersistence, getAuth, setPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig: FirebaseOptions = {
@@ -33,3 +33,16 @@ function requireConfig(): FirebaseOptions {
 export const firebaseApp = getApps().length ? getApp() : initializeApp(requireConfig());
 export const auth = getAuth(firebaseApp);
 export const db = getFirestore(firebaseApp);
+
+// getAuth() already defaults to IndexedDB-backed persistence in a browser,
+// but making it explicit is the standard, documented defensive fix for
+// "signed-in session lost after the app/tab is fully closed and reopened"
+// reports (a clinic owner having to sign back in after killing the
+// installed PWA/TWA) — an implicit default can silently behave differently
+// across WebView/browser edge cases; this removes that ambiguity. Not
+// awaited (fire-and-forget): it only needs to land before the next auth
+// call actually persists something, which in practice is always after this
+// module has finished evaluating.
+setPersistence(auth, browserLocalPersistence).catch((err) => {
+  console.error("Failed to set Firebase Auth persistence:", err);
+});

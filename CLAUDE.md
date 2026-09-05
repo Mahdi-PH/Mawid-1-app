@@ -2969,6 +2969,130 @@ above (two real patients watching their queue position update live as a
 real clinic drives status changes) is unaffected by deploying — still
 worth doing once there's a real clinic/two-patient pair to test with.
 
+## Clinic account settings drawer + foreground status alerts + auth persistence + audit
+
+A four-part request, addressed to "a senior mobile/Firebase developer":
+restructure `/clinic` so only الاستقبال/شاشة الانتظار stay as top-level
+tabs and everything else lives in a new "إعدادات الحساب" drawer behind a
+gear icon at the screen's physical top-left corner; give the clinic an
+instant alert the moment admin approves/rejects its registration, no
+manual refresh; fix a reported bug where a killed-and-reopened app forces
+re-login; and do a general bug-audit pass.
+
+- **`components/ClinicAccountDrawer.tsx`** (new): a slide-over panel
+  (`fixed left-0`, physical left edge regardless of `dir="rtl"`, same
+  reasoning as every other physical-positioning choice in this file)
+  opened from a new gear-icon button pinned `absolute left-3 top-3` in
+  `/clinic`'s own sticky header (`GearIcon`, a standard cog SVG). Menu
+  order, top to bottom: مسح سجل المراجع (`ScanPatientTab`, reused
+  unchanged), إعدادات أوقات الدوام (`ScheduleForm`), خطة الاشتراك
+  (`SubscriptionTab`), then a divider, then a prominent red "تسجيل
+  الخروج" pinned to the bottom via `mt-auto` — exactly the ordering
+  asked for. Reuses the existing `markIntentionalSignOut()`/
+  `signOutUser()`/`ConfirmPopup` pattern already used by `/admin`'s own
+  sign-out button, for the same race-with-the-layout's-own-redirect-
+  effect reason documented earlier in this file.
+  - **Conditionally *mounted*, not conditionally hidden**: `open=false`
+    renders `null` outright (same convention as `ConfirmPopup`) rather
+    than toggling visibility, specifically so `ScanPatientTab`'s camera
+    (`getUserMedia`) actually stops via its own existing unmount cleanup
+    the moment the drawer or that specific tool closes — a hidden-but-
+    still-mounted panel would leave the camera running in the
+    background.
+  - **`components/ClinicSettingsTools.tsx`** (new): `ScheduleForm` and
+    `SubscriptionTab` were pulled out of `app/clinic/page.tsx` into this
+    shared file rather than kept as extra named exports off the page
+    module — caught by a real build failure ("X is not a valid Page
+    export field"): a Next.js App Router `page.tsx` may only export its
+    default page component (plus the small fixed set of special
+    exports), so any other named export fails `next build` outright.
+    Both the drawer and `/clinic`'s own page import these from this new
+    file now.
+  - `/clinic`'s top nav is now just الاستقبال/شاشة الانتظار — the other
+    three tools/tabs it used to have are gone from the top level
+    entirely, reachable only through the drawer.
+- **`lib/notifications.ts`** (new) + **`lib/firebase/firestore.ts`**
+  gained `watchClinicByOwner()`/`watchAppointmentsForClinic()` (live
+  `onSnapshot` variants of the existing one-shot `getClinicByOwner()`/
+  `listAppointmentsForClinic()`, same query shapes so no `firestore.rules`
+  change was needed) — **this is a foreground Notification-API alert, not
+  Firebase Cloud Messaging**, and that's a disclosed scoping decision, not
+  a shortcut: a real push that reaches a *fully closed* app needs FCM
+  plus a server-side trigger (a Cloud Function reacting to admin's
+  approve/reject write), and Cloud Functions require the paid Blaze plan
+  to deploy at all — the same wall this project has already hit for
+  Storage and Phone Auth SMS, always disclosed rather than silently
+  worked around. Building FCM token/service-worker plumbing with no way
+  to ever trigger a send would be dead code. The user's own request
+  explicitly named the Spark-compatible fallback ("أو استماع مستمر لحالة
+  الحساب في Firestore"), so this was built rather than paused on: `/clinic`'s
+  new live `watchClinicByOwner()` subscription (replacing the old
+  one-shot fetch) compares the previous status against the new one via a
+  `prevStatusRef`, and on a real pending→approved/pending→rejected
+  transition calls `notifyClinicStatusChange()`, which shows a real OS-
+  level `Notification` — this works while `/clinic`'s tab/installed
+  PWA/TWA is open, even backgrounded, but genuinely cannot reach a fully
+  closed app. A `NotificationOptIn` opt-in button (never auto-prompts)
+  appears only on the pending-approval screen, with a green confirmation
+  line once granted that says exactly this limitation out loud.
+  `/clinic`'s appointments list is also now a live
+  `watchAppointmentsForClinic()` subscription instead of the old
+  one-shot-fetch-plus-manual-reload-after-every-status-change pattern —
+  a new booking or this same clinic's own status write now shows up with
+  zero manual refresh, a real correctness improvement independent of the
+  notification feature.
+- **`lib/firebase/config.ts`**: added an explicit
+  `setPersistence(auth, browserLocalPersistence)` call right after `auth`
+  is created. **Disclosed, not oversold**: the Firebase JS SDK already
+  defaults to this exact persistence in a browser, so this is the
+  standard, documented *defensive* fix for "signed out after the
+  installed app is fully killed and reopened" reports — making the
+  choice explicit removes any ambiguity across WebView/TWA edge cases an
+  implicit default could behave differently under. **This could not be
+  verified against a literal Android app-kill-and-reopen from this
+  sandbox** (no Android device/emulator available here) — flagged rather
+  than claimed fixed-and-confirmed; worth a real on-device check next
+  time there's access to the actual installed APK/PWA.
+- **Bug audit performed this pass**: a focused, bounded review (not a
+  line-by-line rewrite of the whole codebase) covering the two areas most
+  likely to actually regress from this segment's own changes —
+  1. **Every `onSnapshot` call site in the project** (`find/wait/page.tsx`,
+     `find/page.tsx`, `lib/firebase/queue.ts`, `lib/firebase/firestore.ts`
+     — including the two new watchers this pass added — and
+     `lib/firebase/passport.ts`) was checked for a returned unsubscribe
+     function actually reaching its `useEffect`'s own cleanup return.
+     All of them do — no leaked listeners found, new or pre-existing.
+  2. Two dead imports left over from mid-rewrite (`useRouter`,
+     `ConfirmPopup` — both moved to `ClinicAccountDrawer` once sign-out
+     left `/clinic`'s own page file) were caught and removed before this
+     was considered done; two `<Link>` usages that had been accidentally
+     changed to plain `<a>` tags during the same rewrite were reverted
+     back to `<Link>` for consistency with the rest of the app's
+     navigation.
+  - **Not exhaustively re-audited this pass**: the broader "track down
+    any hidden bug anywhere in the project" ask is open-ended by nature;
+    a full line-by-line pass of every file wasn't performed. What was
+    checked is listed above — flagged here rather than implicitly
+    claiming a wall-to-wall audit that didn't happen.
+- **Verified**: `npm run build --workspace=apps/web` (typecheck + static
+  export) clean. A local Playwright pass against the exported `out/`
+  confirmed zero console/page errors on `/`, `/find`, `/clinic`
+  (signed-out — correctly redirects to `/signup`), and `/admin`
+  (signed-out — same redirect). **Not independently live-verified**: the
+  drawer's actual open/close/tool-switch behavior and the live
+  notification firing on a real admin approve/reject were not exercised
+  against the real `mawid-app-d1d03` project this pass (no fresh
+  service-account key was on hand) — same disclosed-gap pattern as the
+  Patient Passport and queue features earlier in this file. Recommended
+  before treating this as fully verified: a real clinic account signed
+  into `/clinic`, opening the drawer and switching between its three
+  tools, then a real admin approving/rejecting that same clinic's pending
+  request while the clinic's tab stays open, confirming the notification
+  actually appears.
+- **Not deployed** — committed only, per this project's standing
+  practice of holding `firebase deploy` for the user's next explicit
+  "انشرها الآن" go-ahead.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —
