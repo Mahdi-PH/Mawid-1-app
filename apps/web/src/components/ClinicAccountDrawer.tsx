@@ -1,13 +1,13 @@
 "use client";
 
 // "إعدادات الحساب" — every clinic-side tool that isn't part of daily
-// reception work (مسح سجل المراجع، إعدادات الدوام، خطة الاشتراك) lives here
-// now, opened from the gear icon pinned at the dashboard's own top-left
-// corner, with sign-out pinned at the bottom of this same menu. Reuses
-// ScheduleForm/SubscriptionTab from components/ClinicSettingsTools.tsx —
-// a Next.js page.tsx may only export its default page component, so
-// those two forms live in their own shared file rather than as named
-// exports off app/clinic/page.tsx.
+// reception work (مسح سجل المراجع، إعدادات الدوام، خطة الاشتراك، رابط
+// العيادة) lives here now, opened from the gear icon pinned at the
+// dashboard's own top-left corner, with sign-out pinned at the bottom of
+// this same menu. Reuses ScheduleForm/SubscriptionTab from
+// components/ClinicSettingsTools.tsx — a Next.js page.tsx may only export
+// its default page component, so those two forms live in their own
+// shared file rather than as named exports off app/clinic/page.tsx.
 //
 // Deliberately conditional-mount, not conditional-CSS-visibility: when
 // `open` is false this renders null entirely (same convention as
@@ -23,12 +23,13 @@ import { ScheduleForm, SubscriptionTab } from "./ClinicSettingsTools";
 import { markIntentionalSignOut, signOutUser } from "../lib/firebase/auth";
 import type { ClinicDoc } from "../lib/firebase/types";
 
-type Tool = "scan" | "schedule" | "subscription";
+type Tool = "scan" | "schedule" | "subscription" | "link";
 
 const TOOLS: { id: Tool; label: string; icon: string }[] = [
   { id: "scan", label: "مسح سجل المراجع", icon: "📷" },
   { id: "schedule", label: "إعدادات أوقات الدوام", icon: "🕒" },
   { id: "subscription", label: "خطة الاشتراك", icon: "💳" },
+  { id: "link", label: "رابط العيادة", icon: "🔗" },
 ];
 
 export default function ClinicAccountDrawer({
@@ -65,17 +66,21 @@ export default function ClinicAccountDrawer({
 
   return (
     <div className="fixed inset-0 z-40">
-      <div className="absolute inset-0 bg-black/40" onClick={handleClose} />
-      <div dir="rtl" className="absolute left-0 top-0 flex h-full w-full max-w-sm flex-col bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b px-5 py-4">
-          <h2 className="font-bold" style={{ color: "#0F7A6C" }}>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={handleClose} />
+      <div
+        dir="rtl"
+        className="absolute left-0 top-0 flex h-full w-full max-w-sm flex-col shadow-2xl"
+        style={{ background: "linear-gradient(180deg, #F5FBF9 0%, #FFFFFF 220px)" }}
+      >
+        <div className="flex items-center justify-between border-b border-black/5 px-5 py-4">
+          <h2 className="text-lg font-extrabold" style={{ color: "#0F7A6C" }}>
             {activeTool ? toolLabel : "إعدادات الحساب"}
           </h2>
           <button
             type="button"
             onClick={handleClose}
             aria-label="إغلاق"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-black/5"
           >
             ✕
           </button>
@@ -84,28 +89,32 @@ export default function ClinicAccountDrawer({
         <div className="flex-1 overflow-y-auto p-5">
           {activeTool === null ? (
             <div className="flex h-full flex-col">
-              <div className="space-y-1">
+              <div className="space-y-2">
                 {TOOLS.map((t) => (
                   <button
                     key={t.id}
                     type="button"
                     onClick={() => setActiveTool(t.id)}
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-right hover:bg-gray-50"
+                    className="flex w-full items-center gap-3 rounded-xl bg-white px-3 py-3 text-right shadow-sm ring-1 ring-black/5 transition hover:-translate-y-0.5 hover:shadow-md"
                   >
-                    <span className="text-lg" aria-hidden>
+                    <span
+                      aria-hidden
+                      className="flex h-9 w-9 flex-none items-center justify-center rounded-full text-base"
+                      style={{ backgroundColor: "#EAF6F3", color: "#0F7A6C" }}
+                    >
                       {t.icon}
                     </span>
-                    <span className="font-medium text-gray-700">{t.label}</span>
+                    <span className="font-bold text-gray-800">{t.label}</span>
                     <span className="mr-auto text-gray-300">‹</span>
                   </button>
                 ))}
               </div>
 
-              <div className="mt-auto border-t pt-4">
+              <div className="mt-auto border-t border-black/5 pt-4">
                 <button
                   type="button"
                   onClick={() => setConfirmSignOut(true)}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-50 px-3 py-3 font-bold text-red-600 hover:bg-red-100"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-50 px-3 py-3 font-bold text-red-600 ring-1 ring-red-100 hover:bg-red-100"
                 >
                   🚪 تسجيل الخروج
                 </button>
@@ -116,7 +125,7 @@ export default function ClinicAccountDrawer({
               <button
                 type="button"
                 onClick={() => setActiveTool(null)}
-                className="mb-4 text-sm text-brand-600 hover:underline"
+                className="mb-4 text-sm font-bold hover:underline"
                 style={{ color: "#0F7A6C" }}
               >
                 ‹ رجوع
@@ -124,6 +133,7 @@ export default function ClinicAccountDrawer({
               {activeTool === "scan" && <ScanPatientTab clinic={clinic} />}
               {activeTool === "schedule" && <ScheduleForm clinic={clinic} onSaved={onScheduleSaved} />}
               {activeTool === "subscription" && <SubscriptionTab clinic={clinic} />}
+              {activeTool === "link" && <ClinicLinkTab clinic={clinic} />}
             </div>
           )}
         </div>
@@ -138,6 +148,47 @@ export default function ClinicAccountDrawer({
         onConfirm={handleSignOut}
         onCancel={() => setConfirmSignOut(false)}
       />
+    </div>
+  );
+}
+
+/** "رابط العيادة" — the shareable public booking link, moved here from
+ *  the dashboard's own header (which used to show it next to the clinic
+ *  name) so the header can give the clinic name its own uncluttered,
+ *  centered focus instead. Same link/copy behavior as before, just
+ *  relocated. */
+function ClinicLinkTab({ clinic }: { clinic: ClinicDoc }) {
+  const [copied, setCopied] = useState(false);
+  const bookingLink =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/find/book?clinic=${encodeURIComponent(clinic.slug)}`
+      : "";
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
+        <div className="mb-2 font-bold text-gray-800">رابط الحجز العام لعيادتك</div>
+        <p className="mb-3 text-sm text-gray-500">
+          شارك هذا الرابط مع مراجعيك — يفتح مباشرة صفحة حجز موعد لدى عيادتك.
+        </p>
+        <input
+          readOnly
+          value={bookingLink}
+          dir="ltr"
+          className="mb-3 w-full rounded-lg border bg-gray-50 px-3 py-2 text-xs text-gray-600"
+        />
+        <button
+          onClick={() => {
+            navigator.clipboard?.writeText(bookingLink);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+          className="w-full rounded-lg py-2 font-bold text-white hover:opacity-90"
+          style={{ backgroundColor: "#0F7A6C" }}
+        >
+          {copied ? "تم النسخ ✓" : "نسخ الرابط"}
+        </button>
+      </div>
     </div>
   );
 }

@@ -148,15 +148,10 @@ export default function ClinicDashboardPage() {
   const daysLeft = subscriptionDaysLeft(clinic);
   const showExpiryWarning = daysLeft !== null && daysLeft <= SUBSCRIPTION_WARNING_DAYS;
 
-  const bookingLink =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/find/book?clinic=${encodeURIComponent(clinic.slug)}`
-      : "";
-
   return (
     <div className="relative min-h-screen bg-gray-50">
       <AppBackdrop />
-      <header className="sticky top-0 z-10 border-b bg-white px-6 py-3">
+      <header className="sticky top-0 z-10 border-b bg-white px-6 py-4">
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
@@ -167,45 +162,38 @@ export default function ClinicDashboardPage() {
         </button>
 
         <div className="pl-11">
-          <BackButton fallbackHref="/" alwaysUseFallback className="mb-2 block text-sm text-brand-600 hover:underline" />
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h1 className="font-bold" style={{ color: "#0F7A6C" }}>
-              {clinic.clinicName}
-            </h1>
-            <div className="flex items-center gap-2 text-sm">
-              <input
-                readOnly
-                value={bookingLink}
-                dir="ltr"
-                className="w-64 rounded-lg border bg-gray-50 px-2 py-1 text-xs text-gray-500"
-              />
-              <button
-                onClick={() => navigator.clipboard?.writeText(bookingLink)}
-                className="rounded-lg border px-3 py-1 hover:bg-gray-50"
-              >
-                نسخ
-              </button>
-            </div>
-          </div>
-          <div className="mt-3 flex gap-2">
-            {(
-              [
-                ["reception", "الاستقبال"],
-                ["tv", "شاشة الانتظار"],
-              ] as [Tab, string][]
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                onClick={() => setTab(id)}
-                className={
-                  "rounded-lg px-4 py-2 text-sm font-bold " +
-                  (tab === id ? "bg-brand-500 text-white" : "text-gray-600 hover:bg-gray-100")
-                }
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <BackButton fallbackHref="/" alwaysUseFallback className="mb-1 block text-sm text-brand-600 hover:underline" />
+        </div>
+
+        {/* Clinic name is the header's own focal point — large, bold, and
+         *  centered rather than sharing a row with anything else, per the
+         *  user's explicit ask to make it visually prominent. The booking
+         *  link that used to sit next to it moved into the settings
+         *  drawer's own "رابط العيادة" tool. */}
+        <div className="mx-auto max-w-md text-center">
+          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl" style={{ color: "#0F7A6C" }}>
+            {clinic.clinicName}
+          </h1>
+        </div>
+
+        <div className="mt-4 flex justify-center gap-2">
+          {(
+            [
+              ["reception", "الاستقبال"],
+              ["tv", "شاشة الانتظار"],
+            ] as [Tab, string][]
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={
+                "rounded-lg px-4 py-2 text-sm font-bold " +
+                (tab === id ? "bg-brand-500 text-white" : "text-gray-600 hover:bg-gray-100")
+              }
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </header>
 
@@ -217,7 +205,11 @@ export default function ClinicDashboardPage() {
         </div>
       )}
 
-      <main className="relative p-6">
+      {/* Centered, not edge-to-edge — both tabs' content now sits inside a
+       *  shared, width-capped, horizontally-centered container so the
+       *  whole working area reads as one balanced middle column instead
+       *  of stretching to the page's physical edges. */}
+      <main className="relative mx-auto max-w-3xl p-6">
         {tab === "reception" && <ReceptionTab clinic={clinic} appts={appts} />}
         {tab === "tv" && <WaitingRoomTv appts={appts} />}
       </main>

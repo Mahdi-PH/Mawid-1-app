@@ -3176,6 +3176,70 @@ appointment shown there with status "انتهى"/completed) showed a raw
   key was deleted immediately after — both the copy used for the deploy
   and the original upload.
 
+## Clinic dashboard visual polish: centered header, link moved into drawer, restyled menu
+
+A UI/UX-focused request, addressed to "a UI/UX designer and software
+architect": three precise cosmetic/structural fixes to `/clinic`.
+
+- **"رابط العيادة" moved into the settings drawer**: the shareable public
+  booking-link box (readonly input + copy button) used to sit in the
+  dashboard's own header, next to the clinic name. It's now its own
+  fourth tool in `ClinicAccountDrawer`'s menu (`ClinicLinkTab`, new,
+  `components/ClinicAccountDrawer.tsx`) alongside مسح سجل المراجع /
+  إعدادات أوقات الدوام / خطة الاشتراك, with sign-out still pinned at the
+  very bottom. Same link/copy behavior as before, just relocated —
+  freed the header to give the clinic name a single, uncluttered focal
+  point instead of sharing a row with it.
+- **Clinic name centered and enlarged**: `/clinic`'s header no longer
+  puts the clinic name in a `justify-between` row against the booking-
+  link box — it's now its own centered block (`text-2xl sm:text-3xl
+  font-extrabold`), the clear visual anchor of the screen the user asked
+  for. The الاستقبال/شاشة الانتظار tab buttons moved to their own
+  centered row underneath (`flex justify-center`, was left-aligned by
+  default before).
+- **Reception table + waiting-room TV now sit in a shared, width-capped,
+  horizontally-centered column** (`main` gained `mx-auto max-w-3xl`)
+  instead of stretching to the page's physical edges — both tabs render
+  inside the same centered container, so switching between them doesn't
+  shift the content's horizontal position.
+- **Drawer background/menu restyled for contrast and polish**: the panel
+  background is now a soft top-to-bottom gradient from the brand's own
+  `#F5FBF9` tint into white (was flat white) — ties it visually into the
+  app's teal identity instead of reading as a generic system sheet. Each
+  menu row is now its own white, shadow/ring-bordered card with the
+  tool's emoji inside a small teal-tinted circle (`#EAF6F3` background,
+  `#0F7A6C` icon color) rather than a floating icon on a plain hover
+  row — clearer separation between items and better icon/text contrast
+  against the new tinted backdrop. The backdrop overlay gained a light
+  `backdrop-blur` for a softer, more modern dim. Bumped icon-row/heading
+  text weights (`font-bold`/`text-lg font-extrabold`) for stronger
+  contrast on the lighter background.
+- **Verified visually, not just by a clean build**: a throwaway route
+  (`app/uitest-scratch/`, mounting the same header/drawer/tab components
+  with mock clinic/appointment data — no Firebase needed) was built,
+  screenshotted with Playwright at a real phone viewport (420×900) in
+  all four states — الاستقبال, شاشة الانتظار, the settings-drawer menu,
+  and its new "رابط العيادة" tool panel — confirming the centered
+  clinic name, centered tabs/content, the restyled card-based menu, and
+  the relocated link tool all render correctly with zero console/page
+  errors, then deleted before this was considered done (confirmed gone
+  from the rebuilt `apps/web/out/`, and `/clinic`'s own bundle size back
+  to its prior value). Screenshots sent to the user for review. `tsc
+  --noEmit` (via `next build`) and the static export build are both
+  clean; the existing signed-out-redirect smoke pass for `/clinic`,
+  `/`, `/find`, `/admin` still shows zero errors.
+- **Not independently live-verified**: no fresh service-account key was
+  on hand this pass, so the actual restyled dashboard/drawer wasn't
+  screenshotted against a real signed-in clinic account on the live
+  project — the mock-data verification above is what stands in for that
+  this time, same disclosed-gap shape as several earlier features in
+  this file. Recommended before treating this as fully verified: a real
+  clinic account signed into `/clinic`, opening the drawer, and using
+  its new "رابط العيادة" tool to confirm the copied link is correct.
+- **Not deployed** — committed only, per this project's standing
+  practice of holding `firebase deploy` for the user's next explicit
+  "انشرها الآن" go-ahead.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —
