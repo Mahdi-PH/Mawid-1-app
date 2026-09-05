@@ -2,11 +2,16 @@
 // off ClinicDoc.entityType, so a clinic's own dashboard/reception/patient-
 // facing screens all use medical wording, and a beauty-center/salon's use
 // salon wording, from this single source rather than each screen
-// hardcoding its own copy. "beauty" and "salon" deliberately share one
-// wording set (SALON_TERMS) — the user's own request grouped them
-// together ("إذا كان الاختيار مركز تجميل أو صالون: تتغير كافة المصطلحات
-// إلى..."), so only their own display label (ENTITY_TYPE_LABEL) tells them
-// apart, not separate terminology.
+// hardcoding its own copy. "beauty" and "salon" share every term EXCEPT
+// practitionerNoun — the user's original request grouped the two
+// together for general wording ("إذا كان الاختيار مركز تجميل أو صالون:
+// تتغير كافة المصطلحات إلى..."), but a later request asked specifically
+// for "الحالي عند X" to read "أخصائي التجميل" for a beauty center and
+// "الحلاق" for a barber salon rather than the one shared "الحلاق أو
+// أخصائي التجميل" phrase — so practitionerNoun alone now has its own
+// per-type value, while every other term still comes from one shared
+// wordset (SALON_SHARED_TERMS) so the two constants can't drift apart on
+// anything but that one field.
 import type { EntityType } from "./types";
 
 export const ENTITY_TYPE_LABEL: Record<EntityType, string> = {
@@ -31,7 +36,9 @@ export interface Terminology {
   visitorNounPlural: string;
   /** "مراجعيك" — plural + possessive, e.g. "شارك هذا الرابط مع مراجعيك". */
   visitorPossessivePlural: string;
-  /** "الطبيب" — who the patient/customer is waiting to see. */
+  /** "الطبيب" (clinic) / "أخصائي التجميل" (beauty) / "الحلاق" (salon) —
+   *  who the patient/customer is waiting to see. The one field that
+   *  differs between beauty and salon; every other term is shared. */
   practitionerNoun: string;
   /** "السجل الطبي" — the Patient Passport's own read-only archive label. */
   recordLabel: string;
@@ -60,14 +67,15 @@ const CLINIC_TERMS: Terminology = {
   addEntryPlaceholder: "اكتب تفاصيل الوصفة أو الملاحظة…",
 };
 
-const SALON_TERMS: Terminology = {
+/** Every term "beauty" and "salon" share — everything except
+ *  practitionerNoun, which each type sets on its own below. */
+const SALON_SHARED_TERMS: Omit<Terminology, "practitionerNoun"> = {
   centerNoun: "الصالون أو المركز",
   centerPossessive: "لصالونك أو مركزك",
   personNoun: "الزبون",
   visitorNoun: "زبون",
   visitorNounPlural: "زبائن",
   visitorPossessivePlural: "زبائنك",
-  practitionerNoun: "الحلاق أو أخصائي التجميل",
   recordLabel: "سجل الخدمات",
   prescriptionNoun: "جلسة تجميل",
   noteNoun: "ملاحظات الخدمة",
@@ -75,11 +83,17 @@ const SALON_TERMS: Terminology = {
   addEntryPlaceholder: "اكتب تفاصيل الجلسة أو الخدمة…",
 };
 
+const BEAUTY_TERMS: Terminology = { ...SALON_SHARED_TERMS, practitionerNoun: "أخصائي التجميل" };
+
+const SALON_TERMS: Terminology = { ...SALON_SHARED_TERMS, practitionerNoun: "الحلاق" };
+
 /** The one place every screen resolves entityType -> wording. A
  *  missing/unrecognized value (an old clinic doc from before this field
  *  existed, or bad data) quietly falls back to CLINIC_TERMS rather than
  *  throwing or rendering "undefined" — see EntityType's own comment in
  *  types.ts for why that gap can exist at all. */
 export function getTerminology(entityType: EntityType | null | undefined): Terminology {
-  return entityType === "beauty" || entityType === "salon" ? SALON_TERMS : CLINIC_TERMS;
+  if (entityType === "beauty") return BEAUTY_TERMS;
+  if (entityType === "salon") return SALON_TERMS;
+  return CLINIC_TERMS;
 }

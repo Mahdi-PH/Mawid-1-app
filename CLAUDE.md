@@ -3362,6 +3362,112 @@ saying "مريض"/"طبيب"/"وصفة طبية" even for a barbershop or beauty
   key was deleted immediately after — both the copy used for the deploy
   and the original upload.
 
+## Per-entity practitioner wording split; admin dashboard restructured into stats + settings drawer
+
+Two requests together, addressed to "a UI/UX developer and software
+architect": (1) the shared "الحلاق أو أخصائي التجميل" phrase the Dynamic
+Entity Specialization feature (above) gave beauty centers and salons
+should split into two distinct words — "أخصائي التجميل" for a beauty
+center, "الحلاق" for a salon — so "الحالي عند X" reads naturally for
+each; (2) `/admin` should become a pure general-statistics dashboard
+(KPI tiles only), with its four existing sub-sections (طلبات التسجيل
+المعلَّقة، الحسابات المرفوضة، الاشتراكات، المستخدمون المسجَّلون) moved
+into a settings drawer opened from a gear icon pinned at the header's
+corner — the exact same pattern `/clinic`'s own account drawer already
+established.
+
+- **`lib/firebase/terminology.ts`**: `practitionerNoun` is now the one
+  field that differs between "beauty" and "salon" — every other term
+  still comes from one shared `SALON_SHARED_TERMS` object (spread into
+  both `BEAUTY_TERMS`/`SALON_TERMS`) so the two constants can't drift
+  apart on anything else. This only had to change in one place:
+  `getTerminology()` — every consumer (`WaitingRoomTv`'s "الحالي عند X",
+  `statusMeta.ts`'s `statusLabel()`/`statusPatientMessage()`, `/find/
+  wait`'s practitioner-name line) already read `terms.practitionerNoun`
+  rather than switching on `entityType` itself, so splitting the
+  constant alone was enough — confirmed with a quick `tsx -e` check
+  printing all three resolved phrases ("الحالي عند الطبيب" / "…أخصائي
+  التجميل" / "…الحلاق") rather than assuming from the source edit.
+- **`app/admin/page.tsx` rewritten to a pure stats dashboard**: four KPI
+  tiles — إجمالي المستخدمين، إجمالي الحجوزات (both already existed via
+  `adminGetStats()`), المراكز المفعَّلة (new: `adminListApprovedClinics()`
+  filtered by the existing `isSubscriptionActive()` — status and
+  subscription are separate axes throughout this track, so this
+  deliberately isn't just `approved.length`), and الحجوزات النشطة (new:
+  `adminGetActiveBookingsCount()`, `firestore.ts` — a single-field
+  `where("status","in",[...non-terminal statuses])` count query, no
+  composite index needed, same `getCountFromServer`-is-one-read-
+  regardless-of-size convention already used for the other two counts).
+- **`components/AdminSettingsDrawer.tsx`** (new): the four moved
+  sub-sections, each its own panel behind a menu (ordered exactly as
+  asked: pending → rejected → subscriptions → users), reusing the same
+  slide-over-from-the-left-edge shell as `ClinicAccountDrawer` — down to
+  the same gradient background, card-style menu rows, and backdrop blur.
+  Unlike that drawer (which receives its one `clinic` as a prop from an
+  already-loaded parent page), this one owns its own data loading
+  entirely, since there's no single parent-owned entity here — all four
+  `adminList*()` calls run in one `Promise.all` on mount, same shape as
+  the old page's own `reload()`.
+- **`lib/adminRefreshBus.ts`** (new): a tiny module-level pub/sub —
+  `notifyAdminDataChanged()` / `onAdminDataChanged()`. Needed because the
+  drawer and the stats page are now siblings under `admin/layout.tsx`,
+  not parent/child, so an approve/reject/renew/delete made inside the
+  drawer wouldn't otherwise be reflected in the stats tiles until the
+  page next remounted — every mutating call in the drawer calls
+  `notifyAdminDataChanged()` on success; the stats page subscribes to
+  re-run its own `reload()`. Deliberately not a React Context: a plain
+  `Set`-backed subscribe/notify pair is the smaller, sufficient tool for
+  "one page wants to know when another component changed some server
+  data," and `admin/layout.tsx` can't export one anyway (a Next.js
+  layout/page file may only export its default component plus the small
+  fixed special-export set — the same constraint that already forced
+  `ScheduleForm`/`SubscriptionTab` out of `app/clinic/page.tsx` earlier
+  in this file).
+- **`admin/layout.tsx`**: gained the gear icon (identical SVG to
+  `/clinic`'s own, duplicated locally rather than extracted to a shared
+  component — matching the precedent that file itself already set by
+  not extracting it either) pinned `absolute left-3 top-3` in the
+  header, opening `AdminSettingsDrawer`; the existing back-button/
+  sign-out row and heading moved into a `pl-11` wrapper so they no
+  longer collide with the pinned icon — same restructuring `/clinic`'s
+  own header went through for its drawer.
+- **Verified visually, not just by a clean build**: a throwaway route
+  (`app/uitest-scratch-admin/`, mounting `AdminSettingsDrawer` and the
+  stats tiles with mock pending/approved/rejected/users data injected via
+  a temporary `window.__ADMIN_MOCK__` test hook — added to the drawer's
+  own mount effect just for this pass, then fully reverted before
+  committing, so no test-only surface shipped) was screenshotted with
+  Playwright at a real phone viewport (480×900): the four stat tiles, the
+  drawer's menu (correct order, correct per-section counts), and all
+  four tool panels (pending — approve/reject/delete buttons and the
+  license-image zoom trigger; subscriptions — day-left filter row and
+  the amber/red day-count coloring; users — the "التفاصيل" link) — all
+  render correctly with zero console/page errors, confirmed by dumping
+  each screenshot, not assumed from the diff. The scratch route,
+  screenshots, and the temporary mock-injection code were all deleted/
+  reverted afterward — confirmed via `git status` showing only the real
+  production files changed. `tsc --noEmit` (via `next build`) and the
+  static export build are both clean (`/admin` shrank 2.69 kB → 1.08 kB
+  now that its sub-sections moved into the layout-shared drawer bundle).
+  A separate signed-out smoke pass (`/`, `/find`, `/clinic`, `/admin`)
+  confirmed zero console errors, matching this project's standing
+  verification practice.
+- **Not independently live-verified**: no fresh service-account key was
+  needed for this pass beyond the deploy itself (no `firestore.rules`
+  changes — both changes here are client-side only: a wording split and
+  a UI reorganization, no new security boundary), so the mock-data
+  verification above stands in for a real signed-in admin session this
+  time — same disclosed-gap shape as several earlier UI-only passes in
+  this file (e.g. the clinic dashboard's own centered-header/restyled-
+  menu polish). Recommended before treating this as fully verified: a
+  real admin session opening the settings drawer and exercising an
+  actual approve/renew/delete, confirming the stats tiles update live via
+  `adminRefreshBus` with no manual reload.
+- **Deployed**: no `firestore.rules` changes needed — only the rebuilt
+  `apps/web/out/` was pushed via `firebase deploy --only hosting`,
+  verified FINALIZED. The service-account key was deleted immediately
+  after — both the copy used for the deploy and the original upload.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

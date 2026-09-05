@@ -553,6 +553,18 @@ export async function adminGetStats(): Promise<{ userCount: number; appointmentC
   return { userCount: users.data().count, appointmentCount: appts.data().count };
 }
 
+/** "الحجوزات النشطة" — appointments still in-flight across every clinic
+ *  (not yet completed/cancelled/no_show), for the admin stats dashboard.
+ *  A single-field `in` filter, same as adminListPendingClinics() and
+ *  friends above — no composite index needed, and getCountFromServer
+ *  bills as one read regardless of how many match. */
+export async function adminGetActiveBookingsCount(): Promise<number> {
+  const activeStatuses: AppointmentStatus[] = ["requested", "booked", "arrived", "in_progress"];
+  const q = query(collection(db, "appointments"), where("status", "in", activeStatuses));
+  const snap = await getCountFromServer(q);
+  return snap.data().count;
+}
+
 /** Single-field equality only (no orderBy) - deliberately avoids needing a
  *  composite (status, createdAt) index at all, rather than depend on the
  *  service account's undeployed datastore.indexAdmin permission (see

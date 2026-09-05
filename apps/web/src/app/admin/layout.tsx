@@ -11,6 +11,7 @@ import { usePathname, useRouter } from "next/navigation";
 import BackButton from "../../components/BackButton";
 import AppBackdrop from "../../components/AppBackdrop";
 import ConfirmPopup from "../../components/ConfirmPopup";
+import AdminSettingsDrawer from "../../components/AdminSettingsDrawer";
 import {
   consumeIntentionalSignOut,
   isAdminUser,
@@ -32,6 +33,7 @@ type Status = "checking" | "signed-out" | "not-admin" | "ok";
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<Status>("checking");
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -100,20 +102,35 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div dir="rtl" className="relative min-h-screen bg-gray-50">
       <AppBackdrop />
       <header className="relative border-b bg-white px-6 py-4">
-        <div className="mb-2 flex items-center justify-between">
-          <BackButton
-            fallbackHref={pathname === "/admin" ? "/" : "/admin"}
-            className="block text-sm text-brand-600 hover:underline"
-          />
-          <button
-            type="button"
-            onClick={() => setConfirmingSignOut(true)}
-            className="text-sm text-red-600 hover:underline"
-          >
-            تسجيل خروج
-          </button>
+        {/* Pinned at the physical corner, same pattern as /clinic's own
+         *  settings-drawer gear icon — opens AdminSettingsDrawer, which
+         *  now holds every sub-section this header used to link to
+         *  nowhere at all (they lived directly on the /admin page). */}
+        <button
+          type="button"
+          onClick={() => setDrawerOpen(true)}
+          aria-label="إعدادات لوحة التحكم"
+          className="absolute left-3 top-3 flex h-9 w-9 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
+        >
+          <GearIcon />
+        </button>
+
+        <div className="pl-11">
+          <div className="mb-2 flex items-center justify-between">
+            <BackButton
+              fallbackHref={pathname === "/admin" ? "/" : "/admin"}
+              className="block text-sm text-brand-600 hover:underline"
+            />
+            <button
+              type="button"
+              onClick={() => setConfirmingSignOut(true)}
+              className="text-sm text-red-600 hover:underline"
+            >
+              تسجيل خروج
+            </button>
+          </div>
+          <h1 className="text-lg font-bold text-brand-700">لوحة تحكم المدير — موعد</h1>
         </div>
-        <h1 className="text-lg font-bold text-brand-700">لوحة تحكم المدير — موعد</h1>
       </header>
 
       <ConfirmPopup
@@ -124,6 +141,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         onCancel={() => setConfirmingSignOut(false)}
       />
       <main className="relative p-6">{children}</main>
+
+      <AdminSettingsDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </div>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
   );
 }
