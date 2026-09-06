@@ -3679,6 +3679,70 @@ label for the two types that do keep it.
   key was deleted immediately after — both the copy used for the deploy
   and the original upload.
 
+## Conditional labeling for the settings-drawer's link tool
+
+The user's next request, addressed to "a UI/UX developer and software
+engineering expert": in `ClinicAccountDrawer`'s settings menu, the link
+tool's own title must be exclusively "رابط المركز" for both مركز تجميل
+(beauty) and مركز تجاري آخر (the renamed salon type), while staying
+appropriate for the remaining type (clinic, unchanged "رابط العيادة").
+
+- **`lib/firebase/terminology.ts`**: added a new `centerLinkLabel: string`
+  field to the `Terminology` interface — this label needed its own fixed
+  string per type rather than being derived from `centerNoun` (the field
+  the menu row previously read via `` `رابط ${terms.centerNoun}` ``),
+  since `centerNoun`'s own longer inline phrasing ("الصالون أو المركز")
+  reads fine in a sentence but was never meant to double as a short
+  menu-row label — and deriving "رابط المركز" from it would have
+  required either a second derivation rule or awkwardly truncating that
+  phrase. `CLINIC_TERMS` sets it to `"رابط العيادة"` (unchanged
+  behavior); `SALON_SHARED_TERMS` (spread into both `BEAUTY_TERMS` and
+  `SALON_TERMS`) sets it to `"رابط المركز"` — since beauty and the
+  renamed salon type already share every term except `practitionerNoun`
+  via that one shared object, this is the one place this new field had
+  to be set, not two.
+- **`components/ClinicAccountDrawer.tsx`**: `buildTools()`'s `link` tool
+  now reads `label: terms.centerLinkLabel` instead of the old template-
+  literal derivation. Since the drawer's own header title, once a panel
+  is open, is driven by that same tool's `label` field
+  (`toolLabel = TOOLS.find((t) => t.id === activeTool)?.label`), this one
+  change fixes both the menu row text and the drawer's header title when
+  the link panel is open — the same single-field-drives-both mechanism
+  already relied on and documented for the "مسح السجل الطبي" tool's own
+  unified label in the immediately preceding entity-rename task.
+  Deliberately left untouched: `ClinicLinkTab`'s own deeper body text
+  (still reads `terms.centerPossessive`/`terms.visitorPossessivePlural`,
+  e.g. "رابط الحجز العام لصالونك أو مركزك") — the user's request was
+  specifically about "عنوان خيار الرابط" (the link option's own title),
+  not the panel's internal copy, matching the same narrow-scoping
+  precedent from the scan-tool label unification.
+- **Verified visually, not just by a clean build**: a throwaway route
+  (`app/uitest-scratch-link/`, mounting `ClinicAccountDrawer` with three
+  mock `ClinicDoc`s — one per entity type, no Firebase needed) was
+  screenshotted with Playwright at a real phone viewport (420×900),
+  opening the link tool for each type and reading back the drawer's own
+  header text directly rather than assuming from the source edit:
+  clinic → "رابط العيادة", beauty → "رابط المركز", salon (مركز تجاري
+  آخر) → "رابط المركز" — all three correct, zero console errors. The
+  scratch route and screenshots were deleted afterward, confirmed via
+  `git status` showing only the two real production files
+  (`terminology.ts`, `ClinicAccountDrawer.tsx`) changed. `tsc --noEmit`
+  (via `next build`) and the static export build are both clean —
+  `/clinic`'s bundle size is unchanged (57.0 kB) from before this pass,
+  confirming no bloat from this small edit. A signed-out smoke pass
+  (`/`, `/find`, `/find/wait`, `/find/requests`, `/find/passport`,
+  `/clinic`, `/admin`) against the static export confirmed zero console
+  errors (the one `favicon.ico` 404 seen is a bare-static-server browser
+  artifact unrelated to the app, not a new regression).
+- **Not independently live-verified**: no `firestore.rules` changes were
+  needed for this pass (client-side label/UI logic only), so no live
+  Firestore/Auth session was exercised specifically for this change —
+  the mock-data drawer verification above stands in for that, same
+  disclosed-gap shape as several earlier UI-only passes in this file.
+- **Deployed**: only the rebuilt `apps/web/out/` was pushed via
+  `firebase deploy --only hosting` — no `firestore.rules` changes needed.
+  <!-- RELEASE_ID_PLACEHOLDER -->
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

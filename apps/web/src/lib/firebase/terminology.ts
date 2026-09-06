@@ -57,6 +57,14 @@ export interface Terminology {
   addEntryTitle: string;
   /** Placeholder text for that form's textarea. */
   addEntryPlaceholder: string;
+  /** "رابط العيادة" — the settings-drawer menu row (and, once open, the
+   *  drawer's own header) for the shareable public booking link. Its own
+   *  fixed string per type rather than derived from centerNoun — a
+   *  beauty center and a "مركز تجاري آخر" both read the exact same
+   *  "رابط المركز" here, even though they'd otherwise share centerNoun's
+   *  own longer "الصالون أو المركز" phrasing, which reads fine inline
+   *  but was never meant to double as a short menu-row label. */
+  centerLinkLabel: string;
 }
 
 const CLINIC_TERMS: Terminology = {
@@ -72,6 +80,7 @@ const CLINIC_TERMS: Terminology = {
   noteNoun: "ملاحظة أو تقرير",
   addEntryTitle: "إضافة وصفة أو تقرير جديد",
   addEntryPlaceholder: "اكتب تفاصيل الوصفة أو الملاحظة…",
+  centerLinkLabel: "رابط العيادة",
 };
 
 /** Every term "beauty" and "salon" share — everything except
@@ -88,6 +97,7 @@ const SALON_SHARED_TERMS: Omit<Terminology, "practitionerNoun"> = {
   noteNoun: "ملاحظات الخدمة",
   addEntryTitle: "إضافة جلسة أو ملاحظة خدمة جديدة",
   addEntryPlaceholder: "اكتب تفاصيل الجلسة أو الخدمة…",
+  centerLinkLabel: "رابط المركز",
 };
 
 const BEAUTY_TERMS: Terminology = { ...SALON_SHARED_TERMS, practitionerNoun: "أخصائي التجميل" };

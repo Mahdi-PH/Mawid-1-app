@@ -18,6 +18,14 @@
 // tool's naming across عيادة and مركز تجميل rather than let it vary
 // (it used to read "مسح سجل المريض"/"مسح سجل الزبون").
 //
+// The "link" tool's own label reads terms.centerLinkLabel (terminology.ts)
+// rather than being derived here from centerNoun — a clinic reads "رابط
+// العيادة", while both مركز تجميل and مركز تجاري آخر read the exact same
+// "رابط المركز" (they'd otherwise share centerNoun's own longer "الصالون
+// أو المركز" phrasing, which fits an inline sentence but not a short menu
+// row). Fixing that one field also fixes the drawer's own header title
+// when this panel is open, since toolLabel below reads the same `label`.
+//
 // Deliberately conditional-mount, not conditional-CSS-visibility: when
 // `open` is false this renders null entirely (same convention as
 // ConfirmPopup), which matters most for the "مسح السجل الطبي" tool —
@@ -46,7 +54,7 @@ function buildTools(clinic: ClinicDoc, terms: ReturnType<typeof getTerminology>)
   tools.push(
     { id: "schedule", label: "إعدادات أوقات الدوام", icon: "🕒" },
     { id: "subscription", label: "خطة الاشتراك", icon: "💳" },
-    { id: "link", label: `رابط ${terms.centerNoun}`, icon: "🔗" }
+    { id: "link", label: terms.centerLinkLabel, icon: "🔗" }
   );
   return tools;
 }
