@@ -3674,9 +3674,10 @@ label for the two types that do keep it.
 - **Deployed**: no `firestore.rules` changes needed — every change here
   is client-side wording/UI-conditional logic, no new security boundary.
   Only the rebuilt `apps/web/out/` was pushed via `firebase deploy --only
-  hosting`, verified FINALIZED. The service-account key was deleted
-  immediately after — both the copy used for the deploy and the original
-  upload.
+  hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788724421526000`). The service-account
+  key was deleted immediately after — both the copy used for the deploy
+  and the original upload.
 
 ## Next steps if resumed
 
