@@ -3811,8 +3811,10 @@ category-list title.
   drawer verification above stands in for that, same disclosed-gap shape
   as several earlier UI-only passes in this file.
 - **Deployed**: only the rebuilt `apps/web/out/` was pushed via
-  `firebase deploy --only hosting` — no `firestore.rules` changes needed.
-  <!-- RELEASE_ID_PLACEHOLDER -->
+  `firebase deploy --only hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788726523707000`). No `firestore.rules`
+  changes needed. The service-account key was deleted immediately after —
+  both the copy used for the deploy and the original upload.
 
 ## Next steps if resumed
 
