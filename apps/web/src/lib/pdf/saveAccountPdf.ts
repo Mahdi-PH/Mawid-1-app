@@ -62,7 +62,7 @@ export async function saveSignupAccountPdf(fields: SignupPdfFields): Promise<voi
   container.style.fontFamily = "Tajawal, 'Segoe UI', sans-serif";
   container.innerHTML = `
     <div style="text-align:center;margin-bottom:28px;">
-      <div style="font-size:26px;font-weight:700;color:#0F7A6C;">مَوْعِد</div>
+      <div style="font-size:26px;font-weight:700;color:#00ADB5;">مَوْعِد</div>
       <div style="font-size:15px;color:#6b7280;margin-top:4px;">بيانات حساب العيادة / مركز التجميل</div>
     </div>
     <table style="width:100%;border-collapse:collapse;font-size:15px;">

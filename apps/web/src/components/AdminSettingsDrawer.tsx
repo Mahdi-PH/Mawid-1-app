@@ -156,10 +156,10 @@ export default function AdminSettingsDrawer({ open, onClose }: { open: boolean; 
       <div
         dir="rtl"
         className="absolute left-0 top-0 flex h-full w-full max-w-lg flex-col shadow-2xl"
-        style={{ background: "linear-gradient(180deg, #F5FBF9 0%, #FFFFFF 220px)" }}
+        style={{ background: "linear-gradient(180deg, #F2FBFC 0%, #FFFFFF 220px)" }}
       >
         <div className="flex items-center justify-between border-b border-black/5 px-5 py-4">
-          <h2 className="text-lg font-extrabold" style={{ color: "#0F7A6C" }}>
+          <h2 className="text-lg font-extrabold" style={{ color: "#00ADB5" }}>
             {activeTool ? toolLabel : "إعدادات لوحة التحكم"}
           </h2>
           <button
@@ -189,7 +189,7 @@ export default function AdminSettingsDrawer({ open, onClose }: { open: boolean; 
                   <span
                     aria-hidden
                     className="flex h-9 w-9 flex-none items-center justify-center rounded-full text-base"
-                    style={{ backgroundColor: "#EAF6F3", color: "#0F7A6C" }}
+                    style={{ backgroundColor: "#EAF6F3", color: "#00ADB5" }}
                   >
                     {t.icon}
                   </span>
@@ -205,7 +205,7 @@ export default function AdminSettingsDrawer({ open, onClose }: { open: boolean; 
                 type="button"
                 onClick={() => setActiveTool(null)}
                 className="mb-4 text-sm font-bold hover:underline"
-                style={{ color: "#0F7A6C" }}
+                style={{ color: "#00ADB5" }}
               >
                 ‹ رجوع
               </button>

@@ -46,13 +46,13 @@ function SubscribeContent() {
     <main
       dir="rtl"
       className="relative mx-auto max-w-md p-6"
-      style={{ background: "#F5FBF9", minHeight: "100vh" }}
+      style={{ background: "#F2FBFC", minHeight: "100vh" }}
     >
       <AppBackdrop />
       <div className="relative">
       <BackButton fallbackHref="/" />
 
-      <h1 className="mb-1 mt-3 text-xl font-bold" style={{ color: "#0F7A6C" }}>
+      <h1 className="mb-1 mt-3 text-xl font-bold" style={{ color: "#00ADB5" }}>
         اشتراك مركزك
       </h1>
       <p className="mb-6 text-sm text-gray-500">خطة واحدة، بسيطة وواضحة.</p>
@@ -67,8 +67,8 @@ function SubscribeContent() {
         </div>
       )}
 
-      <div className="mb-4 rounded-2xl border-2 bg-white p-6" style={{ borderColor: "#0F7A6C" }}>
-        <div className="mb-2 text-sm font-bold" style={{ color: "#0F7A6C" }}>
+      <div className="mb-4 rounded-2xl border-2 bg-white p-6" style={{ borderColor: "#00ADB5" }}>
+        <div className="mb-2 text-sm font-bold" style={{ color: "#00ADB5" }}>
           أول شهر مجاناً
         </div>
         <p className="text-sm leading-7 text-gray-600">

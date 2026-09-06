@@ -111,7 +111,7 @@ function Passport({ profile }: { profile: PatientProfile }) {
           />
         </div>
 
-        <h1 className="mb-1 text-xl font-bold" style={{ color: "#0F7A6C" }}>
+        <h1 className="mb-1 text-xl font-bold" style={{ color: "#00ADB5" }}>
           السجل الطبي
         </h1>
         <p className="mb-6 text-sm text-gray-500">
@@ -214,7 +214,7 @@ function QrPanel({ patientId }: { patientId: string }) {
   }
 
   return (
-    <div className="mb-6 rounded-2xl border-2 bg-white p-6 text-center" style={{ borderColor: "#0F7A6C" }}>
+    <div className="mb-6 rounded-2xl border-2 bg-white p-6 text-center" style={{ borderColor: "#00ADB5" }}>
       {state === "idle" && (
         <button
           onClick={handleShowQr}
@@ -239,7 +239,7 @@ function QrPanel({ patientId }: { patientId: string }) {
 
       {state === "claimed" && req && (
         <div>
-          <p className="mb-1 font-bold" style={{ color: "#0F7A6C" }}>
+          <p className="mb-1 font-bold" style={{ color: "#00ADB5" }}>
             طلب وصول
           </p>
           <p className="mb-4 text-sm text-gray-600">

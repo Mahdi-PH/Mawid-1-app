@@ -5,11 +5,11 @@ module.exports = {
     extend: {
       colors: {
         brand: {
-          50: "#eef7f6",
-          100: "#d3ece9",
-          500: "#1f8a80",
-          600: "#187169",
-          700: "#125853",
+          50: "#eafafb",
+          100: "#ccf3f5",
+          500: "#17b8be",
+          600: "#00adb5",
+          700: "#007a80",
         },
       },
       // Native CSS animations only (no animation library) — see

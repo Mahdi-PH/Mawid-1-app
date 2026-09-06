@@ -232,7 +232,7 @@ function BookClinic() {
       <div className={"relative transition-opacity duration-300 " + (leaving ? "opacity-0" : "opacity-100")}>
       <BackButton fallbackHref="/find" label="رجوع للبحث" alwaysUseFallback />
 
-      <h1 className="mt-3 text-xl font-bold" style={{ color: "#0F7A6C" }}>
+      <h1 className="mt-3 text-xl font-bold" style={{ color: "#00ADB5" }}>
         {clinic.clinicName}
       </h1>
       <p className="mb-6 text-sm text-gray-500">
@@ -395,7 +395,7 @@ function ClinicMenu({
             ? "border-brand-500 text-brand-700 hover:bg-brand-50"
             : "cursor-not-allowed border-gray-200 text-gray-300")
         }
-        style={hasActiveBookingHere ? { borderColor: "#0F7A6C", color: "#0F7A6C" } : undefined}
+        style={hasActiveBookingHere ? { borderColor: "#00ADB5", color: "#00ADB5" } : undefined}
       >
         شاشة الانتظار
         <div className={"text-sm font-normal " + (hasActiveBookingHere ? "text-brand-600/80" : "text-gray-300")}>

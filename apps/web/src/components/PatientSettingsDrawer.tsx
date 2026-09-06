@@ -44,10 +44,10 @@ export default function PatientSettingsDrawer({ profile }: { profile: PatientPro
           <div
             dir="rtl"
             className="absolute left-0 top-0 flex h-full w-full max-w-sm flex-col shadow-2xl"
-            style={{ background: "linear-gradient(180deg, #F5FBF9 0%, #FFFFFF 220px)" }}
+            style={{ background: "linear-gradient(180deg, #F2FBFC 0%, #FFFFFF 220px)" }}
           >
             <div className="flex items-center justify-between border-b border-black/5 px-5 py-4">
-              <h2 className="text-lg font-extrabold" style={{ color: "#0F7A6C" }}>
+              <h2 className="text-lg font-extrabold" style={{ color: "#00ADB5" }}>
                 إعدادات الحساب
               </h2>
               <button
@@ -75,7 +75,7 @@ export default function PatientSettingsDrawer({ profile }: { profile: PatientPro
                     <span
                       aria-hidden
                       className="flex h-9 w-9 flex-none items-center justify-center rounded-full text-base"
-                      style={{ backgroundColor: "#EAF6F3", color: "#0F7A6C" }}
+                      style={{ backgroundColor: "#EAF6F3", color: "#00ADB5" }}
                     >
                       📋
                     </span>
@@ -91,7 +91,7 @@ export default function PatientSettingsDrawer({ profile }: { profile: PatientPro
                     <span
                       aria-hidden
                       className="flex h-9 w-9 flex-none items-center justify-center rounded-full text-base"
-                      style={{ backgroundColor: "#EAF6F3", color: "#0F7A6C" }}
+                      style={{ backgroundColor: "#EAF6F3", color: "#00ADB5" }}
                     >
                       🩺
                     </span>

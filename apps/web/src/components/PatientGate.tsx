@@ -48,7 +48,7 @@ export default function PatientGate({
       <AppBackdrop />
       <div className="relative">
         <BackButton fallbackHref={backHref} alwaysUseFallback className="mb-3 block text-sm text-brand-600 hover:underline" />
-        <h1 className="mb-6 text-xl font-bold" style={{ color: "#0F7A6C" }}>
+        <h1 className="mb-6 text-xl font-bold" style={{ color: "#00ADB5" }}>
           {mode === "signup" ? "إنشاء حساب" : "تسجيل الدخول"}
         </h1>
 

@@ -7,6 +7,6 @@
     @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@700&display=swap');
   ]]></style>
   <foreignObject x="0" y="0" width="590" height="300">
-    <xhtml:div style="direction:rtl; display:flex; align-items:center; justify-content:flex-end; width:100%; height:100%; padding:0 20px; box-sizing:border-box; font-family:'Amiri','Traditional Arabic',serif; font-weight:700; font-size:220px; line-height:1; color:#0f7a6c; white-space:nowrap;">مَوْعِد</xhtml:div>
+    <xhtml:div style="direction:rtl; display:flex; align-items:center; justify-content:flex-end; width:100%; height:100%; padding:0 20px; box-sizing:border-box; font-family:'Amiri','Traditional Arabic',serif; font-weight:700; font-size:220px; line-height:1; color:#00adb5; white-space:nowrap;">مَوْعِد</xhtml:div>
   </foreignObject>
 </svg>

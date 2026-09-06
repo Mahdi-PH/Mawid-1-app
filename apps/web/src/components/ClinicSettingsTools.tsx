@@ -119,8 +119,8 @@ export function SubscriptionTab({ clinic }: { clinic: ClinicDoc }) {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border-2 bg-white p-6" style={{ borderColor: "#0F7A6C" }}>
-        <div className="mb-2 text-sm font-bold" style={{ color: "#0F7A6C" }}>
+      <div className="rounded-2xl border-2 bg-white p-6" style={{ borderColor: "#00ADB5" }}>
+        <div className="mb-2 text-sm font-bold" style={{ color: "#00ADB5" }}>
           الخطة المجانية
         </div>
         <p className="text-sm leading-7 text-gray-600">

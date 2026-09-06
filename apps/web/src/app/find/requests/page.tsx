@@ -71,7 +71,7 @@ export default function MyRequestsPage() {
       <div className="pl-11">
         <BackButton fallbackHref="/find" label="رجوع للبحث" alwaysUseFallback />
       </div>
-      <h1 className="mb-6 mt-3 text-xl font-bold" style={{ color: "#0F7A6C" }}>
+      <h1 className="mb-6 mt-3 text-xl font-bold" style={{ color: "#00ADB5" }}>
         طلباتي
       </h1>
 

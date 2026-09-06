@@ -94,7 +94,7 @@ export default function ScanPatientTab({ clinic }: { clinic: ClinicDoc }) {
 
       {phase.step === "waiting" && (
         <div className="rounded-xl border bg-white p-6 text-center">
-          <p className="mb-2 font-bold" style={{ color: "#0F7A6C" }}>
+          <p className="mb-2 font-bold" style={{ color: "#00ADB5" }}>
             بانتظار موافقة {terms.visitorNoun}…
           </p>
           <p className="mb-4 text-sm text-gray-500">اطلب من {terms.visitorNoun} تأكيد منح الوصول من شاشته.</p>

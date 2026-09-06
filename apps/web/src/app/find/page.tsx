@@ -169,10 +169,10 @@ function FindClinicSearch({
         <Link
           href={`/find/wait?clinic=${encodeURIComponent(activeBooking.clinicSlug)}&appt=${encodeURIComponent(activeBooking.apptId)}`}
           className="mb-6 block rounded-xl border-2 p-4 transition hover:-translate-y-0.5"
-          style={{ borderColor: "#0F7A6C", background: "#EEF7F6" }}
+          style={{ borderColor: "#00ADB5", background: "#EEF7F6" }}
         >
           <div className="text-sm text-gray-500">موعدك الحالي</div>
-          <div className="font-bold" style={{ color: "#0F7A6C" }}>
+          <div className="font-bold" style={{ color: "#00ADB5" }}>
             {activeBooking.clinicName} — {activeBooking.startTime}
           </div>
           <div className="mt-1 text-xs text-brand-600">فتح شاشة الانتظار ‹</div>
@@ -180,7 +180,7 @@ function FindClinicSearch({
       )}
 
       <div className="mb-6">
-        <h1 className="text-xl font-bold" style={{ color: "#0F7A6C" }}>
+        <h1 className="text-xl font-bold" style={{ color: "#00ADB5" }}>
           ابحث عن مركزك
         </h1>
       </div>

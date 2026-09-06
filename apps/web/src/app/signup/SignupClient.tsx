@@ -184,8 +184,8 @@ export default function SignupClient() {
         <BackButton fallbackHref="/" className="mb-3 block text-sm text-brand-600 hover:underline" />
 
         {showPlanInfo && (
-          <div className="mb-4 rounded-xl border-2 bg-brand-50/40 p-4" style={{ borderColor: "#0F7A6C" }}>
-            <div className="mb-1 text-sm font-bold" style={{ color: "#0F7A6C" }}>
+          <div className="mb-4 rounded-xl border-2 bg-brand-50/40 p-4" style={{ borderColor: "#00ADB5" }}>
+            <div className="mb-1 text-sm font-bold" style={{ color: "#00ADB5" }}>
               أول شهر مجاناً
             </div>
             <p className="text-xs leading-6 text-gray-600">
@@ -249,7 +249,7 @@ export default function SignupClient() {
                     "rounded-lg border px-2 py-2 text-sm font-bold " +
                     (entityType === t ? "border-brand-600 bg-brand-50 text-brand-700" : "text-gray-600")
                   }
-                  style={entityType === t ? { borderColor: "#0F7A6C", color: "#0F7A6C" } : undefined}
+                  style={entityType === t ? { borderColor: "#00ADB5", color: "#00ADB5" } : undefined}
                 >
                   {ENTITY_TYPE_LABEL[t]}
                 </button>

@@ -64,7 +64,7 @@ export default function AdminDashboardPage() {
     <div className="space-y-4">
       <h2 className="text-lg font-bold text-gray-700">نظرة عامة</h2>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard icon="👥" label="إجمالي المستخدمين" value={stats.userCount} color="#0F7A6C" />
+        <StatCard icon="👥" label="إجمالي المستخدمين" value={stats.userCount} color="#00ADB5" />
         <StatCard icon="📅" label="إجمالي الحجوزات" value={stats.appointmentCount} color="#2563EB" />
         <StatCard icon="🏥" label="المراكز المفعَّلة" value={stats.activeCenterCount} color="#16A34A" />
         <StatCard icon="⏳" label="الحجوزات النشطة" value={stats.activeBookingCount} color="#D97706" />

@@ -101,7 +101,7 @@ export default function ClinicDashboardPage() {
       <div className="relative min-h-screen">
         <AppBackdrop />
         <div className="relative mx-auto max-w-sm p-8 text-center">
-          <h1 className="mb-2 text-lg font-bold" style={{ color: "#0F7A6C" }}>
+          <h1 className="mb-2 text-lg font-bold" style={{ color: "#00ADB5" }}>
             {clinic.clinicName}
           </h1>
           <p className="mb-6 text-gray-600">
@@ -131,7 +131,7 @@ export default function ClinicDashboardPage() {
       <div className="relative min-h-screen">
         <AppBackdrop />
         <div className="relative mx-auto max-w-sm p-8 text-center">
-          <h1 className="mb-2 text-lg font-bold" style={{ color: "#0F7A6C" }}>
+          <h1 className="mb-2 text-lg font-bold" style={{ color: "#00ADB5" }}>
             {clinic.clinicName}
           </h1>
           <p className="mb-6 text-red-600">انتهى اشتراكك الشهري وتم إغلاق الحساب مؤقتاً. تواصل مع الإدارة لتجديد الاشتراك.</p>
@@ -172,7 +172,7 @@ export default function ClinicDashboardPage() {
          *  link that used to sit next to it moved into the settings
          *  drawer's own "رابط العيادة" tool. */}
         <div className="mx-auto max-w-md text-center">
-          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl" style={{ color: "#0F7A6C" }}>
+          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl" style={{ color: "#00ADB5" }}>
             {clinic.clinicName}
           </h1>
         </div>
@@ -248,7 +248,7 @@ function NotificationOptIn() {
       type="button"
       onClick={async () => setPermission(await requestNotificationPermission())}
       className="mb-4 w-full rounded-lg border border-brand-300 px-4 py-2 text-sm text-brand-700 hover:bg-brand-50"
-      style={{ borderColor: "#0F7A6C", color: "#0F7A6C" }}
+      style={{ borderColor: "#00ADB5", color: "#00ADB5" }}
     >
       🔔 فعّل التنبيهات لإعلامك فور الموافقة
     </button>
@@ -346,9 +346,9 @@ function WaitingRoomTv({ clinic, appts }: { clinic: ClinicDoc; appts: Appointmen
 
   return (
     <div dir="rtl" className="mx-auto max-w-3xl text-center">
-      <div className="mb-8 rounded-2xl border-4 p-10" style={{ borderColor: "#0F7A6C" }}>
+      <div className="mb-8 rounded-2xl border-4 p-10" style={{ borderColor: "#00ADB5" }}>
         <div className="mb-2 text-sm text-gray-500">الحالي عند {terms.practitionerNoun}</div>
-        <div className="text-5xl font-bold" style={{ color: "#0F7A6C" }}>
+        <div className="text-5xl font-bold" style={{ color: "#00ADB5" }}>
           {current ? current.patientName : "—"}
         </div>
         {current && <div className="mt-2 text-gray-400">{current.startTime}</div>}

@@ -194,7 +194,7 @@ function Wait() {
           <BackButton fallbackHref="/find" label="رجوع للبحث" alwaysUseFallback />
         </div>
 
-        <h1 className="mt-3 text-xl font-bold" style={{ color: "#0F7A6C" }}>
+        <h1 className="mt-3 text-xl font-bold" style={{ color: "#00ADB5" }}>
           {clinic?.clinicName ?? appt.clinicSlug}
         </h1>
         <p className="mb-1 text-sm text-gray-500">
@@ -223,13 +223,13 @@ function Wait() {
           <div className="mx-auto mt-6 grid w-full grid-cols-2 gap-3">
             <div className="rounded-xl border bg-white p-4">
               <div className="text-xs text-gray-400">دورك رقم</div>
-              <div className="text-2xl font-extrabold" style={{ color: "#0F7A6C" }}>
+              <div className="text-2xl font-extrabold" style={{ color: "#00ADB5" }}>
                 {standing.position}
               </div>
             </div>
             <div className="rounded-xl border bg-white p-4">
               <div className="text-xs text-gray-400">أمامك</div>
-              <div className="text-2xl font-extrabold" style={{ color: "#0F7A6C" }}>
+              <div className="text-2xl font-extrabold" style={{ color: "#00ADB5" }}>
                 {standing.aheadCount}
               </div>
               <div className="text-xs text-gray-400">{terms.visitorNoun}</div>

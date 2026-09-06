@@ -3816,6 +3816,148 @@ category-list title.
   changes needed. The service-account key was deleted immediately after —
   both the copy used for the deploy and the original upload.
 
+## App-wide rebrand: new logo mark + harmonized cyan-teal palette
+
+The user's next request, addressed to "a UI/UX developer and mobile visual-
+identity engineer": integrate a brand-new logo (uploaded as a reference
+image — a white icon mark on a solid teal-cyan background), harmonize the
+entire color palette to match it, and replace every old-logo asset in the
+app — the largest single visual-identity change in this project since the
+"الملامح" profile-silhouette mark (see that section above).
+
+- **The uploaded reference was a flat PNG, not a vector file** — same
+  disclosed constraint as the earlier logo-concepts work, but this time
+  solved differently: rather than hand-drawing an approximation, the icon's
+  silhouette was traced directly from the reference's own pixels.
+  `scikit-image`'s `measure.find_contours` (installed via pip, `pypi.org`
+  being allow-listed through this sandbox's proxy) extracted the exact
+  boundary of the icon's white regions against its teal background at the
+  0.5 threshold, `shapely`'s `Polygon.simplify()` reduced the resulting
+  1000+ point contours down to 30–50 points per shape (tolerance 2.5px)
+  while preserving the silhouette, and a Catmull-Rom-to-cubic-Bézier
+  conversion turned those points into a smooth, closed SVG path — the
+  same "trace a reference image into a production vector path" technique
+  used once before in this project (see the profile-silhouette mark's own
+  artifact-based path-fitting), just automated against real pixel data
+  instead of manual curve-fitting. The mark itself: a crescent-topped
+  circular "head" shape (with an inner crescent cutout, drawn as a
+  compound path with `fill-rule="evenodd"`) above a separate S-curve/
+  infinity-shaped "body" — a stylized meditating figure, matching the
+  brand's own calm/wellness register. **Verified pixel-accurate before
+  ever touching a real file**: the traced path was rendered standalone and
+  diffed against the original reference image — mean absolute pixel
+  difference of 0.36 out of 255, and a stacked side-by-side screenshot
+  confirmed the two are visually indistinguishable — before any production
+  asset was edited.
+- **Colors sampled directly from the reference, not eyeballed**: the
+  background sampled as `rgb(0,173,181)` = `#00ADB5` (a distinctly more
+  cyan-leaning teal than the old `#0F7A6C`), the icon fill as
+  `rgb(238,238,238)` ≈ neutral off-white. A full new palette was derived
+  from this one primary, keeping the existing 4-token structure (primary/
+  light/dark/near-white) so the propagation stays purely mechanical:
+  - `#0F7A6C` (old primary/"teal") → **`#00ADB5`** (from the logo, exact)
+  - `#17A892` (old "light") → **`#2DD6DC`**
+  - `#0A5A4F` (old "dark") → **`#007A80`**
+  - `#F5FBF9` (old near-white) → **`#F2FBFC`** (nudged slightly toward the
+    new cyan hue, imperceptibly different from before)
+  - `tailwind.config.js`'s separate `brand.{50,100,500,600,700}` Tailwind-
+    shade scale (a second, parallel color system already used via
+    utility classes like `text-brand-700` — not literally identical to
+    the four raw hex values above even before this change) was
+    regenerated from the same new primary using standard tint/shade
+    blending (toward white for 50/100, toward black for 500/600/700),
+    producing a coherent new ramp rather than reusing the raw-hex values
+    verbatim. Rendered swatches (old vs. new, side by side) were visually
+    checked before committing to these exact values — avoided a
+    mathematically "correct" but garish neon result from blindly
+    preserving the old scale's saturation ratios at the new hue.
+- **Propagation was a targeted, code-wide literal-hex sweep, not a
+  file-by-file rewrite**: this project has always used these four hex
+  strings directly (no CSS custom properties), so a `grep` for all case
+  variants of the four old hexes across every real source file (`.tsx`,
+  `.ts`, `.svg`, `.xml`, `.md`, `.webmanifest` — excluding `.next`/`out`
+  build output, which regenerates on the next build) found the complete,
+  exact set of 25 files touching brand color, and a small Python script
+  replaced all four tokens case-preservingly (uppercase source → uppercase
+  replacement, lowercase → lowercase) across all of them in one pass —
+  the "التدقيق الشامل" (comprehensive audit) the request asked for, done
+  as a verifiable mechanical sweep rather than a claim taken on faith: a
+  second `grep` immediately after confirmed zero remaining occurrences of
+  any old hex outside `CLAUDE.md` itself (deliberately left alone, since
+  this file is a historical journal, not something to rewrite
+  retroactively — matching this project's standing convention).
+  `apps/web/public/manifest.webmanifest`'s `theme_color` (a `.webmanifest`
+  extension the first file-type-filtered grep pass missed) was caught and
+  fixed by the follow-up whole-repo, no-extension-filter sweep.
+- **Every real place the old mark's path appeared was swapped for the new
+  traced path**, mirroring the exact file list from the original logo-
+  replacement section above, one to one: `apps/web/public/brand/icon.svg`
+  and `icon-tile.svg` (both re-drawn with the new compound path, same
+  radial-gradient background treatment as before, now using the new
+  primary/light/dark stops); `lockup-teal.svg` (same new path nested
+  inside its existing tile-position transform, text color updated too);
+  `app/page.tsx`'s one inline SVG (the home screen's shared hero/header
+  logo, using the same FLIP transform machinery, untouched by this
+  change — only the `<path>` data and fill color inside it changed). All
+  PNG exports were regenerated from these updated SVGs via the same
+  Playwright-screenshot-render technique already established in this
+  project (a raw `.svg` file navigated to directly in a sized viewport;
+  Chromium auto-scales the SVG to fill that viewport, so viewport size ==
+  output pixel size) — `icon-16/32/152/180/192/512/1024.png` at 1×,
+  `lockup-teal.png` and both `wordmark-*.png` at their original 2×
+  supersampled resolution (`omitBackground: true` for the two wordmark
+  PNGs specifically, to preserve their transparent background — confirmed
+  by re-checking each regenerated PNG's exact pixel dimensions and color
+  mode against `git show HEAD:<path>` of the previous version before
+  considering this done, not assumed). `apps/web/src/app/icon.png` (512×
+  512) and `apple-icon.png` (180×180) — Next.js App Router's favicon/
+  apple-touch-icon convention files — were copied straight from the
+  freshly-rendered `icon-512.png`/`icon-180.png`. Android launcher icons
+  (`mipmap-{m,h,xh,xxh,xxxh}dpi/ic_launcher{,_round}.png`, 10 files) were
+  regenerated with Pillow `LANCZOS` resize from the new `icon-1024.png`,
+  same method as their original generation. No Android rebuild was run
+  in this sandbox (still can't reach `dl.google.com`, see the Android
+  section above) — the next push touching `android/**` triggers
+  `android-build.yml` on GitHub's own runners, which will bake these new
+  launcher icons into a fresh APK automatically.
+- **`wordmark-teal.svg`/`wordmark-white.svg` are text-only (no icon
+  mark)** — unlike the original logo-replacement pass (which left these
+  two completely untouched since only the *shape* changed that time),
+  this pass's global hex sweep *did* update their embedded text color
+  (`#0F7A6C` → `#00ADB5`), so their PNGs needed regenerating too, purely
+  for the color change — confirmed both regenerated PNGs kept their
+  original 1180×600 RGBA (transparent) dimensions/mode via the same
+  `git show HEAD:<path>` comparison used for the other assets.
+- **Verified**: `npm run build --workspace=apps/web` (typecheck + static
+  export) clean — home page's First Load JS grew 3.28 kB → 5.52 kB
+  (expected: the traced path is a precise ~5,200-character curve versus
+  the old hand-drawn path's ~250 characters; every other route's bundle
+  size is unchanged). A local Playwright pass against the exported `out/`
+  served statically (a real static file server, not `next dev`) screen-
+  shotted the home screen's intro pose, the settled home screen, `/signup`,
+  `/subscribe`, `/find`, `/clinic` (signed-out), and `/admin` (signed-out)
+  — the new logo mark and the new cyan-teal accent color render correctly
+  and consistently across every one of them, zero console errors on any
+  route. **A real mistake caught and fixed before it could mislead this
+  verification**: the first attempt at serving the exported `out/`
+  directory accidentally started the static server against `apps/web`
+  itself (a relative `.` path resolved differently than expected across
+  two separate tool calls) rather than `apps/web/out` — caught immediately
+  by noticing the screenshots showed a raw directory listing instead of
+  the app, confirmed via `curl` + `lsof` before trusting any further
+  screenshot, and fixed by restarting the server with an explicit absolute
+  path to `out/` — disclosed here rather than silently re-running and
+  presenting the corrected screenshots as if the first pass had been
+  clean.
+- **Not independently live-verified**: this entire pass is client-side
+  asset/color/markup only — no `firestore.rules` changes, no live
+  Firestore/Auth session was exercised specifically for this change,
+  matching the disclosed-gap shape of every other purely-visual pass in
+  this file.
+- **Deployed**: only the rebuilt `apps/web/out/` was pushed via
+  `firebase deploy --only hosting` — no `firestore.rules` changes needed.
+  <!-- RELEASE_ID_PLACEHOLDER -->
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —
