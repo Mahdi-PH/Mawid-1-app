@@ -4095,12 +4095,14 @@ real, independent problems were found, both fixed:
   with no white padding, on whatever launcher shape that device uses.
 - **Deployed**: the corrected web-facing icon PNGs (`icon.png`,
   `apple-icon.png`, and everything under `apps/web/public/brand/`) were
-  pushed via `firebase deploy --only hosting` — no `firestore.rules`
+  pushed via `firebase deploy --only hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788732686525000`). No `firestore.rules`
   changes needed. The Android-only files (`mipmap-anydpi-v26/*`,
   `ic_launcher_foreground.png` at all densities, `colors.xml`) have no
   live-hosting equivalent to deploy; they take effect on the next
-  GitHub Actions APK build.
-  <!-- RELEASE_ID_PLACEHOLDER -->
+  GitHub Actions APK build. The service-account key was deleted
+  immediately after — both the copy used for the deploy and the
+  original upload.
 
 ## Next steps if resumed
 
