@@ -75,7 +75,7 @@ const ROLE_CARDS = [
     // signed in) instead of being sent back through the signup/login form
     // it already passed.
     href: "/signup",
-    title: "إدارة المراكز (عيادات، مراكز تجميل وصالونات)",
+    title: "إدارة المراكز (عيادات، مراكز تجميل ومراكز أخرى)",
   },
   {
     id: "find",

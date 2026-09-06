@@ -195,7 +195,7 @@ export default function SignupClient() {
           </div>
         )}
 
-        <h1 className="mb-1 text-lg font-bold text-brand-700">إدارة المراكز (عيادات، مراكز تجميل وصالونات)</h1>
+        <h1 className="mb-1 text-lg font-bold text-brand-700">إدارة المراكز (عيادات، مراكز تجميل ومراكز أخرى)</h1>
         <p className="mb-4 text-sm text-gray-500">أنشئ حساباً جديداً، أو سجّل دخولك إذا كان حسابك موجوداً.</p>
 
         {!isAdminEmail && (

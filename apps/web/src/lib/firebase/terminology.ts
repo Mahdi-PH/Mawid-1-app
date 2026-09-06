@@ -29,10 +29,17 @@ export const ENTITY_TYPE_LABEL: Record<EntityType, string> = {
 export interface Terminology {
   /** "العيادة" — used e.g. in headings that name the place itself. */
   centerNoun: string;
-  /** "لعيادتك" — the same noun, already inflected for "your ___" in the
-   *  specific phrases that use it (Arabic possessive suffixes don't
-   *  compose cleanly from a bare noun, so this is its own string rather
-   *  than centerNoun + "ك"). */
+  /** "لعيادتك" (clinic) / "لمركزك" (beauty, other commercial center) — the
+   *  same noun, already inflected for "your ___" in the specific phrases
+   *  that use it (Arabic possessive suffixes don't compose cleanly from a
+   *  bare noun, so this is its own string rather than centerNoun + "ك").
+   *  Beauty/other-commercial-center's own value is deliberately NOT
+   *  derived from centerNoun ("الصالون أو المركز") — that longer phrase
+   *  was leaking the literal word "صالون" ("salon") into
+   *  ClinicAccountDrawer's own "رابط المركز" panel body text even for a
+   *  center whose whole point (see the entity-rename section of
+   *  CLAUDE.md) is that it's no longer barber-specific, so this reads a
+   *  plain "مركزك" instead — never "صالونك" for either remaining type. */
   centerPossessive: string;
   /** "المريض" — the reception table's own column header. */
   personNoun: string;
@@ -87,7 +94,7 @@ const CLINIC_TERMS: Terminology = {
  *  practitionerNoun, which each type sets on its own below. */
 const SALON_SHARED_TERMS: Omit<Terminology, "practitionerNoun"> = {
   centerNoun: "الصالون أو المركز",
-  centerPossessive: "لصالونك أو مركزك",
+  centerPossessive: "لمركزك",
   personNoun: "الزبون",
   visitorNoun: "زبون",
   visitorNounPlural: "زبائن",

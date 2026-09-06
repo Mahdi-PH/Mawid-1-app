@@ -3745,6 +3745,75 @@ appropriate for the remaining type (clinic, unchanged "رابط العيادة")
   changes needed. The service-account key was deleted immediately after —
   both the copy used for the deploy and the original upload.
 
+## Removed leftover "صالونك"/"صالونات" wording from the link-tool body and the home-screen category list
+
+Two related requests sent together, both about leftover "صالون" (salon)
+wording that survived the earlier "صالون حلاقة" → "مركز تجاري آخر" rename
+(see that section above) in two places the rename itself didn't reach:
+the settings-drawer link tool's own body text, and the home screen's
+category-list title.
+
+- **`ClinicAccountDrawer.tsx`'s `ClinicLinkTab` body text**
+  (`terms.centerPossessive`) previously read "لصالونك أو مركزك" for
+  both beauty and the renamed "مركز تجاري آخر" type — leftover from
+  before that rename, since `centerPossessive` was never touched when
+  `ENTITY_TYPE_LABEL`/`practitionerNoun` were split earlier. Fixed at the
+  one source: `terminology.ts`'s `SALON_SHARED_TERMS.centerPossessive`
+  → `"لمركزك"` (from `"لصالونك أو مركزك"`) — shared by both `BEAUTY_TERMS`
+  and `SALON_TERMS`, so this is the one place the fix had to land, not
+  two. Since `ClinicLinkTab` reads this same field for both its heading
+  ("رابط الحجز العام {centerPossessive}") and its share-copy line, the
+  fix reaches both lines at once: beauty/other-commercial-center now
+  read "رابط الحجز العام لمركزك" / "شارك هذا الرابط مع زبائنك — يفتح
+  مباشرة صفحة حجز موعد لمركزك" — no "صالون" anywhere. Clinic's own
+  `centerPossessive` ("لعيادتك") was untouched, so its wording ("رابط
+  الحجز العام لعيادتك" / "...لعيادتك") is unchanged.
+- **Home screen's center-management role-card title** (`ROLE_CARDS` in
+  `app/page.tsx`, mirrored verbatim in `SignupClient.tsx`'s own `<h1>`
+  per this project's existing pattern of the signup form restating the
+  card's title): "إدارة المراكز (عيادات، مراكز تجميل وصالونات)" →
+  "إدارة المراكز (عيادات، مراكز تجميل ومراكز أخرى)" — the third category
+  in this descriptive parenthetical list (distinct from the actual
+  per-account `entityType` selector on `/signup`, which already reads
+  "مركز تجاري آخر" from the earlier rename) still said "وصالونات" since
+  this title string was never touched by that rename pass; picked the
+  plural "مراكز أخرى" ("other centers") over the singular "مركز آخر"
+  alternative offered, to stay grammatically parallel with the two
+  plural nouns already in the list ("عيادات، مراكز تجميل").
+- **Verified visually, not just by a clean build**: a throwaway route
+  (`app/uitest-scratch-link2/`, mounting `ClinicAccountDrawer` with
+  three mock `ClinicDoc`s — no Firebase needed) was screenshotted with
+  Playwright at a real phone viewport (420×900), opening the link tool
+  for each entity type and reading back both the heading and share-copy
+  text directly, plus a substring check confirming neither string
+  contains "صالون" anywhere: clinic → "رابط الحجز العام لعيادتك" /
+  "...لعيادتك" (unchanged); beauty and salon (مركز تجاري آخر) → "رابط
+  الحجز العام لمركزك" / "...لمركزك" (fixed) — all three correct, zero
+  console errors. The static export's prerendered `index.html` and
+  `signup.html` were also grepped directly for the new home/signup title
+  string, confirming it appears exactly as expected in the pre-rendered
+  markup, not just the client-rendered DOM. The scratch route and
+  screenshots were deleted afterward, confirmed via `git status` showing
+  only the three real production files
+  (`terminology.ts`, `app/page.tsx`, `SignupClient.tsx`) changed. `tsc
+  --noEmit` (via `next build`) and the static export build are both
+  clean — every route's bundle size is unchanged from before this pass
+  (`/clinic` still 57.0 kB, `/signup` 5.39 kB, home 3.28 kB), confirming
+  no bloat from this small wording fix. A signed-out smoke pass (`/`,
+  `/signup`, `/find`, `/find/wait`, `/find/requests`, `/find/passport`,
+  `/clinic`, `/admin`) against the static export confirmed zero
+  app-related console errors (the one `favicon.ico` 404 seen on every
+  route is the same bare-static-server browser artifact already
+  disclosed in the previous section, not a new regression).
+- **Not independently live-verified**: no `firestore.rules` changes were
+  needed for this pass (client-side wording only), so no live Firestore/
+  Auth session was exercised specifically for this change — the mock-data
+  drawer verification above stands in for that, same disclosed-gap shape
+  as several earlier UI-only passes in this file.
+- **Deployed**: only the rebuilt `apps/web/out/` was pushed via
+  `firebase deploy --only hosting` — no `firestore.rules` changes needed.
+  <!-- RELEASE_ID_PLACEHOLDER -->
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —
