@@ -3563,9 +3563,10 @@ screen, and make the whole `/find/*` back-button chain provably loop-free.
   smoke pass.
 - **Deployed**: no `firestore.rules` changes needed — this entire pass is
   client-side navigation/UI only. Only the rebuilt `apps/web/out/` was
-  pushed via `firebase deploy --only hosting`, verified FINALIZED. The
-  service-account key was deleted immediately after — both the copy used
-  for the deploy and the original upload.
+  pushed via `firebase deploy --only hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788720622340000`). The service-account
+  key was deleted immediately after — both the copy used for the deploy
+  and the original upload.
 
 ## Next steps if resumed
 
