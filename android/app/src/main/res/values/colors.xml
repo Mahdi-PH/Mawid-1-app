@@ -2,4 +2,10 @@
 <resources>
     <color name="colorPrimary">#00ADB5</color>
     <color name="colorPrimaryDark">#007A80</color>
+    <!-- Adaptive-icon background layer (mipmap-anydpi-v26/ic_launcher.xml) —
+         same primary teal as the icon's own radial-gradient midpoint, so a
+         launcher that shows the background solid (behind the foreground
+         mark) still reads as this app's real brand color, not a plain
+         system default. -->
+    <color name="ic_launcher_background">#00ADB5</color>
 </resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive icon (API 26+) — a modern launcher masks foreground+background
+     into its own shape (circle, squircle, rounded square, teardrop, etc.),
+     independent of whichever legacy square mipmap-{density}/ic_launcher.png
+     files still ship for pre-26 devices. Without this file, a launcher that
+     enforces adaptive-icon shapes falls back to inset-and-pad the legacy
+     square icon inside a plain background, which is exactly what produced
+     the "small icon surrounded by white space" bug this file fixes. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>

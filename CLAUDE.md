@@ -3960,6 +3960,148 @@ app — the largest single visual-identity change in this project since the
   changes needed. The service-account key was deleted immediately after —
   both the copy used for the deploy and the original upload.
 
+## Real bug: launcher icon showed small and white-padded — a rendering regression from the rebrand, plus a genuine missing adaptive-icon layer
+
+The user reported (with screenshots) the installed app's launcher icon
+appearing as a small square surrounded by white space inside the system's
+icon container, and framed the fix request around Android's adaptive-icon
+spec (foreground/background layers, 108dp canvas, 66dp safe zone). Two
+real, independent problems were found, both fixed:
+
+- **The actual root cause was a rendering regression this session
+  introduced in the immediately preceding rebrand pass, not (only) a
+  missing adaptive-icon declaration.** That pass's PNG-regeneration
+  technique (`page.goto('file://...svg')` then a viewport-sized
+  screenshot, relying on Chromium auto-scaling a standalone SVG document
+  to fill the viewport) only actually scales *down* correctly — for any
+  output size *larger* than the SVG's own intrinsic `width`/`height`
+  (512×512 for `icon.svg`, 740×300 for `lockup-teal.svg`, 590×300 for the
+  wordmark SVGs), Chromium rendered the SVG at its native size in the
+  corner of the larger viewport instead of stretching it, leaving the
+  rest of the canvas as plain white. **Caught by directly inspecting
+  pixel values in the actual generated files** (`icon-1024.png`'s center
+  pixel read pure white `(255,255,255)` instead of the expected teal —
+  every size ≤512 had accidentally been fine, since those never needed
+  upscaling, which is exactly why the previous task's own verification
+  screenshots — of the running app using the SVG directly, not these
+  raster exports — never caught it) — not assumed from dimensions
+  matching alone. Every Android launcher icon is a Pillow `LANCZOS`
+  resize *from* `icon-1024.png`, so this one broken master file is
+  exactly why the reported bug looks like "a small icon in a corner
+  surrounded by white" — that's a literal, pixel-accurate description of
+  what `icon-1024.png` actually contained.
+  - **Fixed the rendering technique itself**, not just the broken
+    outputs: instead of navigating directly to the `.svg` file and
+    trusting Chromium's standalone-image auto-fit, the SVG's own markup
+    is now embedded in a minimal HTML wrapper with `width`/`height` set
+    to the exact target pixel size via CSS on both `html,body` and the
+    `<svg>` element itself — guaranteed correct scaling regardless of
+    the SVG's own intrinsic size or how much larger the target is.
+    Regenerated the four broken assets (`icon-1024.png`, `lockup-
+    teal.png`, `wordmark-teal.png`, `wordmark-white.png`) plus every
+    other icon size for consistency (`icon-16/32/152/180/192/512.png`,
+    `apps/web/src/app/icon.png`, `apple-icon.png`) with this fixed
+    technique — verified this time by actually sampling center/corner
+    pixel values in every regenerated file (all now show the expected
+    teal radial-gradient values, consistent across every size), not by
+    re-trusting the same unverified assumption that caused the bug.
+- **The genuine, separate gap the user's own diagnosis correctly
+  identified**: this project's `android/` had only legacy square
+  `mipmap-{density}/ic_launcher.png` files, no adaptive-icon declaration
+  (`mipmap-anydpi-v26/ic_launcher.xml`) at all — confirmed by checking
+  the actual file tree before assuming. On API 26+ with no adaptive-icon
+  XML, a launcher that enforces its own icon shape (circle, squircle,
+  teardrop) has to inset-and-pad a legacy square icon itself, which can
+  independently produce a similar-looking "small icon, padded" symptom
+  even with a perfectly correct source PNG — worth fixing properly, not
+  just incidentally fixed by the PNG regeneration above.
+  - **`android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml`** and
+    `ic_launcher_round.xml` (new): standard `<adaptive-icon>` declarations
+    with `<background android:drawable="@color/ic_launcher_background"/>`
+    and `<foreground android:drawable="@mipmap/ic_launcher_foreground"/>`.
+    No `AndroidManifest.xml` change needed — it already references
+    `@mipmap/ic_launcher`/`@mipmap/ic_launcher_round` by name, and Android
+    automatically prefers the `anydpi-v26` XML on API 26+, falling back
+    to the density-specific legacy PNG on older devices.
+  - **`ic_launcher_background`** (new color resource, `colors.xml`) is
+    the exact same primary teal (`#00ADB5`) already used for
+    `colorPrimary` — a launcher that shows the background layer solid
+    (behind the foreground mark) still reads as this app's real brand
+    color.
+  - **`ic_launcher_foreground.png`** generated at all five standard
+    adaptive-icon canvas sizes (108/162/216/324/432px for
+    mdpi/hdpi/xhdpi/xxhdpi/xxxhdpi) — the logo mark alone, transparent
+    background, traced from the same path already in `icon.svg` (parsed
+    directly out of that file rather than re-run through the original
+    reference-image contour-tracing pipeline from the rebrand section
+    above, since the exact already-shipped, already-verified path was
+    right there). **Properly inset within the 66dp/108dp safe zone,
+    verified by measuring actual distance, not just bounding-box
+    dimensions**: the first attempt scaled by fitting the icon's
+    bounding-box width/height into the safe-zone diameter, which left
+    ~16% of the icon's own opaque pixels (the S-curve body's outer
+    hooks) outside the safe circle — a real corner-clipping risk on a
+    strictly circular mask, caught by actually measuring each opaque
+    pixel's distance from center against the safe-zone radius rather
+    than trusting the bounding-box math. Fixed by scaling against the
+    icon's true maximum center-to-pixel distance instead (with a small
+    3% safety margin for anti-aliased edges) — re-measured after the
+    fix: zero opaque pixels fall outside the safe-zone circle at any
+    density.
+  - **Legacy `mipmap-{density}/ic_launcher.png`/`ic_launcher_round.png`
+    files were kept and regenerated** (from the now-fixed
+    `icon-1024.png`) rather than removed — still needed for pre-API-26
+    devices and any launcher that doesn't look for the adaptive-icon XML
+    at all.
+- **Verified without a real Android emulator/device** (none available in
+  this sandbox, same standing limitation as the rest of the Android work
+  in this file): simulated the actual launcher compositing step in
+  Pillow — background color + foreground layer composited, then clipped
+  through a real circular mask and a rounded-square ("squircle") mask,
+  the two most common real launcher shapes (Pixel/AOSP vs. most OEM
+  launchers) — both renders show a fully teal-filled tile with the icon
+  mark centered and complete, no white gaps, no clipped edges,
+  screenshotted for visual confirmation. A numeric check (every opaque
+  foreground pixel's distance from canvas center vs. the safe-zone
+  radius) is the actual pass/fail signal this was verified against, not
+  just the screenshot looking right by eye.
+- **`npm run build --workspace=apps/web` (typecheck + static export)
+  clean**; the exported `out/`'s own `icon.png`/`apple-icon.png`/
+  `brand/icon-1024.png` were independently re-sampled after the build to
+  confirm the fix survived the export step, not just the source
+  `public/brand/` files. A local Playwright pass against the exported
+  `out/` (served from an explicit absolute path this time — see below)
+  confirmed zero console errors on the home screen with the fixed icons
+  in place.
+  - **A near-repeat of the previous task's own directory-serving mistake,
+    caught before it could mislead this verification**: the first
+    attempt to serve the exported `out/` directory for this pass's own
+    smoke test again resolved to the wrong directory across two separate
+    tool calls (the same class of relative-path pitfall disclosed in the
+    rebrand section above) — caught immediately this time by checking the
+    HTTP response content before trusting any screenshot, and fixed by
+    restarting the server with an explicit absolute path. Flagged here
+    since it's the second time this exact category of mistake happened
+    in two consecutive tasks — worth remembering to always pass an
+    absolute path to a static file server rather than relying on a prior
+    `cd` carrying across tool calls.
+- **No Android rebuild was run in this sandbox** (still can't reach
+  `dl.google.com`, same standing limitation as every other Android
+  section in this file) — the next push touching `android/**` triggers
+  `android-build.yml` on GitHub's own runners, which will bake both
+  fixes (the corrected legacy PNGs and the new adaptive-icon layer) into
+  a fresh APK automatically. Recommended once that APK is installed on a
+  real device: confirm the launcher icon now fills its tile edge-to-edge
+  with no white padding, on whatever launcher shape that device uses.
+- **Deployed**: the corrected web-facing icon PNGs (`icon.png`,
+  `apple-icon.png`, and everything under `apps/web/public/brand/`) were
+  pushed via `firebase deploy --only hosting` — no `firestore.rules`
+  changes needed. The Android-only files (`mipmap-anydpi-v26/*`,
+  `ic_launcher_foreground.png` at all densities, `colors.xml`) have no
+  live-hosting equivalent to deploy; they take effect on the next
+  GitHub Actions APK build.
+  <!-- RELEASE_ID_PLACEHOLDER -->
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

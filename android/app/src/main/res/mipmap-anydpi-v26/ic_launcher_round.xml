@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Same adaptive icon as ic_launcher.xml — content is identical for the
+     round variant; the launcher itself decides which shape to mask it
+     into, this file just needs to exist under the same resource name a
+     round-icon-preferring launcher looks up. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>
