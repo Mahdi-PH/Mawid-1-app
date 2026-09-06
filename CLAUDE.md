@@ -3955,8 +3955,10 @@ app — the largest single visual-identity change in this project since the
   matching the disclosed-gap shape of every other purely-visual pass in
   this file.
 - **Deployed**: only the rebuilt `apps/web/out/` was pushed via
-  `firebase deploy --only hosting` — no `firestore.rules` changes needed.
-  <!-- RELEASE_ID_PLACEHOLDER -->
+  `firebase deploy --only hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788731601790000`). No `firestore.rules`
+  changes needed. The service-account key was deleted immediately after —
+  both the copy used for the deploy and the original upload.
 
 ## Next steps if resumed
 
