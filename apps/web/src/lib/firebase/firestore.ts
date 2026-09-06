@@ -176,9 +176,15 @@ export async function registerClinic(input: RegisterClinicInput): Promise<{ slug
         // collect these two fields at all yet — a salon/beauty-center
         // getting "الطبيب المناوب" ("duty doctor") as its own default
         // practitioner name would be a visible mismatch, not just a
-        // cosmetic nit.
+        // cosmetic nit. specialty is three-way, not just clinic-vs-rest:
+        // "خدمات تجميل عامة" (general beauty services) fits a beauty
+        // center specifically, but no longer fits "مركز تجاري آخر" (the
+        // renamed, now-generic "salon" type — see terminology.ts), which
+        // gets its own plain "خدمات عامة" default instead.
         doctorName: input.doctorName || (input.entityType === "clinic" ? "الطبيب المناوب" : "المختص المناوب"),
-        specialty: input.specialty || (input.entityType === "clinic" ? "عيادة عامة" : "خدمات تجميل عامة"),
+        specialty:
+          input.specialty ||
+          (input.entityType === "clinic" ? "عيادة عامة" : input.entityType === "beauty" ? "خدمات تجميل عامة" : "خدمات عامة"),
         gov: input.gov ?? null,
         district: input.district ?? null,
         street: input.street ?? null,

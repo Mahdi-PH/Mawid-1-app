@@ -1,23 +1,29 @@
 // Dynamic Entity Specialization — one shared terminology dictionary keyed
 // off ClinicDoc.entityType, so a clinic's own dashboard/reception/patient-
-// facing screens all use medical wording, and a beauty-center/salon's use
-// salon wording, from this single source rather than each screen
-// hardcoding its own copy. "beauty" and "salon" share every term EXCEPT
+// facing screens all use medical wording, and a beauty-center/other-
+// commercial-center's use customer wording, from this single source
+// rather than each screen hardcoding its own copy. The underlying
+// EntityType value "salon" is unchanged (no data migration needed for
+// existing docs) — only its own display label was renamed, from "صالون
+// حلاقة" (a barber salon specifically) to "مركز تجاري آخر" (a generic
+// other commercial center), per the user's explicit ask to broaden it
+// beyond just barbershops. "beauty" and "salon" share every term EXCEPT
 // practitionerNoun — the user's original request grouped the two
 // together for general wording ("إذا كان الاختيار مركز تجميل أو صالون:
 // تتغير كافة المصطلحات إلى..."), but a later request asked specifically
-// for "الحالي عند X" to read "أخصائي التجميل" for a beauty center and
-// "الحلاق" for a barber salon rather than the one shared "الحلاق أو
-// أخصائي التجميل" phrase — so practitionerNoun alone now has its own
-// per-type value, while every other term still comes from one shared
-// wordset (SALON_SHARED_TERMS) so the two constants can't drift apart on
-// anything but that one field.
+// for "الحالي عند X" to read "أخصائي التجميل" for a beauty center and a
+// distinct word for the other type rather than one shared phrase — so
+// practitionerNoun alone has its own per-type value, while every other
+// term still comes from one shared wordset (SALON_SHARED_TERMS) so the
+// two constants can't drift apart on anything but that one field. Once
+// "salon" stopped meaning "barber" specifically, its own practitionerNoun
+// ("الحلاق") had to become generic too — see SALON_TERMS below.
 import type { EntityType } from "./types";
 
 export const ENTITY_TYPE_LABEL: Record<EntityType, string> = {
   clinic: "عيادة",
   beauty: "مركز تجميل",
-  salon: "صالون حلاقة",
+  salon: "مركز تجاري آخر",
 };
 
 export interface Terminology {
@@ -36,9 +42,10 @@ export interface Terminology {
   visitorNounPlural: string;
   /** "مراجعيك" — plural + possessive, e.g. "شارك هذا الرابط مع مراجعيك". */
   visitorPossessivePlural: string;
-  /** "الطبيب" (clinic) / "أخصائي التجميل" (beauty) / "الحلاق" (salon) —
-   *  who the patient/customer is waiting to see. The one field that
-   *  differs between beauty and salon; every other term is shared. */
+  /** "الطبيب" (clinic) / "أخصائي التجميل" (beauty) / "الموظف المختص"
+   *  (other commercial center) — who the patient/customer is waiting to
+   *  see. The one field that differs between beauty and the other-
+   *  center type; every other term is shared. */
   practitionerNoun: string;
   /** "السجل الطبي" — the Patient Passport's own read-only archive label. */
   recordLabel: string;
@@ -85,7 +92,7 @@ const SALON_SHARED_TERMS: Omit<Terminology, "practitionerNoun"> = {
 
 const BEAUTY_TERMS: Terminology = { ...SALON_SHARED_TERMS, practitionerNoun: "أخصائي التجميل" };
 
-const SALON_TERMS: Terminology = { ...SALON_SHARED_TERMS, practitionerNoun: "الحلاق" };
+const SALON_TERMS: Terminology = { ...SALON_SHARED_TERMS, practitionerNoun: "الموظف المختص" };
 
 /** The one place every screen resolves entityType -> wording. A
  *  missing/unrecognized value (an old clinic doc from before this field
@@ -96,4 +103,15 @@ export function getTerminology(entityType: EntityType | null | undefined): Termi
   if (entityType === "beauty") return BEAUTY_TERMS;
   if (entityType === "salon") return SALON_TERMS;
   return CLINIC_TERMS;
+}
+
+/** The "مسح السجل الطبي" tool (scanning a patient's Universal Patient
+ *  Passport QR to read/append their medical record — see
+ *  components/ScanPatientTab.tsx) only makes sense for a clinic or a
+ *  beauty center; a "مركز تجاري آخر" account has no medical record to
+ *  scan, so its own settings drawer never offers this tool at all —
+ *  not just disabled, entirely absent from the menu. Centralized here
+ *  rather than a raw `=== "salon"` check scattered at each call site. */
+export function supportsMedicalRecordScan(entityType: EntityType | null | undefined): boolean {
+  return entityType !== "salon";
 }

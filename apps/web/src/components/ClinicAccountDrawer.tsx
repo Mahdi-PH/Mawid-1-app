@@ -1,7 +1,7 @@
 "use client";
 
 // "إعدادات الحساب" — every clinic-side tool that isn't part of daily
-// reception work (مسح سجل المراجع، إعدادات الدوام، خطة الاشتراك، رابط
+// reception work (مسح السجل الطبي، إعدادات الدوام، خطة الاشتراك، رابط
 // العيادة) lives here now, opened from the gear icon pinned at the
 // dashboard's own top-left corner, with sign-out pinned at the bottom of
 // this same menu. Reuses ScheduleForm/SubscriptionTab from
@@ -9,9 +9,18 @@
 // its default page component, so those two forms live in their own
 // shared file rather than as named exports off app/clinic/page.tsx.
 //
+// "مسح السجل الطبي" (the Universal Patient Passport scanner) is
+// deliberately NOT shown at all for a "مركز تجاري آخر" account (see
+// supportsMedicalRecordScan() in terminology.ts) — that entity type has
+// no medical record to scan, so the row is entirely absent from its
+// menu, not merely disabled. Its own label is now a fixed string, not
+// entityType-dependent — the user's explicit ask was to unify this
+// tool's naming across عيادة and مركز تجميل rather than let it vary
+// (it used to read "مسح سجل المريض"/"مسح سجل الزبون").
+//
 // Deliberately conditional-mount, not conditional-CSS-visibility: when
 // `open` is false this renders null entirely (same convention as
-// ConfirmPopup), which matters most for the "مسح سجل المراجع" tool —
+// ConfirmPopup), which matters most for the "مسح السجل الطبي" tool —
 // ScanPatientTab's camera (getUserMedia) only actually stops via its own
 // unmount cleanup, so a hidden-but-still-mounted panel would leave the
 // camera running in the background.
@@ -21,22 +30,25 @@ import ConfirmPopup from "./ConfirmPopup";
 import ScanPatientTab from "./ScanPatientTab";
 import { ScheduleForm, SubscriptionTab } from "./ClinicSettingsTools";
 import { markIntentionalSignOut, signOutUser } from "../lib/firebase/auth";
-import { getTerminology } from "../lib/firebase/terminology";
+import { getTerminology, supportsMedicalRecordScan } from "../lib/firebase/terminology";
 import type { ClinicDoc } from "../lib/firebase/types";
 
 type Tool = "scan" | "schedule" | "subscription" | "link";
 
-/** Menu labels depend on the clinic's own entityType (e.g. "مسح سجل
- *  المراجع" vs "مسح سجل الزبون") — a plain function of `terms` rather
- *  than a module-level constant, computed fresh each render (cheap: four
- *  short strings). */
-function buildTools(terms: ReturnType<typeof getTerminology>): { id: Tool; label: string; icon: string }[] {
-  return [
-    { id: "scan", label: `مسح سجل ${terms.personNoun}`, icon: "📷" },
+/** The scan tool is conditionally present (not just conditionally
+ *  enabled) based on the clinic's own entityType, so this is a plain
+ *  function rather than a module-level constant. */
+function buildTools(clinic: ClinicDoc, terms: ReturnType<typeof getTerminology>): { id: Tool; label: string; icon: string }[] {
+  const tools: { id: Tool; label: string; icon: string }[] = [];
+  if (supportsMedicalRecordScan(clinic.entityType)) {
+    tools.push({ id: "scan", label: "مسح السجل الطبي", icon: "📷" });
+  }
+  tools.push(
     { id: "schedule", label: "إعدادات أوقات الدوام", icon: "🕒" },
     { id: "subscription", label: "خطة الاشتراك", icon: "💳" },
-    { id: "link", label: `رابط ${terms.centerNoun}`, icon: "🔗" },
-  ];
+    { id: "link", label: `رابط ${terms.centerNoun}`, icon: "🔗" }
+  );
+  return tools;
 }
 
 export default function ClinicAccountDrawer({
@@ -55,7 +67,7 @@ export default function ClinicAccountDrawer({
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const terms = getTerminology(clinic.entityType);
-  const TOOLS = buildTools(terms);
+  const TOOLS = buildTools(clinic, terms);
 
   if (!open) return null;
 

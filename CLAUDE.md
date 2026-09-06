@@ -3568,6 +3568,116 @@ screen, and make the whole `/find/*` back-button chain provably loop-free.
   key was deleted immediately after — both the copy used for the deploy
   and the original upload.
 
+## "صالون حلاقة" renamed to "مركز تجاري آخر"; conditional/unified medical-scan tool
+
+Requested by name, addressed to "a data-modeling and UI/UX developer":
+broaden the third entity-type option from "barber salon" specifically to
+"any other commercial center", while keeping its wording tied to "زبون"
+(customer) exclusively — then make the settings-drawer's medical-record
+scan tool conditional (absent entirely for this broadened type, since a
+generic commercial center has no medical record to scan) and unify its
+label for the two types that do keep it.
+
+- **`lib/firebase/terminology.ts`**: `ENTITY_TYPE_LABEL.salon` — "صالون
+  حلاقة" → "مركز تجاري آخر". The underlying `EntityType` value itself
+  (`"salon"`) was deliberately left unchanged — only its display label
+  moved — so every existing clinic doc already carrying `entityType:
+  "salon"` in Firestore needs zero migration and just picks up the new
+  label automatically; no backfill script needed or written.
+  `SALON_SHARED_TERMS` (personNoun "الزبون", visitorNoun "زبون", etc.) was
+  already entirely زبون-based and shared with "beauty", so item 1's "keep
+  it tied to زبون exclusively, just like beauty centers" requirement was
+  already true by construction — confirmed by re-reading the dictionary
+  rather than assumed.
+  - **One real content bug this rename exposed, fixed alongside it**:
+    `SALON_TERMS.practitionerNoun` was still the literal word "الحلاق"
+    (barber) — correct for the old, narrower "barber salon" label, but a
+    genuine mismatch once that same type covers *any* other commercial
+    center (a pharmacy, a gym, anything). Changed to "الموظف المختص" (a
+    generic "specialized staff member" phrase), reusing the same generic
+    register `registerClinic()`'s own doctorName default already uses for
+    non-clinic types ("المختص المناوب"). Every screen that resolves this
+    field (`WaitingRoomTv`'s "الحالي عند X", `statusMeta.ts`'s status
+    label/message, `/find/wait`'s practitioner-name line) needed zero
+    further changes — confirmed with the same `tsx -e` spot-check
+    technique used for the original beauty/salon split, printing all
+    three resolved phrases directly rather than assuming from the source
+    edit.
+  - **`firestore.ts`'s `registerClinic()` specialty default** went from a
+    clinic-vs-everything-else branch to a genuine three-way one: "عيادة
+    عامة" (clinic) / "خدمات تجميل عامة" (beauty, unchanged) / "خدمات
+    عامة" (new — the renamed type's own generic default, since "خدمات
+    تجميل عامة"/general *beauty* services no longer fits a generic other
+    business). Not explicitly asked for, but a direct, narrowly-scoped
+    consequence of the rename that would otherwise have shipped a visibly
+    wrong default.
+- **`supportsMedicalRecordScan(entityType)`** (new, `terminology.ts`) —
+  the one centralized place this "does this entity type even have a
+  medical record to scan" question is answered (`entityType !== "salon"`),
+  rather than a raw comparison scattered at each call site, matching this
+  file's own established convention for entityType-driven behavior.
+- **`components/ClinicAccountDrawer.tsx`**: `buildTools()` now takes the
+  full `clinic` (not just `terms`) and conditionally omits the scan tool
+  row entirely — not merely disabled — when
+  `!supportsMedicalRecordScan(clinic.entityType)`. Its label is no longer
+  entityType-dependent either: previously `مسح سجل ${terms.personNoun}`
+  (rendering "مسح سجل المريض" for a clinic, "مسح سجل الزبون" for a
+  beauty center), now the one fixed string "مسح السجل الطبي" for both
+  remaining types — since the drawer's own header title is driven by
+  whichever tool's `label` is active (`toolLabel = TOOLS.find(...).
+  label`), this single change also unifies the scan panel's own window
+  title, satisfying both the visibility and the naming-unification asks
+  from one edit. Deliberately did **not** touch the deeper archive-content
+  wording inside `ScanPatientTab.tsx`'s `GrantedRecordView` (recordLabel/
+  prescriptionNoun/noteNoun, e.g. beauty's own "سجل الخدمات"/"جلسة
+  تجميل") — the request's own wording was specifically about "تسمية
+  نافذة وخيار مسح" (the scan window/option's own name), not the record
+  archive's internal content labels, and beauty's own distinct wording
+  there is exactly the kind of content differentiation the earlier
+  Dynamic Entity Specialization feature was built to preserve.
+- **Item 4 (a tailored waiting screen for the renamed type) needed zero
+  new code** — `/find/wait` and `/clinic`'s reception/TV tabs already
+  resolve every visible noun (person/visitor/practitioner) through
+  `getTerminology(clinic.entityType)`, so once the one real content bug
+  above (`practitionerNoun`) was fixed, the renamed type's own waiting
+  screen already shows the customer's name, the center's name, live queue
+  position, and estimated remaining time, all زبون-worded, synced live
+  with the reception dashboard exactly like every other entity type —
+  confirmed by re-reading `/find/wait/page.tsx`'s render logic rather
+  than assumed, since this was the whole point of centralizing wording
+  through one dictionary in the first place.
+- **Verified visually, not just by a clean build**: a throwaway route
+  (`app/uitest-scratch-entity/`, mounting `ClinicAccountDrawer` with
+  three mock clinics — one per entity type, no Firebase needed) was
+  screenshotted with Playwright: the settings menu for both "عيادة" and
+  "مركز تجميل" shows the same "مسح السجل الطبي" row; the menu for
+  "مركز تجاري آخر" shows exactly three rows with the scan row entirely
+  absent. `/signup`'s own selector was separately screenshotted and
+  confirmed to show "مركز تجاري آخر" in place of the old "صالون حلاقة"
+  label. A `tsx -e` spot-check also printed all three resolved labels/
+  practitioner nouns/scan-permission booleans directly. The scratch
+  route and screenshots were deleted afterward, confirmed via `git
+  status` showing only the three real production files changed.
+  `tsc --noEmit` (via `next build`) and the static export build are both
+  clean. A signed-out smoke pass (`/`, `/find`, `/find/wait`, `/find/
+  requests`, `/find/passport`, `/clinic`, `/admin`, `/signup`) confirmed
+  zero console errors on every route except the same pre-existing,
+  unrelated `/find/requests` `auth/network-request-failed` already
+  disclosed and left untouched in the previous section of this file.
+- **Not independently live-verified**: no real signed-in clinic account
+  of the renamed type was driven through a live signup this pass — the
+  mock-data drawer verification above stands in for that, same
+  disclosed-gap shape as several earlier UI-only passes in this file.
+  Recommended before treating this as fully verified: a real signup
+  picking "مركز تجاري آخر", confirming its settings drawer genuinely has
+  no scan row and its own `/find/wait` reads naturally in زبون wording.
+- **Deployed**: no `firestore.rules` changes needed — every change here
+  is client-side wording/UI-conditional logic, no new security boundary.
+  Only the rebuilt `apps/web/out/` was pushed via `firebase deploy --only
+  hosting`, verified FINALIZED. The service-account key was deleted
+  immediately after — both the copy used for the deploy and the original
+  upload.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —
