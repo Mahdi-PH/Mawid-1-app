@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 import BackButton from "../../../components/BackButton";
 import AppBackdrop from "../../../components/AppBackdrop";
 import ConfirmPopup from "../../../components/ConfirmPopup";
-import PatientAccountBar from "../../../components/PatientAccountBar";
+import PatientSettingsDrawer from "../../../components/PatientSettingsDrawer";
 import { ensurePatientSession } from "../../../lib/firebase/auth";
 import { deleteAppointment, listAppointmentsForPatient } from "../../../lib/firebase/firestore";
 import type { AppointmentDoc, AppointmentStatus } from "../../../lib/firebase/types";
@@ -67,8 +67,10 @@ export default function MyRequestsPage() {
     <main dir="rtl" className="relative min-h-screen mx-auto max-w-2xl p-6">
       <AppBackdrop />
       <div className="relative">
-      <BackButton fallbackHref="/find" label="رجوع للبحث" />
-      {profile && <div className="mt-3"><PatientAccountBar profile={profile} /></div>}
+      {profile && <PatientSettingsDrawer profile={profile} />}
+      <div className="pl-11">
+        <BackButton fallbackHref="/find" label="رجوع للبحث" alwaysUseFallback />
+      </div>
       <h1 className="mb-6 mt-3 text-xl font-bold" style={{ color: "#0F7A6C" }}>
         طلباتي
       </h1>

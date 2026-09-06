@@ -20,7 +20,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import BackButton from "../../../components/BackButton";
 import AppBackdrop from "../../../components/AppBackdrop";
 import ConfirmPopup from "../../../components/ConfirmPopup";
-import PatientAccountBar from "../../../components/PatientAccountBar";
+import PatientSettingsDrawer from "../../../components/PatientSettingsDrawer";
 import { ensurePatientSession } from "../../../lib/firebase/auth";
 import { deleteAppointment, getClinic, watchAppointment } from "../../../lib/firebase/firestore";
 import { computeQueueStanding, watchClinicQueue } from "../../../lib/firebase/queue";
@@ -189,9 +189,10 @@ function Wait() {
     <main dir="rtl" className="relative min-h-screen mx-auto max-w-md p-6 text-center">
       <AppBackdrop />
       <div className="relative">
-        <BackButton fallbackHref="/find" label="رجوع للبحث" />
-
-        {profile && <div className="mt-3"><PatientAccountBar profile={profile} /></div>}
+        {profile && <PatientSettingsDrawer profile={profile} />}
+        <div className="pl-11">
+          <BackButton fallbackHref="/find" label="رجوع للبحث" alwaysUseFallback />
+        </div>
 
         <h1 className="mt-3 text-xl font-bold" style={{ color: "#0F7A6C" }}>
           {clinic?.clinicName ?? appt.clinicSlug}

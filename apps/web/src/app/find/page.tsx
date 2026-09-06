@@ -16,7 +16,7 @@ import { deleteAppointment, listApprovedClinics, watchAppointment } from "../../
 import type { AppointmentDoc, ClinicDoc } from "../../lib/firebase/types";
 import BackButton from "../../components/BackButton";
 import AppBackdrop from "../../components/AppBackdrop";
-import PatientAccountBar from "../../components/PatientAccountBar";
+import PatientSettingsDrawer from "../../components/PatientSettingsDrawer";
 import PatientGate from "../../components/PatientGate";
 import {
   clearActiveBooking,
@@ -156,9 +156,14 @@ function FindClinicSearch({
     <main dir="rtl" className="relative min-h-screen mx-auto max-w-2xl p-6">
       <AppBackdrop />
       <div className="relative">
-      <BackButton fallbackHref="/" className="mb-3 block text-sm text-brand-600 hover:underline" />
-
-      <PatientAccountBar profile={profile} />
+      <PatientSettingsDrawer profile={profile} />
+      <div className="pl-11">
+        <BackButton
+          fallbackHref="/"
+          alwaysUseFallback
+          className="mb-3 block text-sm text-brand-600 hover:underline"
+        />
+      </div>
 
       {activeBooking && (
         <Link
@@ -174,18 +179,10 @@ function FindClinicSearch({
         </Link>
       )}
 
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6">
         <h1 className="text-xl font-bold" style={{ color: "#0F7A6C" }}>
           ابحث عن مركزك
         </h1>
-        <div className="flex gap-3 text-sm">
-          <Link href="/find/passport" className="text-brand-600 hover:underline">
-            بطاقتي الصحية
-          </Link>
-          <Link href="/find/requests" className="text-brand-600 hover:underline">
-            طلباتي
-          </Link>
-        </div>
       </div>
 
       <input

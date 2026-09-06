@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import BackButton from "../../../components/BackButton";
 import AppBackdrop from "../../../components/AppBackdrop";
-import PatientAccountBar from "../../../components/PatientAccountBar";
+import PatientSettingsDrawer from "../../../components/PatientSettingsDrawer";
 import PatientGate from "../../../components/PatientGate";
 import { ensurePatientSession } from "../../../lib/firebase/auth";
 import {
@@ -78,7 +78,11 @@ function Passport({ profile }: { profile: PatientProfile }) {
       <main dir="rtl" className="relative min-h-screen mx-auto max-w-md p-6">
         <AppBackdrop />
         <div className="relative">
-          <BackButton fallbackHref="/find" className="mb-3 block text-sm text-brand-600 hover:underline" />
+          <BackButton
+            fallbackHref="/find"
+            alwaysUseFallback
+            className="mb-3 block text-sm text-brand-600 hover:underline"
+          />
           <p className="text-red-600">{error}</p>
         </div>
       </main>
@@ -98,11 +102,17 @@ function Passport({ profile }: { profile: PatientProfile }) {
     <main dir="rtl" className="relative min-h-screen mx-auto max-w-2xl p-6">
       <AppBackdrop />
       <div className="relative">
-        <BackButton fallbackHref="/find" className="mb-3 block text-sm text-brand-600 hover:underline" />
-        <PatientAccountBar profile={profile} />
+        <PatientSettingsDrawer profile={profile} />
+        <div className="pl-11">
+          <BackButton
+            fallbackHref="/find"
+            alwaysUseFallback
+            className="mb-3 block text-sm text-brand-600 hover:underline"
+          />
+        </div>
 
         <h1 className="mb-1 text-xl font-bold" style={{ color: "#0F7A6C" }}>
-          بطاقة المراجع الصحية
+          السجل الطبي
         </h1>
         <p className="mb-6 text-sm text-gray-500">
           سجلّك الطبي الموحّد — أظهر رمز QR للطبيب في عيادته لمنحه إذناً مؤقتاً بقراءة سجلّك وإضافة وصفة أو تقرير جديد.

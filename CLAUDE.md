@@ -3470,6 +3470,103 @@ established.
   key was deleted immediately after — both the copy used for the deploy
   and the original upload.
 
+## Patient settings drawer; loop-proof back navigation across /find/*
+
+Requested together, addressed to "a UI/UX engineer and mobile navigation-
+stack architect": (1) replace the patient side's plain inline "مرحباً
+{name} + تسجيل خروج" bar with a proper settings icon/drawer, pinned at the
+physical top-left corner like `/clinic`'s and `/admin`'s own drawers; (2)
+fix a real reported navigation bug where leaving a clinic could bounce
+the patient back into "تثبيت حجز"/"شاشة الانتظار" instead of the search
+screen, and make the whole `/find/*` back-button chain provably loop-free.
+
+- **`components/PatientSettingsDrawer.tsx`** (new) replaces
+  `PatientAccountBar.tsx` (deleted — nothing referenced it anymore once
+  every call site below was updated) everywhere it appeared: `/find`,
+  `/find/wait`, `/find/requests`, `/find/passport`. Same gear icon/slide-
+  over shell as `ClinicAccountDrawer`/`AdminSettingsDrawer`, but simpler:
+  both menu items are plain page links, not nested tool panels, so there's
+  no `activeTool` state at all — "طلباتي" → `/find/requests`, "السجل
+  الطبي" → `/find/passport`, then sign-out pinned at the bottom via
+  `mt-auto`, reusing the same `ConfirmPopup`/`signOutPatient()` one-click-
+  confirm pattern the old bar already had. `/find`'s own heading row lost
+  its now-redundant separate "بطاقتي الصحية"/"طلباتي" text links, since
+  the drawer is the one authoritative place for both now.
+- **Renamed per the request**: `/find/passport`'s own `<h1>` — "بطاقة
+  المراجع الصحية" → "السجل الطبي" — matching the drawer's own link label.
+  The page's route/URL (`/find/passport`) and every internal function/
+  variable name were left alone; only the two user-facing strings changed.
+- **The actual bug, root-caused not guessed**: `/find/wait`'s and `/find/
+  requests`'s `<BackButton>` had no `alwaysUseFallback` — meaning they
+  preferred real browser history (`router.back()`) whenever any existed.
+  Since `/find/wait` is reached via `router.push()` from `/find/book`
+  (itself reached via `router.push()` from `/find`), the real history
+  stack is `Home → /find → /find/book?clinic=X → /find/wait`— so
+  `router.back()` from `/find/wait` landed on `/find/book` (the booking
+  page), not `/find`, exactly the "رجوع غير متوقع لصفحة تثبيت الحجز" the
+  user reported. The same gap existed for `/find/requests` once reached
+  via the new drawer from a deep `/find/wait` or `/find/book` session.
+  `/find/book`'s own back button already had `alwaysUseFallback` from an
+  earlier pass (see "Home role-card descriptions removed..." above) —
+  it was never the broken one; the two pages *after* it in the flow were.
+- **Fix — the same established `alwaysUseFallback` technique, applied
+  consistently to every `/find/*` screen this time, not just the one that
+  broke**: added `alwaysUseFallback` to the `<BackButton>` on `/find`
+  (→ `/`), `/find/wait` (→ `/find`), `/find/requests` (→ `/find`), and
+  both branches of `/find/passport` (→ `/find`) — alongside the two
+  already-correct `/find/book` usages. Since `alwaysUseFallback` always
+  calls `router.push(fallbackHref)` and never `router.back()`, every
+  patient-facing back button now resolves to one fixed, hardcoded target
+  regardless of how tangled the real browser history got getting there —
+  provably closes every path back into `/find/book`/`/find/wait` from any
+  other patient screen, not just the one reported case. Each page's top
+  `<BackButton>` was wrapped in a `pl-11` div (same collision-avoidance
+  padding `/clinic`'s and `/admin`'s own headers already use) so it can't
+  visually overlap the newly-pinned settings icon at `absolute left-3
+  top-3`.
+- **Verified live against the real `mawid-app-d1d03` project**, not just
+  read through — a temporary approved test clinic (`e2e-nav-test`, all-
+  day hours so a slot is always available, created via the standing
+  service-account/Firestore-REST technique) was driven through the
+  actual running app (`next dev` + a request-interception layer: this
+  sandbox's browser can't reach Firebase's own domains directly through
+  its outbound proxy — Firestore's WebChannel long-polling gets reset —
+  but plain Node `fetch()` from this process can, so every request to a
+  `googleapis.com`/`google.com`/`gstatic.com`/`firebaseio.com`/
+  `firebaseapp.com` host was intercepted via Playwright's `page.route()`
+  and replayed through Node's own fetch instead of letting the browser's
+  network stack touch it — the same class of workaround this file has
+  documented needing before, just written out in full this time) and
+  drove the literal reported scenario end-to-end: opened `/find`,
+  confirmed the new settings icon/drawer render with live data (the real
+  test clinic showing in the directory, screenshotted); entered the test
+  clinic, tapped "تثبيت حجز", booked a real slot, landed on `/find/wait`
+  showing live queue data; **pressed "رجوع للبحث" and confirmed the URL
+  is exactly `/find`, not `/find/book`** — the precise fix; then pressed
+  "رجوع" again on `/find` and **confirmed the URL is exactly `/`** — the
+  second half of the ask. Both assertions passed, zero console errors
+  throughout. All test data (the clinic doc, its appointment, its
+  `clinic_queue_slots` mirror doc) were deleted after and the live
+  `clinics` collection was read back showing only the user's own three
+  real clinics (`alkinglong1995`, `hasaniraq8933`, `mahdi`) — read-
+  before-delete, per the standing rule.
+- `tsc --noEmit` (via `next build`) and the static export build are both
+  clean. A separate signed-out smoke pass (`/`, `/find`, `/find/wait`,
+  `/find/requests`, `/find/passport`, `/clinic`, `/admin`) against the
+  static export confirmed zero console errors on every route except one
+  pre-existing, unrelated `auth/network-request-failed` on `/find/
+  requests` — that page's own unconditional `ensurePatientSession()` call
+  on mount was untouched by this pass (confirmed via `git diff`) and
+  simply has no Firebase network path in a bare static-file-server smoke
+  test with no interception layer; the same class of expected artifact
+  already disclosed elsewhere in this file for exactly this kind of local
+  smoke pass.
+- **Deployed**: no `firestore.rules` changes needed — this entire pass is
+  client-side navigation/UI only. Only the rebuilt `apps/web/out/` was
+  pushed via `firebase deploy --only hosting`, verified FINALIZED. The
+  service-account key was deleted immediately after — both the copy used
+  for the deploy and the original upload.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —
