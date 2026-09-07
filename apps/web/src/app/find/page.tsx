@@ -16,7 +16,7 @@
 // isn't duplicated per category: it's the exact same component, now
 // filtering on a `category` prop, matching the request's own "don't
 // repeat the search screen if it can take a category parameter instead."
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import ConfirmPopup from "../../components/ConfirmPopup";
 import NotificationsDrawer from "../../components/NotificationsDrawer";
@@ -30,6 +30,9 @@ import BackButton from "../../components/BackButton";
 import AppBackdrop from "../../components/AppBackdrop";
 import PatientSettingsDrawer from "../../components/PatientSettingsDrawer";
 import PatientGate from "../../components/PatientGate";
+import { useLocalBackStep } from "../../lib/useLocalBackStep";
+
+const KNOWN_CATEGORIES: EntityType[] = ["beauty", "clinic", "salon"];
 import {
   clearActiveBooking,
   getActiveBooking,
@@ -60,9 +63,40 @@ export default function FindClinicPage() {
   const [profile, setProfile] = useState<PatientProfile | null | undefined>(undefined);
   const [activeBooking, setActiveBooking] = useState<ActiveBooking | null>(null);
   const [category, setCategory] = useState<EntityType | null>(null);
+  const [initialQuery, setInitialQuery] = useState("");
   const [showEndPrompt, setShowEndPrompt] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Restores the exact category/search-query a patient had picked before
+  // opening a clinic's own details (/find/book), instead of always
+  // resetting to the category-selection screen on "back" — /find/book's
+  // own physical back button appends these back onto this same route (see
+  // that file). Read once, before first paint (matching the pre-paint
+  // ?intro=1/?mode=login technique already used elsewhere in this app),
+  // so there's no visible flash of the category screen before the search
+  // results replace it.
+  const restoredInitialState = useRef(false);
+  useLayoutEffect(() => {
+    if (restoredInitialState.current) return;
+    restoredInitialState.current = true;
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const cat = params.get("category");
+    if (cat && (KNOWN_CATEGORIES as string[]).includes(cat)) {
+      setCategory(cat as EntityType);
+      setInitialQuery(params.get("q") ?? "");
+    }
+  }, []);
+
+  // See lib/useLocalBackStep.ts: picking a category is a plain useState
+  // step with no history entry of its own, so a real back press/gesture
+  // used to skip straight past the category-selection screen to whatever
+  // preceded /find entirely. Entering a category now also pushes a
+  // same-URL history marker, so a real back returns to that screen first —
+  // the exact same one step the in-page "‹ رجوع لاختيار نوع الخدمة" link
+  // (inside FindClinicSearch) already performs.
+  const { enter: enterCategoryStep, leave: leaveCategoryStep } = useLocalBackStep(() => setCategory(null));
 
   // Notification Center — one live subscription at this top level (not
   // inside NotificationsDrawer, and not re-subscribed per phase) so the
@@ -190,7 +224,16 @@ export default function FindClinicPage() {
     <main dir="rtl" className="relative min-h-screen mx-auto max-w-2xl p-6">
       <AppBackdrop />
       <div className="relative">
-        <BackButton fallbackHref="/" alwaysUseFallback className="mb-3 block text-sm text-brand-600 hover:underline" />
+        {category !== null ? (
+          // One step at a time: while search results are showing, the
+          // physical corner control returns to the category-selection
+          // screen first — same destination as the in-page "‹ رجوع
+          // لاختيار نوع الخدمة" link, just reachable from the fixed
+          // corner control too, and from a real back press/gesture.
+          <BackButton label="رجوع" overrideOnClick={leaveCategoryStep} className="mb-3 block text-sm text-brand-600 hover:underline" />
+        ) : (
+          <BackButton fallbackHref="/" alwaysUseFallback className="mb-3 block text-sm text-brand-600 hover:underline" />
+        )}
 
         {activeBooking && (
           <Link
@@ -208,9 +251,20 @@ export default function FindClinicPage() {
         {deleteError && <p className="mb-4 text-sm text-red-600">{deleteError}</p>}
 
         {category === null ? (
-          <ServiceCategoryFilter onSelect={setCategory} {...topBarActions} />
+          <ServiceCategoryFilter
+            onSelect={(t) => {
+              enterCategoryStep();
+              setCategory(t);
+            }}
+            {...topBarActions}
+          />
         ) : (
-          <FindClinicSearch category={category} onChangeCategory={() => setCategory(null)} {...topBarActions} />
+          <FindClinicSearch
+            category={category}
+            initialQuery={initialQuery}
+            onChangeCategory={leaveCategoryStep}
+            {...topBarActions}
+          />
         )}
       </div>
 
@@ -291,14 +345,27 @@ function TopIconCard({
   );
 }
 
-/** The shared heading row for both /find phases — page title/subtitle on
- *  the right (RTL start), the settings/notifications card pair on the
- *  left, matching the reference screenshot's exact layout. A plain `flex
- *  justify-between` inside this `dir="rtl"` page already places its first
- *  DOM child (the heading) at the physical right and its second (the
- *  icon-card row) at the physical left — no manual positioning needed,
- *  same RTL-flex reasoning already documented for the home screen's own
- *  role-card order. */
+function PersonBadgeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="8" r="3.4" />
+      <path d="M5.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6" />
+    </svg>
+  );
+}
+
+/** The shared heading row for both /find phases — a calm, self-contained
+ *  intro card (title + subtitle, a small round person-icon badge at its
+ *  own top-right corner) on the right, the existing settings/notifications
+ *  card pair on the left, matching the reference screenshot's layout.
+ *  Deliberately a plain Header/Intro Section, not a navigation control —
+ *  no arrow or back button lives inside it; the page's own physical back
+ *  button (see FindClinicPage/BackButton) sits outside and above this
+ *  row entirely. A plain `flex justify-between` inside this `dir="rtl"`
+ *  page already places its first DOM child (the card) at the physical
+ *  right and its second (the icon-card row) at the physical left — no
+ *  manual positioning needed, same RTL-flex reasoning already documented
+ *  for the home screen's own role-card order. */
 function FindTopBar({
   title,
   subtitle,
@@ -308,11 +375,24 @@ function FindTopBar({
 }: TopBarActions & { title: string; subtitle?: ReactNode }) {
   return (
     <div className="mb-6 flex items-start justify-between gap-3">
-      <div className="min-w-0 pt-1">
-        <h1 className="text-xl font-bold" style={{ color: "#00ADB5" }}>
+      <div
+        className="relative min-w-0 flex-1 rounded-2xl border p-4 shadow-sm"
+        style={{
+          borderColor: "#e5eef0",
+          background: "linear-gradient(135deg, #FBF7EF 0%, #F2FBFC 55%, #EAF6F3 100%)",
+        }}
+      >
+        <span
+          aria-hidden
+          className="absolute -top-3 -right-3 flex h-9 w-9 items-center justify-center rounded-full border-2 bg-white shadow-sm"
+          style={{ borderColor: "#00ADB5", color: "#00ADB5" }}
+        >
+          <PersonBadgeIcon />
+        </span>
+        <h1 className="pr-8 text-xl font-bold leading-snug" style={{ color: "#00ADB5" }}>
           {title}
         </h1>
-        {subtitle && <p className="mt-1 text-sm text-gray-500">{subtitle}</p>}
+        {subtitle && <p className="mt-1 pr-8 text-sm leading-relaxed text-gray-500">{subtitle}</p>}
       </div>
       <div className="flex flex-none gap-2">
         <TopIconCard icon={<BellTopIcon />} label="الإشعارات" onClick={onOpenNotifications} badgeCount={unreadCount} />
@@ -353,18 +433,20 @@ function ServiceCategoryFilter({
 
 function FindClinicSearch({
   category,
+  initialQuery,
   onChangeCategory,
   onOpenSettings,
   onOpenNotifications,
   unreadCount,
 }: {
   category: EntityType;
+  initialQuery: string;
   onChangeCategory: () => void;
 } & TopBarActions) {
   const [clinics, setClinics] = useState<ClinicDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQuery);
 
   useEffect(() => {
     listApprovedClinics()
@@ -384,6 +466,10 @@ function FindClinicSearch({
   }, [clinics, category, q]);
 
   const categoryMeta = SERVICE_CATEGORY_META[category];
+  // Carried onto /find/book's own link so its back button can restore
+  // this exact category/query when the patient returns — see that page's
+  // own comment on backCategory/backQuery.
+  const backParams = `category=${encodeURIComponent(category)}${q.trim() ? `&q=${encodeURIComponent(q.trim())}` : ""}`;
 
   return (
     <div className="animate-fade-in-up">
@@ -422,7 +508,7 @@ function FindClinicSearch({
         {filtered.map((c) => (
           <Link
             key={c.slug}
-            href={`/find/book?clinic=${encodeURIComponent(c.slug)}`}
+            href={`/find/book?clinic=${encodeURIComponent(c.slug)}&${backParams}`}
             className="block rounded-xl border bg-white p-4 shadow-sm transition hover:-translate-y-0.5"
           >
             <div className="font-bold">{c.clinicName}</div>

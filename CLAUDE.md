@@ -4999,3 +4999,265 @@ Paid subscription tiers remain undecided and unbuilt, in either track —
 ask before building, per the artifact's "لم يُحدَّد بعد" pricing note.
 `/subscribe`'s free-month framing is the same placeholder, not a real
 decision to build billing against.
+
+## Navigation audit: real back-navigation for same-route sub-views + "البحث عن خدمة" header redesign
+
+A large navigation-architecture audit/fix request, addressed to "Senior
+Full-Stack Developer + Senior UI/UX Engineer" — its core stated principle:
+**"كل عملية رجوع يجب أن تعيد المستخدم إلى الشاشة التي جاء منها مباشرة"**
+(every back action must return the visitor to the screen they came from,
+one step at a time — never a jump straight to Home unless Home is
+genuinely where they came from). Paired with a visual request: give the
+"البحث عن خدمة" heading atop `/find`'s category screen a calm, distinct
+card treatment (matching a reference screenshot) with a small person-icon
+badge — explicitly never an arrow/back control inside it, since it's a
+plain intro header, not a navigation element.
+
+### The real root cause found
+
+Three places in this app already implement a "step within one screen" as
+nothing but a plain `useState` flip: `/find/book`'s `view: "menu"|"book"`,
+`/find`'s `category: EntityType|null`, and `/signup`'s `view: "type"|
+"form"`. Each already had a working **in-page** "‹ رجوع" link/button for
+its own step — but none of the three had ever put a matching entry on the
+actual browser history stack. A real back button, a real back
+gesture/swipe, and — critically — **Android's physical back button in an
+installed TWA**, all operate on the browser's History API (a TWA
+literally delegates its back press to the WebView's own
+`canGoBack()`/`goBack()`), never on React state. So all three would skip
+straight past the intended one-step return and land wherever real history
+said came before the *route*, not the sub-view — e.g. pressing real back
+from `/find/book`'s "book" (slot-grid) view jumped straight to `/find`,
+skipping its own "menu" (تفاصيل المركز) sub-view entirely; the exact
+"physical back must behave identically to the in-app back button, never
+skip a step" failure mode the request described.
+
+This is fixed at the root, once, and reused three times — not per-screen
+patches:
+
+- **`lib/useLocalBackStep.ts`** (new): `enter()` pushes a same-URL history
+  marker (`history.pushState({mawidLocalStep:true}, "", location.href)`)
+  the instant a sub-view opens; a `popstate` listener calls the hook's
+  `onPop` callback whenever the landed-on history entry does *not* carry
+  that marker — i.e. whenever a real back press/gesture has walked past
+  it. `leave()` is what the UI's own "‹ رجوع" control now calls instead of
+  resetting state directly: if the marker is present it calls
+  `history.back()` (which fires the same `popstate` path, so a UI click
+  and a real back press converge on the exact same code, `onPop`, instead
+  of being two separately-maintained mechanisms that could drift apart);
+  if no marker is present (the sub-view was reached via a bypass that
+  skipped `enter()` — see `?mode=login` below) it calls `onPop()`
+  directly, since there is nothing to pop.
+- **`/find/book/page.tsx`**: entering "book" (تثبيت حجز) now calls
+  `enterBookView()`; the in-page "‹ رجوع لقائمة العيادة" link now calls
+  `leaveBookView()`. The **physical corner control is now context-aware**
+  (a real, previously-missing fix, not just wiring the hook): while "book"
+  is open it renders with `overrideOnClick={leaveBookView}` (new
+  `BackButton` prop, see below) so it returns to "menu" first, matching
+  the in-page link exactly; only in "menu" does it keep its original
+  `alwaysUseFallback` jump to `/find`.
+- **`/find/page.tsx`**: picking a category now calls `enterCategoryStep()`
+  before `setCategory(t)`; the in-page "‹ رجوع لاختيار نوع الخدمة" link
+  now calls `leaveCategoryStep()`. Same context-aware physical-button fix:
+  while search results are showing, the corner control returns to the
+  category screen first (`overrideOnClick={leaveCategoryStep}`); only from
+  the category screen itself does it jump Home.
+- **`/signup/SignupClient.tsx`**: both doors into "form" — picking a type
+  on `EntityTypeGrid`, and the "لديك حساب بالفعل؟ سجّل الدخول" link on the
+  type screen — now call `enterFormView()`. The in-page "‹ رجوع لاختيار
+  نوع المركز" link, and the form's own login↔signup toggle when it moves
+  from login back to signup (previously a bare `setView("type")`), both
+  now call `leaveFormView()`. The physical `BackButton` shown in
+  login/admin mode (line ~299, no `alwaysUseFallback`) needed **no code
+  change at all** — its existing `router.back()`-preferring smart default
+  already converges on the same marker/`popstate` mechanism automatically,
+  since `router.back()` is exactly `history.back()` under the hood. The
+  `?mode=login` bypass (a signed-out session redirect landing straight on
+  the login form) deliberately never calls `enter()` — there is no "type"
+  screen in that visitor's own flow to return to, so a real back
+  correctly keeps leaving `/signup` entirely, unchanged.
+- **A second, independent, real bug caught while wiring this**: once
+  `clinicMode` was flipped to `"login"` (via the type screen's own login
+  link), it stayed `"login"` forever — picking a category afterward
+  (`EntityTypeGrid`'s `onSelect`) never reset it, so the form would render
+  in login mode (email+password only, submits as a sign-in attempt) with
+  the just-picked type silently ignored. Fixed by having `onSelect` also
+  reset `clinicMode` to `"signup"` — a visitor who picks a type clearly
+  wants a fresh signup for it, regardless of any earlier login-mode
+  detour.
+- **`components/BackButton.tsx`** gained one new optional prop,
+  `overrideOnClick?: () => void` — when provided, it fully replaces the
+  history-vs-fallback logic for that click (used only by the three
+  context-aware physical buttons above); every other existing call site
+  in the app (`/clinic`, `/admin`, `/find/wait`, `/find/requests`,
+  `/find/passport`, etc.) is completely untouched and keeps its exact
+  prior behavior — this was a pure additive change to the component's API.
+
+### The other real, verifiable state-loss bug: `/find/book` → back → `/find` reset the category/search state
+
+The request's own worked example ("مراجع يختار «عيادات طبية»، يبحث،
+يفتح تفاصيل مركز؛ عند الرجوع يجب أن يعود إلى نتائج البحث بنفس الحالة")
+was a second, independent bug from the history-marker one above: even
+once "back" correctly lands on `/find`, that route's own `category` state
+defaulted to `null` on every fresh mount — so returning from a clinic's
+own details page landed back on the category-*selection* screen, not the
+same search results (same category, same typed query) the visitor had
+been looking at.
+
+- **`FindClinicSearch`'s own clinic links** (`/find/book?clinic=...`) now
+  append `&category=<entityType>&q=<encoded query>` (only when a query was
+  actually typed, to keep the URL clean).
+- **`/find/book/page.tsx`** reads those two params (`backCategory`/
+  `backQuery`) via `useSearchParams()` (already used there for `clinic`)
+  and builds `backToFindHref` from them; both of its `BackButton`
+  `fallbackHref`s (the not-found branch and the main "menu" view) now
+  point at this computed href instead of a bare `"/find"`.
+- **`/find/page.tsx`** restores this on landing: a `useLayoutEffect`
+  (pre-paint, guarded by a `useRef` so it runs once — the same technique
+  already established by `app/page.tsx`'s own `?intro=1` bypass and
+  `SignupClient.tsx`'s `?mode=login` bypass) parses `window.location.
+  search` for `category`/`q`, validates `category` against the three real
+  `EntityType` values, and sets the initial `category` state and a new
+  `initialQuery` state accordingly — landing directly on the search screen,
+  already showing the right category and the right typed text, with zero
+  visible flash of the category-selection screen first. `FindClinicSearch`
+  gained an `initialQuery` prop (`useState(initialQuery)` for its own `q`)
+  to receive this.
+- This is deliberately scoped to exactly the `/find/book` ↔ `/find` pair
+  the request's own example named — `/find/wait` and `/find/requests`
+  keep landing on plain `/find` (already the correct *destination*, one
+  step from either of them, per this project's own earlier, already-
+  tested fix history for those two screens) since neither knows a
+  category/query to restore without an extra Firestore lookup that wasn't
+  asked for and would have widened this pass beyond what was requested.
+
+### "البحث عن خدمة" header redesign (`FindTopBar` in `app/find/page.tsx`)
+
+The title/subtitle block (shared by both `/find` phases — the category
+screen and the search-results screen, whose own title becomes "ابحث عن
+مركزك") is now a distinct card instead of plain text: a soft two-tone
+gradient (`#FBF7EF` → `#F2FBFC` → `#EAF6F3` — the app's own existing
+near-white/light-teal tokens, plus one new warm cream tone added
+specifically for this one card's "تركواز فاتح وبيج كريمي" ask, the same
+precedent as the one new pink token added earlier for the "مراكز تجميل"
+category card when the palette had no pink), a thin border, `rounded-2xl`,
+and a small circular person-icon badge (new `PersonBadgeIcon`,
+teal-outlined, white fill) floating at the card's own top-right corner
+(`-top-3 -right-3`). **Explicitly no arrow/back control inside it** — the
+physical back button and the in-page "‹ رجوع" links all render outside
+and above this component entirely, unchanged. The two existing "الإعدادات"/
+"الإشعارات" icon-cards are completely untouched, still to its physical
+left via the same `dir="rtl"` flex-order convention already documented
+elsewhere in this file.
+- **A real bug caught by a screenshot, not assumed correct from the
+  diff**: the first version wrapped the gradient card in
+  `overflow-hidden` (to keep the gradient itself clipped to the rounded
+  corners — actually unnecessary, since a CSS background already respects
+  its own border-radius with no `overflow-hidden` needed) — which also
+  clipped the corner badge, since it's positioned partially outside the
+  card's own box (`-top-3 -right-3`) and `overflow-hidden` clips anything
+  crossing that boundary. Screenshot showed a sliver instead of a full
+  circle; fixed by dropping `overflow-hidden` (the gradient still renders
+  correctly clipped to the rounding without it), re-screenshotted to
+  confirm the badge now renders as a complete circle.
+
+### Modal/Dialog/BottomSheet close behavior — already correct, verified not assumed
+
+Checked `ConfirmPopup.tsx` and all three settings drawers
+(`ClinicAccountDrawer`, `AdminSettingsDrawer`, `PatientSettingsDrawer`)
+plus `NotificationsDrawer.tsx`: every one is `if (!open) return null` —
+a plain conditionally-*mounted* local overlay driven by the parent's own
+`useState`, never a route. Closing any of them is nothing but flipping
+that boolean back to `false`, which cannot itself change what screen is
+underneath — so "closing a modal returns to the exact screen it opened
+from" already held by construction for all five, confirmed by reading
+each file rather than assumed from this project's own established
+pattern.
+
+### Verified
+
+`tsc --noEmit` (via `next build`) and the static export build are both
+clean across all 19 routes. A Playwright pass against the freshly
+exported `out/` (served from an explicit absolute path — see this file's
+own earlier-disclosed directory-serving-mistake precedent) ran 29
+assertions using **real `page.goBack()` calls** (the same History-API
+mechanism Android's physical/gesture back invokes in a TWA, not a
+simulation of it) — all 29 passed:
+- `/signup`: real click-through from Home → type screen; picking a type
+  shows the form; **`page.goBack()` from the form returns to the type
+  screen, not Home**; repeating the transition and going back again still
+  works; the login-link door into the form also correctly returns to the
+  type screen on a real back; the in-page "‹ رجوع" link works and leaves
+  the browser's history stack honest afterward (a further real back
+  cleanly leaves `/signup`, no stuck/duplicate entries).
+- `/find`: lands on the category screen by default; the new header has no
+  arrow/back element inside it; picking a category shows search results
+  with the matching subtitle; **`page.goBack()` from search results
+  returns to the category screen, not Home**; the physical corner button,
+  while on search results, also returns to the category screen first
+  (not Home) — only from the category screen itself does it go Home; the
+  in-page "‹ رجوع لاختيار نوع الخدمة" link works.
+- `/find` state restoration: loading `/find?category=beauty&q=abc`
+  directly lands on the search screen (never the category screen) with
+  the right subtitle and the search input pre-filled with `"abc"`.
+- `/find/book`: its own not-found branch (tested via an omitted `clinic=`
+  param, which resolves synchronously with no network call — fully
+  testable in this offline harness) shows its back button carrying
+  `category=beauty&q=abc` back onto `/find`'s own URL, and the landing
+  page shows the restored search state, not the category screen.
+- The redesigned header was screenshotted at 390/340/320px: no horizontal
+  overflow at any width, the person badge renders as a complete circle
+  (post-fix), zero console/page errors beyond the two already-disclosed,
+  expected artifacts of this offline static-file-server harness (Next's
+  RSC-prefetch falling back to a full navigation, and Firestore reporting
+  it can't reach its backend — both filtered out of the error counts as
+  known noise, same as every other pass in this file that runs against a
+  bare static server with no live network).
+- A broader signed-out smoke pass across every route (`/`, `/signup`,
+  `/find`, `/find/wait`, `/find/requests`, `/find/passport`, `/clinic`,
+  `/admin`, `/subscribe`) confirmed zero regressions from any of the
+  above changes.
+
+### Disclosed, deliberate scoping decisions (not gaps found and hidden)
+
+- **`/find/wait` and `/find/requests` were left targeting plain `/find`**,
+  not extended to also carry category/query — see "The other real,
+  verifiable state-loss bug" above for why: neither currently knows which
+  category a clinic belongs to without an extra lookup, and the request's
+  own worked example was specifically about the `/find/book` ↔ `/find`
+  pair.
+- **A narrow, low-severity residual quirk from combining `alwaysUseFallback`
+  with the new history marker**: `/find/book`'s physical corner button
+  keeps `alwaysUseFallback` in its "menu" state (a deliberate, unrelated
+  reliability fix from earlier in this project — a shared direct clinic
+  link may have unpredictable real history, which `alwaysUseFallback` was
+  added to guard against, see this file's own earlier "Home role-card
+  descriptions removed…" section) — meaning if a visitor opens "book",
+  then clicks that physical button instead of the in-page link, a
+  same-URL marker is left stranded on the stack while a real forward
+  navigation happens on top of it. The practical effect is bounded and
+  disclosed, not silently accepted: in that specific combination, leaving
+  `/find/book` afterward via a real back press can take one extra press
+  to fully clear (never a crash, never a skipped/wrong destination — at
+  worst a harmless "nothing visibly happened" press before the correct
+  destination is reached). Not fixed this pass because doing so would
+  mean weakening `alwaysUseFallback`'s own, separately-earned reliability
+  guarantee for the direct-link case — a real tradeoff, not an oversight,
+  and one this sandbox has no real Android device to weigh empirically
+  either way.
+- **Android's actual physical/gesture back button was not tested on a
+  real device or emulator** (same standing limitation as every other
+  Android-adjacent item in this file — this sandbox still can't reach
+  `dl.google.com`) — verification instead used Playwright's real
+  `page.goBack()`, which drives the same History API a TWA's back press
+  ultimately delegates to (`WebView.canGoBack()`/`goBack()`), so this is
+  the closest verification obtainable in this environment, not a
+  simulation stood in for the real thing without disclosure.
+
+### Not yet deployed
+
+No `firestore.rules` changes were needed — every change in this pass is
+client-side navigation/state/markup only. Committed and pushed per this
+project's standing practice of holding `firebase deploy` for an explicit
+go-ahead (or a bare service-account key, read as "deploy this once
+ready") — neither arrived with this request.

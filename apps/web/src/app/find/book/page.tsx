@@ -14,6 +14,7 @@ import BackButton from "../../../components/BackButton";
 import AppBackdrop from "../../../components/AppBackdrop";
 import PatientGate from "../../../components/PatientGate";
 import { ensurePatientSession } from "../../../lib/firebase/auth";
+import { useLocalBackStep } from "../../../lib/useLocalBackStep";
 import {
   bookSlot,
   getAppointmentId,
@@ -47,13 +48,38 @@ export default function BookClinicPage() {
 
 function BookClinic() {
   const router = useRouter();
-  const slug = useSearchParams().get("clinic") ?? "";
+  const searchParams = useSearchParams();
+  const slug = searchParams.get("clinic") ?? "";
   const date = todayISO();
+
+  // Carried over from /find's own search-results view (see that page's
+  // FindClinicSearch, which appends these to this page's own link) so
+  // "back" can restore the exact prior category/query state instead of
+  // landing on /find's default (the category-selection screen) — the
+  // literal "تفاصيل المركز -> رجوع -> نتائج البحث بنفس الحالة" example
+  // from the navigation-audit request this page's own back logic below
+  // was rewritten for. Absent entirely for a clinic's own shared direct
+  // link (no /find visit preceded this one), which is exactly when
+  // falling back to plain /find is correct anyway.
+  const backCategory = searchParams.get("category") ?? "";
+  const backQuery = searchParams.get("q") ?? "";
+  const backToFindHref =
+    "/find" +
+    (backCategory
+      ? `?category=${encodeURIComponent(backCategory)}${backQuery ? `&q=${encodeURIComponent(backQuery)}` : ""}`
+      : "");
 
   const [clinic, setClinic] = useState<ClinicDoc | null | undefined>(undefined); // undefined = loading
   // "menu" = the clinic landing page (تثبيت حجز / شاشة الانتظار); "book"
-  // = the existing slot-grid flow, now reached only from that menu.
+  // = the existing slot-grid flow, now reached only from that menu. A
+  // plain useState step like this has no history entry of its own, so a
+  // real back button/gesture used to skip straight past "menu" to /find
+  // even while "book" was open — see lib/useLocalBackStep.ts for why and
+  // how this is fixed: entering "book" now also pushes a same-URL history
+  // marker, so a real back press returns to "menu" first, matching the
+  // in-page "‹ رجوع لقائمة العيادة" link's own one-step behavior exactly.
   const [view, setView] = useState<"menu" | "book">("menu");
+  const { enter: enterBookView, leave: leaveBookView } = useLocalBackStep(() => setView("menu"));
   const [activeBooking, setActiveBooking] = useState<ReturnType<typeof getActiveBooking> | undefined>(undefined);
   const [availability, setAvailability] = useState<Record<string, boolean>>({});
   const [availabilityLoading, setAvailabilityLoading] = useState(true);
@@ -211,7 +237,7 @@ function BookClinic() {
         <AppBackdrop />
         <div className="relative">
           <p className="text-red-600">هذه العيادة غير موجودة أو غير متاحة للحجز حالياً.</p>
-          <BackButton fallbackHref="/find" label="رجوع للبحث" alwaysUseFallback className="mt-4 inline-block text-brand-600 hover:underline" />
+          <BackButton fallbackHref={backToFindHref} label="رجوع للبحث" alwaysUseFallback className="mt-4 inline-block text-brand-600 hover:underline" />
         </div>
       </main>
     );
@@ -230,7 +256,17 @@ function BookClinic() {
     <main dir="rtl" className="relative min-h-screen mx-auto max-w-2xl p-6">
       <AppBackdrop />
       <div className={"relative transition-opacity duration-300 " + (leaving ? "opacity-0" : "opacity-100")}>
-      <BackButton fallbackHref="/find" label="رجوع للبحث" alwaysUseFallback />
+      {view === "book" ? (
+        // One step at a time: while the booking sub-view is open, the
+        // physical corner control returns to this clinic's own menu
+        // first — same destination and behavior as the in-page "‹ رجوع
+        // لقائمة العيادة" link below, just reachable from the fixed
+        // corner control too, and from a real back press/gesture (see
+        // useLocalBackStep).
+        <BackButton label="رجوع" overrideOnClick={leaveBookView} />
+      ) : (
+        <BackButton fallbackHref={backToFindHref} label="رجوع للبحث" alwaysUseFallback />
+      )}
 
       <h1 className="mt-3 text-xl font-bold" style={{ color: "#00ADB5" }}>
         {clinic.clinicName}
@@ -244,7 +280,10 @@ function BookClinic() {
         <ClinicMenu
           clinic={clinic}
           activeBooking={activeBooking}
-          onBook={() => setView("book")}
+          onBook={() => {
+            enterBookView();
+            setView("book");
+          }}
           onWait={(waitUrl) => router.push(waitUrl)}
         />
       )}
@@ -253,7 +292,7 @@ function BookClinic() {
         <>
           <button
             type="button"
-            onClick={() => setView("menu")}
+            onClick={leaveBookView}
             className="mb-4 block text-sm text-brand-600 hover:underline"
           >
             ‹ رجوع لقائمة العيادة

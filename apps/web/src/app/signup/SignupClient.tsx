@@ -31,6 +31,7 @@ import { saveSignupAccountPdf } from "../../lib/pdf/saveAccountPdf";
 import EntityTypeGrid from "../../components/EntityTypeGrid";
 import BackButton from "../../components/BackButton";
 import AppBackdrop from "../../components/AppBackdrop";
+import { useLocalBackStep } from "../../lib/useLocalBackStep";
 
 // Sanity cap on the raw upload before client-side compression kicks in
 // (see registerClinic() -> compressLicenseImageToDataUrl()), not the
@@ -56,6 +57,20 @@ export default function SignupClient() {
   // via a pre-paint effect, not a different default.
   const [view, setView] = useState<"type" | "form">("type");
   const decidedInitialView = useRef(false);
+  // See lib/useLocalBackStep.ts: picking a type (or the "لديك حساب
+  // بالفعل؟" login link) from the "type" screen is a plain useState step
+  // with no history entry of its own, so a real back press/gesture used
+  // to skip straight past "type" to whatever preceded /signup entirely
+  // (e.g. Home). Entering "form" now also pushes a same-URL history
+  // marker, so a real back returns to "type" first — the exact same one
+  // step the in-page "‹ رجوع لاختيار نوع المركز" link already performs,
+  // and (via the physical BackButton's own existing router.back() smart
+  // default on the login/admin branch) the same step that control now
+  // gets too, with no changes to it at all. The `?mode=login` bypass
+  // below deliberately never calls enter() — there's no "type" screen in
+  // that visitor's own flow to return to, so a real back correctly keeps
+  // leaving /signup entirely.
+  const { enter: enterFormView, leave: leaveFormView } = useLocalBackStep(() => setView("type"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
@@ -251,7 +266,16 @@ export default function SignupClient() {
 
           <EntityTypeGrid
             onSelect={(t) => {
+              enterFormView();
               setEntityType(t);
+              // Defensive reset: a visitor who once toggled to "login"
+              // mode (see the toggle inside the form below), then came
+              // back here and picked a type, clearly wants a fresh
+              // signup for that type — not to have the form silently
+              // stay in login mode (which would hide the clinicName/
+              // description fields and submit as a sign-in attempt,
+              // ignoring the type they just picked).
+              setClinicMode("signup");
               setError(null);
               setView("form");
             }}
@@ -260,6 +284,7 @@ export default function SignupClient() {
           <button
             type="button"
             onClick={() => {
+              enterFormView();
               setClinicMode("login");
               setError(null);
               setView("form");
@@ -288,7 +313,7 @@ export default function SignupClient() {
           <button
             type="button"
             onClick={() => {
-              setView("type");
+              leaveFormView();
               setError(null);
             }}
             className="mb-3 block text-sm text-brand-600 hover:underline"
@@ -335,8 +360,14 @@ export default function SignupClient() {
                 // via the login link on the "type" screen.
                 setClinicMode("login");
               } else {
+                // Same one step as the "‹ رجوع لاختيار نوع المركز" link —
+                // this toggle is just a second door to it, so it goes
+                // through the identical leave() path (pops this view's
+                // own history marker rather than only resetting React
+                // state), keeping the browser's back stack honest either
+                // way this step is left.
                 setClinicMode("signup");
-                setView("type");
+                leaveFormView();
               }
               setError(null);
             }}
