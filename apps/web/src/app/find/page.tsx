@@ -354,8 +354,8 @@ function FindTopBar({
         {subtitle && <p className="mt-1 text-sm text-gray-500">{subtitle}</p>}
       </div>
       <div className="flex flex-none gap-2">
-        <TopIconCard icon={<SettingsIcon />} label="الإعدادات" onClick={onOpenSettings} />
         <TopIconCard icon={<BellTopIcon />} label="الإشعارات" onClick={onOpenNotifications} badgeCount={unreadCount} />
+        <TopIconCard icon={<SettingsIcon />} label="الإعدادات" onClick={onOpenSettings} />
       </div>
     </div>
   );

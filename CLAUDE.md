@@ -4770,10 +4770,54 @@ using only real, already-existing status values, never invented ones.
   category screens specifically, so the other three screens were left
   untouched rather than redesigned speculatively, matching this
   project's own standing scope discipline.
-- **Not yet deployed** — no service-account key was shared alongside this
-  request; held per this project's standing practice of waiting for the
-  user's explicit go-ahead (or a key with no accompanying text, read as
-  "deploy this once ready") before pushing to `mawid-app-d1d03`.
+- **Deployed** — see the immediately following follow-up section for the
+  actual deploy details (the icon-swap request below arrived with a
+  service-account key attached, so both this feature and that swap
+  shipped together in one deploy).
+
+### Follow-up: swapped icon positions (الإشعارات takes الإعدادات's spot) + deployed
+
+The user's next message: swap the two header cards' positions so
+"الإشعارات" sits where "الإعدادات" was, then deploy everything —
+attached with a fresh Firebase service-account key.
+
+- **`FindTopBar` in `app/find/page.tsx`**: the two `<TopIconCard>` calls
+  were reordered — `BellTopIcon`/"الإشعارات" now renders first in DOM,
+  `SettingsIcon`/"الإعدادات" second. Since this row sits inside the
+  page's own `dir="rtl"` flow, the first DOM child of a flex row lands at
+  the physical *right* position within that pair (the same RTL-ordering
+  rule already documented and reused throughout this file for the home
+  screen's role cards and the service-category grid) — so الإشعارات now
+  occupies the position الإعدادات held before, and vice versa, exactly as
+  asked. No other markup, styling, or behavior changed — same two
+  matching 74px cards, same badge logic, same click handlers, just
+  reordered.
+- **Verified**: `tsc --noEmit` (via `next build`) and the static export
+  build both clean, zero bundle-size change (a pure reorder of two
+  existing JSX elements).
+- **Deployed — both `firestore.rules` and `apps/web/out/`, this segment
+  and the entire preceding Notification Center feature together**: the
+  notification-center `firestore.rules` change (documented above) had
+  never been pushed live yet, so it went out in this same pass —
+  deployed via the direct Rules API technique (ruleset
+  `projects/mawid-app-d1d03/rulesets/396498d5-9354-4af8-9b1a-e81004454c58`),
+  confirmed live by reading the release back and diffing its
+  `rulesetName` against what was just created. Hosting followed via
+  `firebase deploy --only hosting` (worked through the CLI directly, no
+  permission wall, consistent with every prior hosting deploy in this
+  file), verified FINALIZED by reading the release back from the Hosting
+  Management API (release
+  `sites/mawid-app-d1d03/releases/1788780701650000`) — this sandbox still
+  can't reach `*.web.app` directly to browse it. The service-account key
+  was deleted immediately after — both the copy used for the deploy and
+  the original upload.
+- **Not independently live-verified beyond what the previous section
+  already covered**: the icon swap itself is a two-line JSX reorder with
+  no new logic, so no additional live testing was performed specifically
+  for it — the same "not independently live-verified" gaps disclosed in
+  the Notification Center section above (the actual populated notification
+  list, a real clinic-driven status change bumping the badge live) still
+  stand and are unaffected by this deploy.
 
 ## Next steps if resumed
 
