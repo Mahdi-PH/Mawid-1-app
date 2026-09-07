@@ -66,8 +66,8 @@ function isStandaloneDisplay(): boolean {
 
 // Card visual constants — kept together so the card's proportions stay
 // easy to retune in one place rather than scattered magic numbers.
-const CARD_ICON_SIZE = 56; // the light-teal circle behind each card's icon
-const CARD_ARROW_SIZE = 40; // the small circular arrow button at the card's foot
+const CARD_ICON_SIZE = 48; // the light-teal circle behind each card's icon
+const CARD_ARROW_SIZE = 36; // the small circular arrow button at the card's foot
 const CARD_ICON_BG = "#EAF6F3"; // same light-teal token already used for icon circles in ClinicAccountDrawer/PatientSettingsDrawer
 const CARD_WAVE_FILL = "#EAF6F3";
 
@@ -104,8 +104,8 @@ function ArrowIcon() {
 function HomeOptionCard({ icon, title, subtitle }: { icon: React.ReactNode; title: React.ReactNode; subtitle?: React.ReactNode }) {
   return (
     <>
-      <svg aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-12 w-full" viewBox="0 0 200 48" preserveAspectRatio="none">
-        <path d="M0,26 C50,46 150,4 200,24 L200,48 L0,48 Z" fill={CARD_WAVE_FILL} />
+      <svg aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-8 w-full" viewBox="0 0 200 32" preserveAspectRatio="none">
+        <path d="M0,17 C50,31 150,3 200,16 L200,32 L0,32 Z" fill={CARD_WAVE_FILL} />
       </svg>
       <div
         className="relative z-10 flex items-center justify-center rounded-full"
@@ -113,7 +113,7 @@ function HomeOptionCard({ icon, title, subtitle }: { icon: React.ReactNode; titl
       >
         {icon}
       </div>
-      <h2 className="relative z-10 text-lg font-bold leading-snug" style={{ color: "#00ADB5" }}>
+      <h2 className="relative z-10 text-[15px] font-bold leading-snug" style={{ color: "#00ADB5" }}>
         {title}
       </h2>
       {subtitle && (
@@ -357,7 +357,7 @@ export default function Home() {
 
   return (
     <main
-      className="relative flex min-h-screen flex-col items-center justify-center gap-10 p-8 text-center"
+      className="relative flex min-h-screen flex-col items-center justify-center gap-10 px-5 py-8 text-center"
       style={{ background: "#F2FBFC" }}
       onClick={introActive ? beginReveal : undefined}
     >
@@ -422,7 +422,7 @@ export default function Home() {
 
       <div
         className={
-          "relative grid w-full max-w-2xl grid-cols-2 gap-4 " +
+          "relative grid w-full max-w-2xl grid-cols-2 gap-3 " +
           (contentVisible && !leaving ? "animate-fade-in-up" : contentVisible ? "" : "pointer-events-none opacity-0")
         }
         style={{ animationDelay: contentVisible && !leaving ? "120ms" : undefined }}
@@ -437,7 +437,7 @@ export default function Home() {
               href={href}
               onClick={(e) => handleRoleClick(e, href)}
               className={
-                "relative flex flex-col items-center gap-2 overflow-hidden rounded-2xl border p-5 pb-6 text-center shadow-sm transition-all duration-300 ease-out hover:-translate-y-0.5 " +
+                "relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl border px-2 py-4 text-center shadow-sm transition-all duration-300 ease-out hover:-translate-y-0.5 " +
                 (leaving
                   ? "translate-y-3 scale-95 opacity-0"
                   : isSelected
@@ -446,7 +446,7 @@ export default function Home() {
                       ? "scale-95 opacity-50"
                       : "")
               }
-              style={{ borderColor: "#d3ece9", background: "white", minHeight: 200 }}
+              style={{ borderColor: "#d3ece9", background: "white" }}
             >
               <HomeOptionCard icon={card.icon} title={card.title} subtitle={card.subtitle} />
             </Link>

@@ -4365,6 +4365,63 @@ not want.
   `mawid-app-d1d03`, same standing practice as every other deploy in
   this file.
 
+### Follow-up: role cards were still too tall — shortened to match the reference proportions
+
+Immediate feedback on the redesign above, with the same reference image
+re-attached: "أبعاد الخيارات عملتها بشكل مستطيل أكثر من اللازم، أريدها
+قريبة من أبعاد الخيارات في هذه الصورة، أريدها أقصر وأعرض مشابهاً لما في
+الصورة" (the cards came out too tall/rectangular; make them shorter and
+wider, closer to the reference's own proportions).
+
+- **Shrunk the card's own internal chrome** (`app/page.tsx`): icon circle
+  56px → 48px, arrow button 40px → 36px, the decorative bottom wave's SVG
+  height 48px → 32px (viewBox/path scaled to match) — all three still
+  driven by the same `CARD_ICON_SIZE`/`CARD_ARROW_SIZE`/wave-path
+  constants introduced in the redesign above, so this stayed a small,
+  centralized edit. Card padding `p-5 pb-6` → `px-2 py-4`, `gap-2` →
+  `gap-1.5`, and the removed `minHeight: 200` inline style (nothing sets
+  a floor on card height now — content alone decides it, which is what
+  actually makes "shorter" possible instead of merely thinning the
+  padding around a fixed-height box).
+- **Widened the cards, not just shortened them** — the "وأعرض" half of
+  the request needed more than just tighter card padding, since the grid
+  itself was constrained by the page's own edge padding: `<main>`'s
+  `p-8` → `px-5 py-8` (horizontal only, vertical rhythm above/below the
+  cards left alone) and the grid's `gap-4` → `gap-3`, freeing real extra
+  width for each card at every tested viewport.
+- **A real, iteratively-diagnosed line-wrap problem, not a one-shot
+  fix**: the "find" card's title ("البحث عن خدمة" + a manual `<br/>` +
+  "أو حجز موعد", matching the reference's own two-line copy) kept
+  fighting the card's narrow width. `text-lg` wrapped to 4 short lines;
+  `text-base` + `whitespace-nowrap` fixed the line count but caused real
+  text clipping past the card's edge at 320px (caught by screenshot, not
+  assumed — a hard violation of the spec's own explicit no-overflow
+  rule, so reverted immediately); `text-base` with no `whitespace-nowrap`
+  avoided clipping but still wrapped to 3 lines, taller than the
+  "center" card's own 2-line title. The width increases above
+  (`px-2` card padding, `px-5` main padding, `gap-3`) were what actually
+  fixed this — once the card had enough real width, `text-[15px]` (no
+  forced nowrap) renders "البحث عن خدمة" / "أو حجز موعد" as a clean two
+  lines matching the reference, confirmed by screenshot at all three
+  tested widths, not just assumed from the class name change.
+- **Verified across the same three widths used throughout this
+  sub-thread** (375/340/320px, via a local static server + Playwright,
+  `mawid_splash_seen` pre-seeded to skip straight to the settled home
+  view): both cards render visibly shorter/wider, matching the
+  reference's own proportions; the "find" card's title holds at a clean
+  2 lines at 375px and 340px; at 320px (the narrowest width this project
+  tests) the "find" title still holds at 2 lines while the "center"
+  card's longer subtitle wraps to 3 lines instead of 2 — a small,
+  disclosed height difference between the two cards at the single
+  narrowest tested width, not overflow or clipping (nothing crosses a
+  card's own edge at any width, confirmed by eye in every screenshot).
+  `tsc --noEmit` (via `next build`) and the static export build are both
+  clean.
+- **Not yet deployed** — no fresh service-account key was available in
+  this pass either (the previous one was already spent on the redesign
+  commit above, which itself never got deployed) — same disclosed gap,
+  carried forward.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —
