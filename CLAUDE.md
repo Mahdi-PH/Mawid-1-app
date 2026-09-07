@@ -4427,6 +4427,140 @@ wider, closer to the reference's own proportions).
   key was deleted immediately after — both the copy used for the deploy
   and the original upload.
 
+## /find gained a service-category filter step (مراكز تجميل / عيادات طبية / أخرى)
+
+A large, very detailed spec (addressed to "a Senior mobile/UI-UX
+developer", with a reference screenshot of a 2×2 service-category grid —
+"عيادات طبية" / "مراكز تجميل" / "أخرى" / "المزيد") asking for a new step
+inserted into the patient search flow: Home → "البحث عن مركز" → auth (if
+needed) → a new category-selection screen → the existing search screen,
+now scoped to the chosen category. The reference's fourth card ("المزيد")
+was explicitly excluded — only 3 categories requested.
+
+- **Reused `ClinicDoc.entityType` — no new field, no new query, no
+  backfill.** The three requested categories ("مراكز تجميل" / "عيادات
+  طبية" / "أخرى") map exactly onto the three `EntityType` values
+  ("beauty" / "clinic" / "salon") every clinic already picks once,
+  mandatorily, at signup — see the earlier "Dynamic Entity Specialization"
+  and ""صالون حلاقة" renamed to "مركز تجاري آخر"" sections in this file,
+  the latter of which already renamed "salon"'s own *display* label to
+  "مركز تجاري آخر" for unrelated reasons. "أخرى" here is that same
+  category, just surfaced as a filter option instead of only driving
+  wording elsewhere in the app. Filtering is a plain client-side
+  `.filter()` over the same small `listApprovedClinics()` result set
+  `/find` already fetches — no new Firestore query, no composite index,
+  matching this track's own established "small list, filter client-side"
+  convention used throughout this file.
+- **`lib/serviceCategories.ts`** (new): the one place the three
+  categories' title/subtitle/colors live (`SERVICE_CATEGORY_META`, keyed
+  by `EntityType`), mirroring `lib/firebase/terminology.ts`'s own per-
+  entityType dictionary pattern — a future fourth category would only
+  need one more entry here plus an icon, not a new component.
+  `resolveEntityType()` mirrors `getTerminology()`'s own established
+  fallback: a clinic doc from before `entityType` existed reads as
+  "clinic" rather than being silently dropped from every category's
+  results.
+- **`components/ServiceCategoryCard.tsx`** (new, reusable, per the
+  request's own explicit ask): icon in a soft tinted circle, title, one-
+  line subtitle, a small circular arrow button, and a soft SVG wave along
+  the card's bottom edge — the same wave/icon-circle/arrow-button
+  technique the home screen's own `HomeOptionCard` already established
+  (see the "Home screen role cards redesigned…" sections above), just
+  parameterized per-color (`accent`/`iconBg` props) since three different
+  categories need three different accents instead of one shared brand
+  teal. The whole card is one `<button>`, not just the arrow, per the
+  request's explicit "البطاقة كلها قابلة للضغط."
+- **Colors**: "عيادات طبية" reuses the app's own existing primary teal
+  (`#00ADB5`/`#EAF6F3`, already used everywhere) and "أخرى" reuses the
+  app's own existing lighter "light" brand token (`#2DD6DC`, paired with
+  a very light cyan `#E7FBFA`) — both already-established tokens, no new
+  color needed for either, per the request's own explicit "استخدم النظام
+  الموجود." "مراكز تجميل" needed a genuinely new token since the app's
+  existing palette has no pink — added one pair (`#E38AA6`/`#FCEEF3`),
+  sampled from the user's own reference image rather than guessed.
+- **Icons**: three small new inline-SVG line icons (a building-with-cross
+  for clinics, a four-petal flower for beauty, a 2×2 grid for "أخرى"),
+  matching the exact stroke-based style (`stroke="currentColor"`,
+  `strokeWidth 1.8`, rounded caps) already established by the home
+  screen's own `PinIcon`/`SearchIcon` — no emoji, no new icon library
+  (the project's existing assets had no ready-made hospital/beauty/grid
+  glyphs to reuse, confirmed by checking `public/brand/` first, per the
+  request's own explicit "ابحث داخل المشروع عن Assets قبل إضافة أي
+  asset جديد").
+- **`app/find/page.tsx` restructured**: a new `category: EntityType |
+  null` state, `null` by default — renders `ServiceCategoryFilter` (the
+  new screen) when unset, or the existing `FindClinicSearch` (now
+  filtering on a `category` prop, not duplicated per category — per the
+  request's own explicit "لا تكرر شاشة البحث") once one is picked.
+  Picking a category is a plain local state change, not a route/URL
+  change — matching this project's own established pattern for a multi-
+  step single-route flow (see `/find/book`'s "menu"/"book" view state).
+  The "موعدك الحالي" (active-booking resume) card and its live
+  `onSnapshot` watcher were moved up to this top level, rendered above
+  whichever phase is showing, rather than living only inside the search
+  phase as before — an active booking already belongs to one specific
+  clinic, so gating it behind an unrelated category choice first would
+  have been a real regression to the resume-your-booking flow this
+  project already built and tested (see the "Patient local session" and
+  "Patient end-of-visit deletion" sections above); this was a deliberate
+  design call beyond the literal spec, not an oversight.
+- **Navigation, decided deliberately rather than literally**: the
+  request's own example back-chain ("Service Search ← Category Filter ←
+  Home") was implemented as *two different* mechanisms, not one BackButton
+  changing target: the physical, pinned top-corner back button (used
+  identically on every other `/find/*` screen, already heavily verified
+  throughout this file) still always goes straight to `/` — left
+  completely unchanged, since retargeting a control this well-tested
+  across the whole app carried real regression risk the request itself
+  warned against ("لا تكسر الوظائف الحالية"). A new, separate in-page
+  "‹ رجوع لاختيار نوع الخدمة" text link handles the *search → category*
+  step specifically, mirroring `/find/book`'s own already-established
+  two-level in-page-link pattern verbatim (its "‹ رجوع لقائمة العيادة").
+  Net result: from the search screen, one tap reaches category selection,
+  and from there one more (unchanged) tap reaches home — the same number
+  of taps the literal chain implies, via a safer split than the example
+  diagram's literal reading.
+- **`/find/book` (a clinic's own shared public booking link) was
+  deliberately left untouched** — it has its own embedded `PatientGate`
+  and bypasses `/find` entirely by design (see the "Home role-card
+  descriptions removed…" section above for why), and the request's own
+  flow diagram only describes the `Home → "البحث عن مركز"` entry point,
+  not direct clinic links — forcing an unrelated category choice onto a
+  visitor who already followed a specific clinic's own link would break
+  that existing, explicitly-designed shortcut.
+- **Verified, not just built**: `tsc --noEmit` (via `next build`) and the
+  static export build are both clean (`/find` grew 2.56 kB → 3.85 kB, the
+  new screen's own weight). A local Playwright pass against the exported
+  `out/` (a seeded `mawid_patient_profile`/`mawid_patient_session_active`
+  localStorage pair to skip straight past the gate, since this sandbox
+  has no live Firestore reach outside the request-interception pattern
+  used elsewhere in this file) confirmed at three widths (390/340/320px):
+  zero console/page errors; "مراكز تجميل" renders on the right and
+  "عيادات طبية" on the left (the same RTL-grid-order rule already
+  documented for the home screen's own cards); "أخرى" alone in row two,
+  centered at the same card width, no lopsided gap; no text overflow or
+  clipping down to 320px; no fourth "المزيد" card anywhere. A second pass
+  drove the actual navigation: tapping "عيادات طبية" transitions to the
+  search screen (heading now shows "عيادات طبية" as the active category,
+  the "‹ رجوع لاختيار نوع الخدمة" link is present); clicking that link
+  returns to the category screen; the physical top back button still
+  goes straight to `/` from the category screen, confirmed by reading
+  `page.url()` after the click, not assumed.
+- **Not independently live-verified**: no live Firestore session was
+  exercised for the actual *filtered results* themselves (does a real
+  "beauty" clinic actually appear only under "مراكز تجميل" and not the
+  other two) — the filter logic itself is a plain, directly-readable
+  `.filter()` predicate over data already fetched by an unchanged,
+  already-live-verified function (`listApprovedClinics()`), so risk is
+  concentrated in the new UI wiring, which is what was actually exercised
+  above. Recommended before treating this as fully verified: a real
+  signup of each entity type, then confirming each one appears only
+  under its own category on `/find`.
+- **Not yet deployed** — no service-account key was shared alongside this
+  request; held per this project's standing practice of waiting for the
+  user's explicit go-ahead (or a key with no accompanying text, read as
+  "deploy this once ready") before pushing to `mawid-app-d1d03`.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

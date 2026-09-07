@@ -8,12 +8,22 @@
 // instead of localStorage. Search matches clinic name + governorate/
 // district text, same fields the demo's single search box matches - no
 // GPS, per the same product decision already made for the artifact.
-import { useEffect, useMemo, useState } from "react";
+//
+// A service-category filter step (مراكز تجميل / عيادات طبية / أخرى) now
+// sits between the patient gate and the actual search UI — see
+// lib/serviceCategories.ts for why this reuses ClinicDoc.entityType
+// rather than a new field. The search screen itself (FindClinicSearch)
+// isn't duplicated per category: it's the exact same component, now
+// filtering on a `category` prop, matching the request's own "don't
+// repeat the search screen if it can take a category parameter instead."
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import ConfirmPopup from "../../components/ConfirmPopup";
+import ServiceCategoryCard from "../../components/ServiceCategoryCard";
 import { ensurePatientSession } from "../../lib/firebase/auth";
 import { deleteAppointment, listApprovedClinics, watchAppointment } from "../../lib/firebase/firestore";
-import type { AppointmentDoc, ClinicDoc } from "../../lib/firebase/types";
+import type { AppointmentDoc, ClinicDoc, EntityType } from "../../lib/firebase/types";
+import { SERVICE_CATEGORY_META, SERVICE_CATEGORY_ORDER, resolveEntityType } from "../../lib/serviceCategories";
 import BackButton from "../../components/BackButton";
 import AppBackdrop from "../../components/AppBackdrop";
 import PatientSettingsDrawer from "../../components/PatientSettingsDrawer";
@@ -36,57 +46,14 @@ export default function FindClinicPage() {
   // home screen's own localStorage-gated splash check).
   const [profile, setProfile] = useState<PatientProfile | null | undefined>(undefined);
   const [activeBooking, setActiveBooking] = useState<ActiveBooking | null>(null);
-
-  useEffect(() => {
-    setProfile(getPatientProfile());
-    setActiveBooking(getActiveBooking());
-  }, []);
-
-  if (profile === undefined) {
-    return (
-      <div className="relative min-h-screen">
-        <AppBackdrop />
-      </div>
-    );
-  }
-
-  if (profile === null) {
-    return (
-      <PatientGate
-        onDone={(p) => {
-          setProfile(p);
-          setActiveBooking(getActiveBooking());
-        }}
-      />
-    );
-  }
-
-  return (
-    <FindClinicSearch profile={profile} activeBooking={activeBooking} />
-  );
-}
-
-function FindClinicSearch({
-  profile,
-  activeBooking: initialActiveBooking,
-}: {
-  profile: PatientProfile;
-  activeBooking: ActiveBooking | null;
-}) {
-  const [clinics, setClinics] = useState<ClinicDoc[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [q, setQ] = useState("");
-  const [activeBooking, setActiveBooking] = useState(initialActiveBooking);
+  const [category, setCategory] = useState<EntityType | null>(null);
   const [showEndPrompt, setShowEndPrompt] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
-    listApprovedClinics()
-      .then(setClinics)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
+    setProfile(getPatientProfile());
+    setActiveBooking(getActiveBooking());
   }, []);
 
   // Covers the same "انتهى موعدك، هل تريد حذف الحجز؟" prompt as
@@ -94,7 +61,13 @@ function FindClinicSearch({
   // (closed the waiting-screen tab, or never opened it) instead of
   // reopening the specific appointment's own page — live via onSnapshot,
   // not a one-time fetch, so it still fires if the clinic finishes the
-  // visit while this tab happens to be open.
+  // visit while this tab happens to be open. Lives at this top level
+  // (not inside whichever phase is currently showing) so "موعدك الحالي"
+  // stays reachable immediately after auth, without needing to pick a
+  // category first — an active booking already belongs to one specific
+  // clinic, so gating it behind an unrelated category choice would be a
+  // real regression to the resume-your-booking flow this project already
+  // built and tested (see CLAUDE.md's patient-local-session sections).
   useEffect(() => {
     if (!activeBooking) return;
     let unsubscribe: (() => void) | undefined;
@@ -143,46 +116,195 @@ function FindClinicSearch({
     setShowEndPrompt(false);
   }
 
-  const filtered = useMemo(() => {
-    const needle = q.trim();
-    if (!needle) return clinics;
-    return clinics.filter((c) => {
-      const haystack = `${c.clinicName} - ${c.district ?? ""} ${c.gov ?? ""}`;
-      return haystack.includes(needle);
-    });
-  }, [clinics, q]);
+  if (profile === undefined) {
+    return (
+      <div className="relative min-h-screen">
+        <AppBackdrop />
+      </div>
+    );
+  }
+
+  if (profile === null) {
+    return (
+      <PatientGate
+        onDone={(p) => {
+          setProfile(p);
+          setActiveBooking(getActiveBooking());
+        }}
+      />
+    );
+  }
 
   return (
     <main dir="rtl" className="relative min-h-screen mx-auto max-w-2xl p-6">
       <AppBackdrop />
       <div className="relative">
-      <PatientSettingsDrawer profile={profile} />
-      <div className="pl-11">
-        <BackButton
-          fallbackHref="/"
-          alwaysUseFallback
-          className="mb-3 block text-sm text-brand-600 hover:underline"
-        />
+        <PatientSettingsDrawer profile={profile} />
+        <div className="pl-11">
+          <BackButton fallbackHref="/" alwaysUseFallback className="mb-3 block text-sm text-brand-600 hover:underline" />
+        </div>
+
+        {activeBooking && (
+          <Link
+            href={`/find/wait?clinic=${encodeURIComponent(activeBooking.clinicSlug)}&appt=${encodeURIComponent(activeBooking.apptId)}`}
+            className="mb-6 block rounded-xl border-2 p-4 transition hover:-translate-y-0.5"
+            style={{ borderColor: "#00ADB5", background: "#EEF7F6" }}
+          >
+            <div className="text-sm text-gray-500">موعدك الحالي</div>
+            <div className="font-bold" style={{ color: "#00ADB5" }}>
+              {activeBooking.clinicName} — {activeBooking.startTime}
+            </div>
+            <div className="mt-1 text-xs text-brand-600">فتح شاشة الانتظار ‹</div>
+          </Link>
+        )}
+        {deleteError && <p className="mb-4 text-sm text-red-600">{deleteError}</p>}
+
+        {category === null ? (
+          <ServiceCategoryFilter onSelect={setCategory} />
+        ) : (
+          <FindClinicSearch category={category} onChangeCategory={() => setCategory(null)} />
+        )}
       </div>
 
-      {activeBooking && (
-        <Link
-          href={`/find/wait?clinic=${encodeURIComponent(activeBooking.clinicSlug)}&appt=${encodeURIComponent(activeBooking.apptId)}`}
-          className="mb-6 block rounded-xl border-2 p-4 transition hover:-translate-y-0.5"
-          style={{ borderColor: "#00ADB5", background: "#EEF7F6" }}
-        >
-          <div className="text-sm text-gray-500">موعدك الحالي</div>
-          <div className="font-bold" style={{ color: "#00ADB5" }}>
-            {activeBooking.clinicName} — {activeBooking.startTime}
-          </div>
-          <div className="mt-1 text-xs text-brand-600">فتح شاشة الانتظار ‹</div>
-        </Link>
-      )}
+      <ConfirmPopup
+        open={showEndPrompt}
+        title="انتهى موعدك، هل تريد حذف الحجز؟"
+        confirmLabel="نعم، حذف الحجز"
+        cancelLabel="لا، إبقاء السجل"
+        busy={deleting}
+        onConfirm={handleDeleteBooking}
+        onCancel={handleKeepBooking}
+      />
+    </main>
+  );
+}
+
+function ClinicCategoryIcon() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 9.5 12 4l8 5.5" />
+      <rect x="5" y="9.5" width="14" height="11" rx="1" />
+      <path d="M12 12.5v5M9.5 15h5" />
+    </svg>
+  );
+}
+
+function BeautyCategoryIcon() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="2.2" />
+      <path d="M12 4.5c1.6 0 2.8 1.4 2.8 3.1S13.6 10.7 12 10.7 9.2 9.3 9.2 7.6 10.4 4.5 12 4.5Z" />
+      <path d="M19.5 12c0 1.6-1.4 2.8-3.1 2.8S13.3 13.6 13.3 12s1.4-2.8 3.1-2.8 3.1 1.2 3.1 2.8Z" />
+      <path d="M12 19.5c-1.6 0-2.8-1.4-2.8-3.1s1.2-2.8 2.8-2.8 2.8 1.4 2.8 3.1-1.2 2.8-2.8 2.8Z" />
+      <path d="M4.5 12c0-1.6 1.4-2.8 3.1-2.8s2.8 1.4 2.8 3.1-1.4 2.8-3.1 2.8S4.5 13.6 4.5 12Z" />
+    </svg>
+  );
+}
+
+function OtherCategoryIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="4" y="4" width="7" height="7" rx="1.5" />
+      <rect x="13" y="4" width="7" height="7" rx="1.5" />
+      <rect x="4" y="13" width="7" height="7" rx="1.5" />
+      <rect x="13" y="13" width="7" height="7" rx="1.5" />
+    </svg>
+  );
+}
+
+const CATEGORY_ICON: Record<EntityType, ReactNode> = {
+  beauty: <BeautyCategoryIcon />,
+  clinic: <ClinicCategoryIcon />,
+  salon: <OtherCategoryIcon />,
+};
+
+/** The new step between the patient gate and the search results —
+ *  "مراكز تجميل" / "عيادات طبية" (row one) and "أخرى" alone (row two,
+ *  centered at the same width as the other two so it doesn't leave a
+ *  lopsided empty gap). Picking a category doesn't navigate anywhere —
+ *  it's the same `/find` route, just a local state change (matching this
+ *  project's own established pattern for a multi-step single-route flow,
+ *  see /find/book's "menu"/"book" view state) — so "leaving" it uses
+ *  `onChangeCategory` inside FindClinicSearch below, not browser back. */
+function ServiceCategoryFilter({ onSelect }: { onSelect: (category: EntityType) => void }) {
+  return (
+    <div className="animate-fade-in-up">
+      <div className="mb-6">
+        <h1 className="text-xl font-bold" style={{ color: "#00ADB5" }}>
+          البحث عن خدمة
+        </h1>
+        <p className="mt-1 text-sm text-gray-500">اختر نوع الخدمة التي تبحث عنها</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        {SERVICE_CATEGORY_ORDER.map((entityType) => {
+          const meta = SERVICE_CATEGORY_META[entityType];
+          const isLoneRow = entityType === "salon"; // "أخرى" is the only row-two entry
+          return (
+            <div key={entityType} className={isLoneRow ? "col-span-2 flex justify-center" : ""}>
+              <ServiceCategoryCard
+                title={meta.title}
+                subtitle={meta.subtitle}
+                icon={CATEGORY_ICON[entityType]}
+                accent={meta.accent}
+                iconBg={meta.iconBg}
+                onTap={() => onSelect(entityType)}
+                className={isLoneRow ? "max-w-[calc(50%-0.375rem)]" : ""}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function FindClinicSearch({
+  category,
+  onChangeCategory,
+}: {
+  category: EntityType;
+  onChangeCategory: () => void;
+}) {
+  const [clinics, setClinics] = useState<ClinicDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+
+  useEffect(() => {
+    listApprovedClinics()
+      .then(setClinics)
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = useMemo(() => {
+    const inCategory = clinics.filter((c) => resolveEntityType(c.entityType) === category);
+    const needle = q.trim();
+    if (!needle) return inCategory;
+    return inCategory.filter((c) => {
+      const haystack = `${c.clinicName} - ${c.district ?? ""} ${c.gov ?? ""}`;
+      return haystack.includes(needle);
+    });
+  }, [clinics, category, q]);
+
+  const categoryMeta = SERVICE_CATEGORY_META[category];
+
+  return (
+    <div className="animate-fade-in-up">
+      <button
+        type="button"
+        onClick={onChangeCategory}
+        className="mb-3 block text-sm text-brand-600 hover:underline"
+      >
+        ‹ رجوع لاختيار نوع الخدمة
+      </button>
 
       <div className="mb-6">
         <h1 className="text-xl font-bold" style={{ color: "#00ADB5" }}>
           ابحث عن مركزك
         </h1>
+        <p className="mt-1 text-sm text-gray-500">{categoryMeta.title}</p>
       </div>
 
       <input
@@ -197,7 +319,7 @@ function FindClinicSearch({
       {error && <p className="text-red-600">{error}</p>}
 
       {!loading && !error && filtered.length === 0 && (
-        <p className="text-gray-400">لا توجد عيادة مطابقة.</p>
+        <p className="text-gray-400">لا توجد نتائج مطابقة.</p>
       )}
 
       <div className="space-y-3">
@@ -215,18 +337,6 @@ function FindClinicSearch({
           </Link>
         ))}
       </div>
-      {deleteError && <p className="mt-3 text-sm text-red-600">{deleteError}</p>}
-      </div>
-
-      <ConfirmPopup
-        open={showEndPrompt}
-        title="انتهى موعدك، هل تريد حذف الحجز؟"
-        confirmLabel="نعم، حذف الحجز"
-        cancelLabel="لا، إبقاء السجل"
-        busy={deleting}
-        onConfirm={handleDeleteBooking}
-        onCancel={handleKeepBooking}
-      />
-    </main>
+    </div>
   );
 }
