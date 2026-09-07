@@ -4561,6 +4561,220 @@ was explicitly excluded — only 3 categories requested.
   user's explicit go-ahead (or a key with no accompanying text, read as
   "deploy this once ready") before pushing to `mawid-app-d1d03`.
 
+## Centralized patient Notification Center + /find header redesign (الإعدادات + الإشعارات)
+
+A large request, addressed to a combined "Senior Mobile App Developer +
+UI/UX Engineer + Software Architect" persona, with a reference screenshot
+of `/find` showing two matching top-corner labeled icon-cards: a gear +
+"الإعدادات", and a bell (with a small red badge) + "الإشعارات". The
+request's own single most emphasized point, quoted directly: **"لا أريد
+شاشة إشعارات منفصلة تعمل بشكل شكلي. أريد إنشاء Notification System مركزي
+داخل التطبيق"** (not a decorative, standalone notifications screen — a
+real, centralized Notification System) — wired to every real
+appointment/booking/waiting status-change event already in the app,
+using only real, already-existing status values, never invented ones.
+
+- **Pre-analysis, done before writing any code**: this app's whole
+  "order" model is `AppointmentDoc` (`lib/firebase/types.ts`), whose only
+  real status field is `AppointmentStatus` — `requested | booked |
+  arrived | in_progress | completed | cancelled | no_show` (the type
+  itself, not any example list). There is exactly ONE place a real
+  "order status changed" event already happens as a discrete write:
+  `setAppointmentStatus()` in `firestore.ts`, called from `/clinic`'s
+  reception tab and `/admin/user`'s status dropdown — every clinic-driven
+  transition (accept/arrive/start/complete/cancel/no-show) already flows
+  through this one function. The other real creation event is
+  `bookSlot()` (the patient's own "طلب" being sent). The "waiting screen"
+  is `/find/wait`, already live-subscribed via `watchAppointment()` +
+  `watchClinicQueue()`/`computeQueueStanding()` (`lib/firebase/queue.ts`)
+  — queue position itself is a *computed* value re-derived from all of a
+  clinic's appointments on every snapshot, not a discrete stored event
+  (see the scoping note below for why this matters). Firestore
+  `onSnapshot` is the one real-time mechanism used everywhere in this
+  app — reused again here, not replaced. No Cloud Functions exist
+  anywhere in this project (Spark-plan wall, documented repeatedly
+  above) and no FCM/push system exists — `lib/notifications.ts` is a
+  **separate**, pre-existing, non-persistent OS-level `Notification` API
+  alert used only on `/clinic` for admin-approval events; deliberately
+  left untouched and not confused with the new, persisted, patient-facing
+  system below (similar name, different file, different purpose — noted
+  explicitly to avoid the exact mix-up the request itself warned about).
+- **`AppNotificationDoc`** (new, `lib/firebase/types.ts`) —
+  `notifications/{appointmentId}_{status}`, the same deterministic-id
+  "compute the id, let Firestore arbitrate" idempotency trick
+  `appointments`/`clinic_queue_slots`/`access_grants` already use
+  elsewhere in this file — a retried write for the same real transition
+  overwrites identical content rather than creating a duplicate, which is
+  the actual anti-duplicate mechanism the request explicitly required
+  (no separate dedupe table needed). Fields: `id`, `patientUid`, `status`
+  (doubles as the notification's own "type" — every real hookable event
+  in this app already is an `AppointmentStatus` transition, so no
+  separate type enum was invented), `title`, `body`, `clinicSlug`,
+  `appointmentId`, `isRead`, `createdAt`.
+- **`lib/firebase/notificationCenter.ts`** (new) — the one centralized
+  writer, mirroring `queue.ts`'s own established
+  best-effort-write/live-watch shape exactly:
+  `createStatusNotification()` (best-effort `setDoc`, own try/catch,
+  never throws — a failure here can't fail the real booking/status write
+  it's called alongside, same posture as `syncQueueSlot()`),
+  `watchNotifications()` (single-equality-filter `onSnapshot`, no
+  `orderBy` — sorted client-side instead, this project's own hard-learned
+  convention for avoiding an undeployed-composite-index failure, see
+  `adminListPendingClinics()`/`listAppointmentsForPatient()`'s own
+  documented history above), `unreadNotificationCount()`,
+  `markNotificationRead()`, `markAllNotificationsRead()` (one batched
+  `writeBatch`, not N `updateDoc` calls). `NOTIFICATION_TITLE` (new map,
+  `statusMeta.ts`, alongside the existing `STATUS_LABEL`/`STATUS_COLOR`)
+  supplies each notification's title; its body reuses the
+  **already-existing** `STATUS_PATIENT_MESSAGE` strings verbatim — no new
+  wording invented, per the request's own explicit prohibition.
+- **Order linkage, centralized, not scattered in UI**: `createStatusNotification()`
+  is called from exactly two places, both already-existing state-change
+  points in `firestore.ts`, never from a UI component directly —
+  `bookSlot()`'s own tail (status `"requested"`, right next to its
+  existing `syncQueueSlot()` call) and `setAppointmentStatus()`'s own tail
+  (every subsequent real status). `setAppointmentStatus()`'s signature
+  already carried `clinicSlug`/`date`/`startTime` from the earlier
+  queue-board work — widened by one more field, `patientUid`, since
+  notifying needs to know who to notify; both real call sites
+  (`/clinic`'s reception tab, `/admin/user`'s status dropdown) already
+  pass the full `AppointmentDoc` row, so this cost them nothing.
+- **Waiting-screen linkage — a scoping decision, not a gap**: the request
+  called this "أساسي جداً" and explicitly listed queue-position/turn-
+  approaching among the events to wire. `in_progress` ("حان دورك الآن") —
+  the one queue-adjacent event that already IS a real, discrete,
+  per-patient status write — is fully covered by the mechanism above.
+  Granular position changes ("أنت الآن رقم 3", "اقترب دورك بمقدار موعد")
+  are deliberately **not** wired to a stored notification: there is no
+  discrete backing write for them anywhere in this app —
+  `computeQueueStanding()` is a pure client-side recomputation re-run for
+  *every* waiting patient on *every* status change at a clinic, so
+  "notify this one patient their position changed" would mean writing
+  into every other waiting patient's notification list on every single
+  status change at that clinic — real, unbounded write amplification for
+  a feature with no existing event to hook, which the request's own
+  "استخدم البيانات الموجودة فعلياً، لا تخترع منطقاً جديداً" instruction
+  argues directly against inventing. Disclosed here rather than silently
+  omitted.
+- **`firestore.rules`**: new `notifications/{notificationId}` block,
+  structurally identical in spirit to the existing `clinic_queue_slots`
+  two-writer split — the owning clinic (`ownsClinic()`, proven against
+  the notification's own denormalized `clinicSlug`) may create a
+  notification for its own appointment's patient at any status; a
+  patient may create only their own `"requested"` notification, under
+  their own `patientUid`, nothing else. `allow update` restricts a
+  patient to flipping `isRead` only —
+  `diff().affectedKeys().hasOnly(["isRead"])`, the same field-lock
+  pattern already used elsewhere in this file (e.g. `status`/
+  `subscriptionEndsAt` admin-only locks). `allow read` is
+  own-notification-or-admin-only. No delete rule — not requested, matches
+  every other collection's own scoped-to-what-was-asked rule set.
+- **UI**: `PatientSettingsDrawer` gained optional `open`/`onClose`
+  controlled-mode props (default: fully self-managed, exactly as before —
+  zero change to its three other existing call sites on `/find/wait`,
+  `/find/requests`, `/find/passport`) so `/find`'s new header can drive it
+  from a custom card instead of its old small circular trigger button.
+  **`NotificationsDrawer.tsx`** (new) — same slide-over shell every other
+  drawer in this app already uses (`AppBackdrop`, header, close button),
+  handling all 5 requested states (loading — `notifications === null`;
+  error — `loadError`; empty — `[] `; populated; mixed read/unread
+  styling: bold+dot for unread, lighter/semibold for read) plus a
+  conditional "تحديد الكل كمقروء" button shown only when unread notifications
+  exist. Each row is a `<Link>` to `/find/wait?clinic=...&appt=...`
+  (tapping opens the relevant appointment, the request's own "فتح
+  الطلب/الانتظار ذي الصلة" ask) that marks itself read on click — opening
+  the drawer itself does **not** auto-mark-all-read, per the request's
+  explicit instruction. Icon-per-status via a small `STATUS_ICON` map;
+  colors reuse the existing `STATUS_COLOR` tokens directly, no new
+  palette. `app/find/page.tsx` gained `FindTopBar`/`TopIconCard` — two
+  matching 74px cards (identical width/height/radius/shadow), reusing the
+  exact RTL-`justify-between` DOM-order trick already documented and
+  reused for the home screen's own role cards and the service-category
+  grid (heading first in DOM → physical right; icon-card row second →
+  physical left, matching the reference image with zero manual
+  positioning) — rendered by both `/find` phases
+  (`ServiceCategoryFilter`/`FindClinicSearch`) via a shared
+  `TopBarActions` prop bundle, so the header is identical across both
+  steps of the existing category-filter flow. The badge renders only
+  when `unreadCount > 0` (never an empty pill), capped `9+`/`99+` per the
+  request's own explicit ask instead of an ever-growing raw number, and
+  recomputes automatically on every notification-list snapshot (new
+  arrival, read, mark-all-read — no separate refresh call needed, since
+  it's derived from the same live `notifications` state the drawer
+  itself renders from, not a second subscription).
+- **Backend reuse, not replacement**: confirmed explicitly — no new
+  backend, no new auth mechanism, no framework change. Firestore is the
+  same real backend every other feature in this file already persists
+  to; `onSnapshot` is the same real-time mechanism already used
+  everywhere; patient identity is the same anonymous-auth `patientUid`
+  every other patient-facing feature already keys off. No push
+  system was built (none exists to integrate with, and building an
+  unusable one was explicitly out of scope per the request's own
+  instruction) — the in-app Notification Center is what shipped instead,
+  exactly as asked.
+- **Verified against a real, locally-running Firestore + Auth emulator**
+  (same jar/technique as every rules change in this file) — a dedicated
+  10-assertion script (two patients, two clinic owners, real anonymous +
+  email/password Firebase Auth identities) confirmed exactly the six
+  behaviors this rule needed: a patient can create their own
+  `"requested"` notification; a patient CANNOT create one for a
+  different `patientUid`; a patient CANNOT self-create a non-`"requested"`
+  status notification; the owning clinic can create a notification (any
+  status) for its own appointment's patient; a clinic CANNOT create one
+  claiming a `clinicSlug` it doesn't own; a patient can read their own
+  notification but is denied reading another patient's; a patient can
+  flip `isRead` on their own notification but CANNOT touch any other
+  field, and CANNOT touch another patient's notification at all. All 10
+  passed on the first run — no fix cycle needed this time. Emulator
+  process, `firebase-debug.log`/`firestore-debug.log`, and the scratch
+  test script were all cleaned up after (confirmed via `git status`
+  showing only real production files touched).
+- **`tsc --noEmit` (via `next build`) and the static export build are
+  both clean** (`/find` grew 3.85 kB → 5.72 kB, the new header/drawer
+  weight). A local Playwright pass against the exported `out/` (served
+  from an explicit absolute path — see this file's own earlier-disclosed
+  directory-serving-mistake precedent for why that matters) with a
+  seeded `localStorage` patient session (no live Firestore reach needed
+  for this pass) ran 21 assertions across three widths (390/340/320px):
+  both cards visible and pixel-identical in size at every width; zero
+  horizontal overflow; **zero notification badge shown** with no live
+  data (the correct "unreadCount derives from `notifications ?? []`"
+  behavior — loading/unknown state never renders a stray badge); zero
+  console errors at every width; tapping "الإعدادات" opens
+  `PatientSettingsDrawer` (now confirmed working in its new controlled
+  mode); tapping "الإشعارات" opens `NotificationsDrawer` showing its
+  loading state (correctly non-empty — "جارٍ تحميل الإشعارات…" — rather
+  than rendering nothing with no live data). Screenshots of the settled
+  header and both open drawers were visually reviewed and confirmed to
+  match the reference image's layout before considering this done.
+- **Not independently live-verified**: the actual populated/mixed-
+  read-unread notification list, "تحديد الكل كمقروء" against real data,
+  and a real clinic-driven status change producing a live badge-count
+  bump with no manual refresh were not exercised against the real
+  `mawid-app-d1d03` project this pass (no live data reachable from the
+  static smoke-test harness used above, and no fresh service-account key
+  was shared with this specific request) — the rules themselves (the
+  actual security-critical surface) were fully verified via the emulator
+  above; what's unverified is purely the live end-to-end UI/data path.
+  Recommended before treating this as fully verified: a real patient
+  booking a real slot, watching a notification appear with the correct
+  "تم إرسال طلبك" title and an unread badge showing "1", then a real
+  clinic walking that appointment through arrived→in_progress→completed
+  on `/clinic` while the patient's `/find` tab stays open, confirming
+  each transition adds a new notification and bumps the badge live.
+- **Deliberately out of scope, disclosed**: `/find/wait`,
+  `/find/requests`, and `/find/passport` still use
+  `PatientSettingsDrawer`'s original small circular gear-icon trigger,
+  not the new two-card `FindTopBar` design — the request's own reference
+  image and literal text scoped the redesign to the `/find` search/
+  category screens specifically, so the other three screens were left
+  untouched rather than redesigned speculatively, matching this
+  project's own standing scope discipline.
+- **Not yet deployed** — no service-account key was shared alongside this
+  request; held per this project's standing practice of waiting for the
+  user's explicit go-ahead (or a key with no accompanying text, read as
+  "deploy this once ready") before pushing to `mawid-app-d1d03`.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

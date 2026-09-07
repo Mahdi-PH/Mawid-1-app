@@ -20,6 +20,7 @@ import {
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth, db } from "./config";
 import { compressLicenseImageToDataUrl } from "./licenseImage";
+import { createStatusNotification } from "./notificationCenter";
 import { syncQueueSlot } from "./queue";
 import { generateDaySlots, resolveSlotEndTime } from "./slotEngine";
 import { OCCUPYING_STATUSES } from "./types";
@@ -439,14 +440,16 @@ export async function bookSlot(input: BookSlotInput): Promise<void> {
   // here doesn't (and shouldn't) fail the booking itself, which has
   // already committed by this point.
   syncQueueSlot(input.clinicSlug, input.date, input.startTime, "requested");
+  createStatusNotification(ref.id, input.clinicSlug, input.patientUid, "requested");
 }
 
 export async function setAppointmentStatus(
-  appt: Pick<AppointmentDoc, "id" | "clinicSlug" | "date" | "startTime">,
+  appt: Pick<AppointmentDoc, "id" | "clinicSlug" | "date" | "startTime" | "patientUid">,
   status: AppointmentStatus
 ): Promise<void> {
   await updateDoc(doc(db, "appointments", appt.id), { status, updatedAt: serverTimestamp() });
   syncQueueSlot(appt.clinicSlug, appt.date, appt.startTime, status);
+  createStatusNotification(appt.id, appt.clinicSlug, appt.patientUid, status);
 }
 
 /** Idempotent by design, not just by accident: the patient-delete rule

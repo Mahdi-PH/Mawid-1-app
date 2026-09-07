@@ -255,3 +255,32 @@ export interface ClinicQueueSlotDoc {
   status: AppointmentStatus;
   updatedAt: Timestamp;
 }
+
+// ---------------------------------------------------------------------
+// Patient Notification Center — notifications/{notificationId}. Deterministic
+// id (`${appointmentId}_${status}`, the same "compute the id, let Firestore
+// arbitrate" trick appointments/clinic_queue_slots already use) makes
+// re-writing the same real transition idempotent — a retry or a duplicate
+// call overwrites with identical content, never creating a second
+// notification for the same event. Written from the exact two places that
+// already change an appointment's status (see lib/firebase/
+// notificationCenter.ts's createStatusNotification(), called from
+// bookSlot() and setAppointmentStatus() in firestore.ts) — never from a UI
+// component directly, so notification creation stays centralized at the
+// one place each real event actually happens, not scattered.
+// ---------------------------------------------------------------------
+export interface AppNotificationDoc {
+  id: string;
+  patientUid: string;
+  /** The appointment status this notification reports — doubles as the
+   *  notification's own "type", since every real event this app can hook
+   *  (see CLAUDE.md's scoping note) already is an AppointmentStatus
+   *  transition; no separate type enum needed. */
+  status: AppointmentStatus;
+  title: string;
+  body: string;
+  clinicSlug: string;
+  appointmentId: string;
+  isRead: boolean;
+  createdAt: Timestamp;
+}

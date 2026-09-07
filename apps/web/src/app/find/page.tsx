@@ -19,10 +19,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import ConfirmPopup from "../../components/ConfirmPopup";
+import NotificationsDrawer from "../../components/NotificationsDrawer";
 import ServiceCategoryCard from "../../components/ServiceCategoryCard";
 import { ensurePatientSession } from "../../lib/firebase/auth";
 import { deleteAppointment, listApprovedClinics, watchAppointment } from "../../lib/firebase/firestore";
-import type { AppointmentDoc, ClinicDoc, EntityType } from "../../lib/firebase/types";
+import { unreadNotificationCount, watchNotifications } from "../../lib/firebase/notificationCenter";
+import type { AppNotificationDoc, AppointmentDoc, ClinicDoc, EntityType } from "../../lib/firebase/types";
 import { SERVICE_CATEGORY_META, SERVICE_CATEGORY_ORDER, resolveEntityType } from "../../lib/serviceCategories";
 import BackButton from "../../components/BackButton";
 import AppBackdrop from "../../components/AppBackdrop";
@@ -40,6 +42,17 @@ import {
 
 const TERMINAL_STATUSES = new Set(["completed", "cancelled", "no_show"]);
 
+/** Shared props every /find header (category-select or search) needs to
+ *  open the settings/notifications drawers and show the live unread
+ *  count — passed down from FindClinicPage, which owns the one live
+ *  watchNotifications() subscription both the badge and the drawer's own
+ *  content read from (see FindTopBar below). */
+interface TopBarActions {
+  onOpenSettings: () => void;
+  onOpenNotifications: () => void;
+  unreadCount: number;
+}
+
 export default function FindClinicPage() {
   // undefined = hasn't checked localStorage yet (avoids a flash of the
   // gate before we know a saved profile exists, same reasoning as the
@@ -51,10 +64,41 @@ export default function FindClinicPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // Notification Center — one live subscription at this top level (not
+  // inside NotificationsDrawer, and not re-subscribed per phase) so the
+  // same list drives both the bell's unread badge (visible even while the
+  // drawer is closed) and the drawer's own content once opened.
+  const [patientUid, setPatientUid] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<AppNotificationDoc[] | null>(null);
+  const [notifLoadError, setNotifLoadError] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+
   useEffect(() => {
     setProfile(getPatientProfile());
     setActiveBooking(getActiveBooking());
   }, []);
+
+  useEffect(() => {
+    if (!profile) return;
+    let cancelled = false;
+    ensurePatientSession().then((u) => {
+      if (!cancelled) setPatientUid(u.uid);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [profile]);
+
+  useEffect(() => {
+    if (!patientUid) return;
+    setNotifLoadError(false);
+    return watchNotifications(
+      patientUid,
+      (rows) => setNotifications(rows),
+      () => setNotifLoadError(true)
+    );
+  }, [patientUid]);
 
   // Covers the same "انتهى موعدك، هل تريد حذف الحجز؟" prompt as
   // /find/wait, but for a patient who lands back on /find directly
@@ -135,14 +179,18 @@ export default function FindClinicPage() {
     );
   }
 
+  const unreadCount = unreadNotificationCount(notifications ?? []);
+  const topBarActions: TopBarActions = {
+    onOpenSettings: () => setSettingsOpen(true),
+    onOpenNotifications: () => setNotifOpen(true),
+    unreadCount,
+  };
+
   return (
     <main dir="rtl" className="relative min-h-screen mx-auto max-w-2xl p-6">
       <AppBackdrop />
       <div className="relative">
-        <PatientSettingsDrawer profile={profile} />
-        <div className="pl-11">
-          <BackButton fallbackHref="/" alwaysUseFallback className="mb-3 block text-sm text-brand-600 hover:underline" />
-        </div>
+        <BackButton fallbackHref="/" alwaysUseFallback className="mb-3 block text-sm text-brand-600 hover:underline" />
 
         {activeBooking && (
           <Link
@@ -160,9 +208,9 @@ export default function FindClinicPage() {
         {deleteError && <p className="mb-4 text-sm text-red-600">{deleteError}</p>}
 
         {category === null ? (
-          <ServiceCategoryFilter onSelect={setCategory} />
+          <ServiceCategoryFilter onSelect={setCategory} {...topBarActions} />
         ) : (
-          <FindClinicSearch category={category} onChangeCategory={() => setCategory(null)} />
+          <FindClinicSearch category={category} onChangeCategory={() => setCategory(null)} {...topBarActions} />
         )}
       </div>
 
@@ -174,6 +222,13 @@ export default function FindClinicPage() {
         busy={deleting}
         onConfirm={handleDeleteBooking}
         onCancel={handleKeepBooking}
+      />
+      <PatientSettingsDrawer profile={profile} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <NotificationsDrawer
+        open={notifOpen}
+        onClose={() => setNotifOpen(false)}
+        notifications={notifications}
+        loadError={notifLoadError}
       />
     </main>
   );
@@ -218,6 +273,94 @@ const CATEGORY_ICON: Record<EntityType, ReactNode> = {
   salon: <OtherCategoryIcon />,
 };
 
+function SettingsIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
+function BellTopIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M6 8a6 6 0 0 1 12 0c0 4 1.5 5.5 2 6.5H4c.5-1 2-2.5 2-6.5Z" />
+      <path d="M10 19a2 2 0 0 0 4 0" />
+    </svg>
+  );
+}
+
+/** One of the two matching top-corner cards ("الإعدادات"/"الإشعارات") —
+ *  same width/height/radius/shadow for both, per the request's own
+ *  explicit "نفس العرض، نفس الارتفاع" ask. The whole card is tappable,
+ *  not just the icon. `badgeCount` renders the small red unread-count
+ *  pill only when > 0 (never an empty badge), capped at "9+"/"99+" per
+ *  the request's own explicit ask rather than an ever-growing number. */
+function TopIconCard({
+  icon,
+  label,
+  onClick,
+  badgeCount,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  badgeCount?: number;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="relative flex w-[74px] flex-none flex-col items-center gap-1 rounded-2xl border bg-white px-2 py-3 text-center shadow-sm transition hover:-translate-y-0.5"
+      style={{ borderColor: "#e5eef0" }}
+    >
+      {!!badgeCount && badgeCount > 0 && (
+        <span
+          aria-hidden
+          className="absolute -top-1.5 -right-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-[10px] font-bold text-white"
+          style={{ background: "#E11D48" }}
+        >
+          {badgeCount > 99 ? "99+" : badgeCount > 9 ? "9+" : badgeCount}
+        </span>
+      )}
+      <span style={{ color: "#00ADB5" }}>{icon}</span>
+      <span className="text-xs font-bold text-gray-700">{label}</span>
+    </button>
+  );
+}
+
+/** The shared heading row for both /find phases — page title/subtitle on
+ *  the right (RTL start), the settings/notifications card pair on the
+ *  left, matching the reference screenshot's exact layout. A plain `flex
+ *  justify-between` inside this `dir="rtl"` page already places its first
+ *  DOM child (the heading) at the physical right and its second (the
+ *  icon-card row) at the physical left — no manual positioning needed,
+ *  same RTL-flex reasoning already documented for the home screen's own
+ *  role-card order. */
+function FindTopBar({
+  title,
+  subtitle,
+  onOpenSettings,
+  onOpenNotifications,
+  unreadCount,
+}: TopBarActions & { title: string; subtitle?: ReactNode }) {
+  return (
+    <div className="mb-6 flex items-start justify-between gap-3">
+      <div className="min-w-0 pt-1">
+        <h1 className="text-xl font-bold" style={{ color: "#00ADB5" }}>
+          {title}
+        </h1>
+        {subtitle && <p className="mt-1 text-sm text-gray-500">{subtitle}</p>}
+      </div>
+      <div className="flex flex-none gap-2">
+        <TopIconCard icon={<SettingsIcon />} label="الإعدادات" onClick={onOpenSettings} />
+        <TopIconCard icon={<BellTopIcon />} label="الإشعارات" onClick={onOpenNotifications} badgeCount={unreadCount} />
+      </div>
+    </div>
+  );
+}
+
 /** The new step between the patient gate and the search results —
  *  "مراكز تجميل" / "عيادات طبية" (row one) and "أخرى" alone (row two,
  *  centered at the same width as the other two so it doesn't leave a
@@ -226,15 +369,21 @@ const CATEGORY_ICON: Record<EntityType, ReactNode> = {
  *  project's own established pattern for a multi-step single-route flow,
  *  see /find/book's "menu"/"book" view state) — so "leaving" it uses
  *  `onChangeCategory` inside FindClinicSearch below, not browser back. */
-function ServiceCategoryFilter({ onSelect }: { onSelect: (category: EntityType) => void }) {
+function ServiceCategoryFilter({
+  onSelect,
+  onOpenSettings,
+  onOpenNotifications,
+  unreadCount,
+}: { onSelect: (category: EntityType) => void } & TopBarActions) {
   return (
     <div className="animate-fade-in-up">
-      <div className="mb-6">
-        <h1 className="text-xl font-bold" style={{ color: "#00ADB5" }}>
-          البحث عن خدمة
-        </h1>
-        <p className="mt-1 text-sm text-gray-500">اختر نوع الخدمة التي تبحث عنها</p>
-      </div>
+      <FindTopBar
+        title="البحث عن خدمة"
+        subtitle="اختر نوع الخدمة التي تبحث عنها"
+        onOpenSettings={onOpenSettings}
+        onOpenNotifications={onOpenNotifications}
+        unreadCount={unreadCount}
+      />
 
       <div className="grid grid-cols-2 gap-3">
         {SERVICE_CATEGORY_ORDER.map((entityType) => {
@@ -262,10 +411,13 @@ function ServiceCategoryFilter({ onSelect }: { onSelect: (category: EntityType) 
 function FindClinicSearch({
   category,
   onChangeCategory,
+  onOpenSettings,
+  onOpenNotifications,
+  unreadCount,
 }: {
   category: EntityType;
   onChangeCategory: () => void;
-}) {
+} & TopBarActions) {
   const [clinics, setClinics] = useState<ClinicDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -300,12 +452,13 @@ function FindClinicSearch({
         ‹ رجوع لاختيار نوع الخدمة
       </button>
 
-      <div className="mb-6">
-        <h1 className="text-xl font-bold" style={{ color: "#00ADB5" }}>
-          ابحث عن مركزك
-        </h1>
-        <p className="mt-1 text-sm text-gray-500">{categoryMeta.title}</p>
-      </div>
+      <FindTopBar
+        title="ابحث عن مركزك"
+        subtitle={categoryMeta.title}
+        onOpenSettings={onOpenSettings}
+        onOpenNotifications={onOpenNotifications}
+        unreadCount={unreadCount}
+      />
 
       <input
         type="text"

@@ -296,6 +296,46 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------
+    // notifications/{notificationId} — the patient-facing Notification
+    // Center's persisted store. Deterministic id
+    // (`${appointmentId}_${status}`, same "compute the id, let Firestore
+    // arbitrate" convention appointments/clinic_queue_slots already use)
+    // makes re-writing the same real transition idempotent, not a
+    // duplicate. Two writers, same structural split as clinic_queue_slots
+    // above:
+    //   - the patient's own client, creating their own "تم إرسال طلبك"
+    //     notification (status must be exactly "requested") the moment
+    //     bookSlot() succeeds under their own auth;
+    //   - the owning clinic, creating a notification for THAT
+    //     appointment's patient on every status change setAppointmentStatus()
+    //     makes — proven by ownsClinic() against the notification's own
+    //     denormalized clinicSlug field, the same trust level that
+    //     collection's clinic-writer branch already has over its own
+    //     appointments' data.
+    // A patient may only ever flip their OWN notification's isRead field —
+    // diff().affectedKeys().hasOnly(["isRead"]) blocks touching anything
+    // else, including someone else's notification (resource.data.patientUid
+    // check) or forging isRead back to false on someone else's read state.
+    // No delete rule — not requested, and nothing in the app needs one.
+    // ---------------------------------------------------------------
+    match /notifications/{notificationId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.patientUid == request.auth.uid);
+
+      allow create: if isAdmin()
+                    || ownsClinic(request.resource.data.clinicSlug)
+                    || (isSignedIn()
+                        && request.resource.data.patientUid == request.auth.uid
+                        && request.resource.data.status == "requested");
+
+      allow update: if isAdmin()
+                    || (isSignedIn()
+                        && resource.data.patientUid == request.auth.uid
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["isRead"]));
+
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
     // patient_records/{patientId} — patientId == the patient's own
     // Firebase Auth uid (see types.ts for why this is the anonymous-auth
     // uid, not a phone-verified identity, this pass). The profile doc

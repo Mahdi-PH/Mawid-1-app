@@ -40,6 +40,20 @@ export const STATUS_DOT: Record<AppointmentStatus, string> = {
   no_show: "#737373",
 };
 
+/** Notification-center titles — one short line per status, paired with
+ *  STATUS_PATIENT_MESSAGE (below) as the notification's body. Kept here
+ *  rather than in notificationCenter.ts since this file is already the
+ *  one shared place every per-AppointmentStatus display string lives. */
+export const NOTIFICATION_TITLE: Record<AppointmentStatus, string> = {
+  requested: "تم إرسال طلبك",
+  booked: "تم تأكيد موعدك",
+  arrived: "تم تسجيل وصولك",
+  in_progress: "حان دورك الآن",
+  completed: "اكتملت زيارتك",
+  no_show: "تسجيل غياب",
+  cancelled: "تم إلغاء الموعد",
+};
+
 export const STATUS_PATIENT_MESSAGE: Record<AppointmentStatus, string> = {
   requested: "طلبك قيد المراجعة من العيادة، سيتم تأكيده قريباً.",
   booked: "تم تأكيد موعدك — الرجاء الحضور في الوقت المحدد.",

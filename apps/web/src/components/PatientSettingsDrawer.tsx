@@ -17,10 +17,34 @@ import AppBackdrop from "./AppBackdrop";
 import ConfirmPopup from "./ConfirmPopup";
 import { signOutPatient, type PatientProfile } from "../lib/patientLocal";
 
-export default function PatientSettingsDrawer({ profile }: { profile: PatientProfile }) {
+/** `open`/`onClose` are optional controlled overrides — every existing call
+ *  site (`<PatientSettingsDrawer profile={profile} />`) keeps working
+ *  unchanged, self-managing its own open state and rendering its own gear-
+ *  icon trigger button. `/find`'s new two-card header (see FindTopBar in
+ *  app/find/page.tsx) passes both explicitly instead, so it can drive this
+ *  drawer from its own custom-styled "الإعدادات" card rather than the
+ *  small circular button — the same optional-controlled-prop shape
+ *  BackButton's own `alwaysUseFallback` already established in this file
+ *  set, not a new pattern. */
+export default function PatientSettingsDrawer({
+  profile,
+  open: controlledOpen,
+  onClose: controlledOnClose,
+}: {
+  profile: PatientProfile;
+  open?: boolean;
+  onClose?: () => void;
+}) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+
+  function close() {
+    if (isControlled) controlledOnClose?.();
+    else setInternalOpen(false);
+  }
 
   function handleConfirmSignOut() {
     setConfirmingSignOut(false);
@@ -30,18 +54,20 @@ export default function PatientSettingsDrawer({ profile }: { profile: PatientPro
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label="إعدادات الحساب"
-        className="absolute left-3 top-3 flex h-9 w-9 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
-      >
-        <GearIcon />
-      </button>
+      {!isControlled && (
+        <button
+          type="button"
+          onClick={() => setInternalOpen(true)}
+          aria-label="إعدادات الحساب"
+          className="absolute left-3 top-3 flex h-9 w-9 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
+        >
+          <GearIcon />
+        </button>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-40">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setOpen(false)} />
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => close()} />
           <div
             dir="rtl"
             className="absolute left-0 top-0 flex h-full w-full max-w-sm flex-col shadow-2xl"
@@ -53,7 +79,7 @@ export default function PatientSettingsDrawer({ profile }: { profile: PatientPro
               </h2>
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={() => close()}
                 aria-label="إغلاق"
                 className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-black/5"
               >
@@ -70,7 +96,7 @@ export default function PatientSettingsDrawer({ profile }: { profile: PatientPro
                 <div className="space-y-2">
                   <Link
                     href="/find/requests"
-                    onClick={() => setOpen(false)}
+                    onClick={() => close()}
                     className="flex w-full items-center gap-3 rounded-xl bg-white px-3 py-3 text-right shadow-sm ring-1 ring-black/5 transition hover:-translate-y-0.5 hover:shadow-md"
                   >
                     <span
@@ -86,7 +112,7 @@ export default function PatientSettingsDrawer({ profile }: { profile: PatientPro
 
                   <Link
                     href="/find/passport"
-                    onClick={() => setOpen(false)}
+                    onClick={() => close()}
                     className="flex w-full items-center gap-3 rounded-xl bg-white px-3 py-3 text-right shadow-sm ring-1 ring-black/5 transition hover:-translate-y-0.5 hover:shadow-md"
                   >
                     <span
