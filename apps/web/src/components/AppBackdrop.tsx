@@ -1,8 +1,17 @@
 // Decorative background — a generated SVG line-icon pattern, replacing the
 // earlier uploaded photo. Rendered once per page (see the call sites: home,
-// /subscribe, /signup, /find/*, /clinic, /admin — every page that used to
-// render the photo now renders this same component with zero changes on
-// their end, since this component takes no props).
+// /subscribe, /signup, /find/*, /clinic, /admin).
+//
+// The icon pattern itself is now opt-in via the `pattern` prop (default
+// off): per the user's explicit request, the pattern stays only on the
+// home screen's intro/hero moment (`pattern={introActive}` in page.tsx)
+// and the admin dashboard (`pattern` passed at every AppBackdrop call in
+// admin/layout.tsx and AdminSettingsDrawer.tsx) — every other screen
+// (center/clinic accounts, patient/visitor accounts, and general public
+// screens) renders the plain flat near-white base color with no icons, no
+// gradient washes, so the "quiet, uncluttered" background reads the same
+// everywhere it's used. Every other existing call site needed zero edits
+// to pick up this change, since `pattern` simply defaults to false.
 //
 // Design constraints, from the user's own brief: only flat/minimalist line
 // icons across four balanced categories (medical/surgical, pharmaceutical,
@@ -25,7 +34,15 @@
 // (this element first) then decides the stacking, no stacking-context
 // plumbing required. Every page that renders this component follows that
 // same two-part rule.
-export default function AppBackdrop() {
+export default function AppBackdrop({ pattern = false }: { pattern?: boolean }) {
+  if (!pattern) {
+    return (
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <div className="absolute inset-0" style={{ background: "#F2FBFC" }} />
+      </div>
+    );
+  }
+
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
       <svg className="absolute inset-0 h-full w-full" preserveAspectRatio="xMidYMid slice">

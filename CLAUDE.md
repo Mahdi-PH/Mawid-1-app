@@ -4218,6 +4218,68 @@ by the same root cause, the admin one too).
   key was deleted immediately after — both the copy used for the deploy
   and the original upload.
 
+## Backdrop pattern scoped to only the home intro and the admin dashboard
+
+The user asked to remove the line-icon pattern from every center/clinic
+account screen, every patient/visitor screen, and the home screen itself,
+while explicitly keeping it on two screens: the home screen's intro/splash
+moment, and the admin dashboard.
+
+- **`AppBackdrop.tsx` gained an opt-in `pattern` prop, default `false`**:
+  with the prop unset/false it now renders nothing but a flat `#F2FBFC`
+  fill (no icons, no corner-glow washes either — a single uncluttered
+  tone, not a lighter version of the same design) instead of the SVG
+  icon pattern. Since every existing call site already just wrote
+  `<AppBackdrop />` with no props, this single default-value change
+  silently switched all of them to the plain background with zero edits
+  needed on their end — `/subscribe`, `/signup`, all of `/find/*`,
+  `PatientGate.tsx`, `PatientSettingsDrawer.tsx`, all of `/clinic`, and
+  `ClinicAccountDrawer.tsx` all lost the pattern automatically.
+- **Two call sites explicitly opted back in**: `admin/layout.tsx` (all
+  three of its `<AppBackdrop />` calls — the "checking", "not admin", and
+  real-dashboard branches) and `AdminSettingsDrawer.tsx` now pass
+  `pattern`, so the admin dashboard keeps the icon pattern exactly as
+  before.
+- **The home screen needed real logic, not a static prop**, since its
+  intro pose and settled state are phases of one persistent, never-
+  remounted `AppBackdrop` instance (see the FLIP-transform architecture
+  documented earlier in this file) rather than separate routes —
+  `app/page.tsx`'s call site now reads `<AppBackdrop
+  pattern={introActive} />`, reusing the `introActive` boolean the page
+  already computed (`phase === "intro"`) for its own logo-transform
+  logic. The pattern is visible only while the big centered hero logo is
+  showing/being tapped through; the instant it settles into the small
+  header spot and the role cards appear, the pattern disappears into the
+  same flat `#F2FBFC` every other screen now uses — confirmed by
+  screenshot, not assumed, using the existing `?intro=1` debug bypass to
+  force the intro phase.
+- **Verified, not just built**: a stale `.next/types` cache entry (left
+  over from the previous task's now-deleted scratch verification route)
+  caused one unrelated `tsc` failure — cleared via `rm -rf .next` before
+  re-checking; `tsc --noEmit` and `next build` (static export) both then
+  came back clean across all 19 routes. A local Playwright pass against
+  the fresh export confirmed by screenshot: `/?intro=1` still shows the
+  pattern; tapping through to the settled home screen shows the flat
+  background with no icons; `/signup`, `/find`, and the signed-out
+  redirect landing on `/signup` (reached via both `/clinic` and `/admin`
+  when signed out) are all clean. The admin dashboard's own
+  pattern-preserving branches need a real signed-in admin session to
+  screenshot directly (signed-out always redirects to `/signup` before
+  ever reaching them) — not independently live-verified this pass, so
+  this rests on the code-level check that all four admin-side
+  `<AppBackdrop pattern />` call sites were actually updated (confirmed
+  by re-grepping every remaining `AppBackdrop` call site in `apps/web/
+  src` after the edit — exactly two locations pass `pattern`
+  unconditionally, and the home page's is the only conditional one, with
+  every other call site left as a bare `<AppBackdrop />`).
+- **Deployed** (once the user shared a fresh service-account key
+  alongside this request): only the rebuilt `apps/web/out/` was pushed
+  via `firebase deploy --only hosting` — no `firestore.rules` changes,
+  this is a client-side/visual-only change. Verified FINALIZED by
+  reading the release back from the Hosting Management API. The
+  service-account key was deleted immediately after — both the copy
+  used for the deploy and the original upload.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

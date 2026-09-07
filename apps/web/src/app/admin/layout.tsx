@@ -80,7 +80,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (status === "checking") {
     return (
       <div className="relative min-h-screen">
-        <AppBackdrop />
+        <AppBackdrop pattern />
         <div className="relative p-8 text-center text-gray-500">جارٍ التحقق من الصلاحية…</div>
       </div>
     );
@@ -88,7 +88,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (status === "not-admin") {
     return (
       <div className="relative min-h-screen">
-        <AppBackdrop />
+        <AppBackdrop pattern />
         <div className="relative p-8 text-center text-red-600">
           هذا الحساب لا يملك صلاحية المدير (admin). سجّل الدخول بحساب المدير المُهيَّأ عبر
           scripts/seed-admin.mjs.
@@ -100,7 +100,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div dir="rtl" className="relative min-h-screen bg-gray-50">
-      <AppBackdrop />
+      <AppBackdrop pattern />
       <header className="relative border-b bg-white px-6 py-4">
         {/* Pinned at the physical corner, same pattern as /clinic's own
          *  settings-drawer gear icon — opens AdminSettingsDrawer, which

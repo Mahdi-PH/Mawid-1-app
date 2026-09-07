@@ -158,7 +158,7 @@ export default function AdminSettingsDrawer({ open, onClose }: { open: boolean; 
         dir="rtl"
         className="absolute left-0 top-0 flex h-full w-full max-w-lg flex-col shadow-2xl"
       >
-        <AppBackdrop />
+        <AppBackdrop pattern />
         <div className="relative flex items-center justify-between border-b border-black/5 px-5 py-4">
           <h2 className="text-lg font-extrabold" style={{ color: "#00ADB5" }}>
             {activeTool ? toolLabel : "إعدادات لوحة التحكم"}

@@ -273,7 +273,7 @@ export default function Home() {
       style={{ background: "#F2FBFC" }}
       onClick={introActive ? beginReveal : undefined}
     >
-      <AppBackdrop />
+      <AppBackdrop pattern={introActive} />
 
       {/* animate-hero-ring's own keyframes bake in translate(-50%,-50%)
           for centering (see tailwind.config.js), so no separate translate
