@@ -4104,6 +4104,79 @@ real, independent problems were found, both fixed:
   immediately after — both the copy used for the deploy and the
   original upload.
 
+## App-wide backdrop replaced: generated line-icon SVG pattern instead of the uploaded photo
+
+The user asked for a professional, cohesive decorative background — a
+repeating pattern of flat/minimalist line icons across four balanced
+categories (medical/surgical, pharmaceutical, booking/appointments, light
+beauty tools), muted brand-color tones that must never visually compete
+with the logo, with an explicit hard constraint: **no human faces,
+figures, or bodies anywhere**. Asked for samples first before touching any
+real file.
+
+- **Samples published as an Artifact** (not committed to the repo, same
+  disposable-preview convention as the demo artifacts elsewhere in this
+  file): three directions — a sparse random scatter, a soft repeating
+  grid, and a diagonal flow with a gradient wash — each shown both inside
+  a phone-mockup context and as a zoomed close-up swatch, using 12 hand-
+  drawn line icons (3 per category: stethoscope/scalpel/medical-cross ·
+  capsule/blister-strip/vial · clock/calendar/confirmation-check ·
+  comb/brush/care-droplet). The user picked **الشبكة اللطيفة** (the soft
+  grid direction) and asked for the icon shapes to be made clearer/more
+  legible, then integrated everywhere the old backdrop appeared.
+- **`components/AppBackdrop.tsx` rewritten** from an `<img>` rendering the
+  uploaded `backdrop.jpg` photo to a real SVG `<pattern>` tile (340×340,
+  `patternUnits="userSpaceOnUse"`) containing all 12 icons at fixed,
+  hand-placed positions/rotations/scale — deterministic, not
+  JS-randomized, so there's no server/client hydration mismatch. Icons
+  were redrawn bigger and bolder than the sample (stroke-width 2.3,
+  scale ~1.0–1.25, opacity 0.13–0.17 — up from the sample's lower, less
+  legible range) per the explicit "make the shapes clearer" ask, and two
+  icons (brush, scalpel) were redesigned from the sample's more abstract
+  shapes into clearer, standard pictogram silhouettes (a rounded
+  brush-head + handle; a small rounded handle + pointed blade). Two very
+  faint corner radial washes (accent-light/accent at 4–5% opacity) were
+  kept for the same soft depth the old photo-based backdrop had.
+  Since `AppBackdrop` takes no props and is the one component every
+  page already imports, rewriting it alone reached all 12 existing call
+  sites automatically (`/`, `/subscribe`, `/signup`, `/find`,
+  `/find/book`, `/find/wait`, `/find/requests`, `/find/passport`,
+  `/clinic` in every state, `/admin` via its layout, and
+  `PatientGate.tsx`) — no other file needed to change.
+- **A real bug caught before it shipped, not after**: the icon `<g>`
+  definitions in the sample artifact never set `fill`/`stroke` — SVG's
+  own default (`fill:black; stroke:none`) means those would have
+  rendered as solid black shapes, not colored line icons, with the
+  `style="color:...` trick on each `<use>` doing nothing (it only feeds
+  `currentColor`, which nothing in the sample actually referenced). Since
+  the sample was never screenshotted before publishing (no browser-preview
+  step was taken for that artifact), this went unnoticed there — caught
+  this time by explicitly setting `fill="none" stroke="currentColor"` on
+  every `<g>` in the production component, then verifying with an actual
+  screenshot (see below) that icons render as soft teal *lines*, not
+  black fills.
+- **Verified, not just built**: `tsc --noEmit` and `next build` (static
+  export) both clean across all 19 routes. A local Playwright pass
+  (`npx playwright`, browser at `/opt/pw-browsers/chromium`, static
+  export served from an explicit absolute path — see the earlier
+  disclosed directory-serving mistake in this file for why that matters)
+  screenshotted `/`, `/signup`, and `/find` at a real phone viewport
+  (390×844): the pattern renders as clearly legible soft-teal line icons
+  behind the logo/wordmark/cards on the home screen, and behind
+  `/signup`'s form card — confirmed visually, not assumed from the
+  source edit — with the logo and every card's own solid color
+  untouched and fully readable, i.e. the "non-dominance" rule actually
+  holding, not just intended. `document.querySelectorAll("svg use")`
+  confirmed exactly 12 icon instances render into the pattern tile.
+- **Not yet deployed** — committed only, per this project's standing
+  practice of holding `firebase deploy` for the user's explicit
+  go-ahead (or a freshly shared service-account key, deleted right after
+  use, as in every earlier deploy in this file). No `firestore.rules`
+  changes were needed — this is a client-side/visual-only change.
+  `public/brand/backdrop.jpg` (the now-unused old photo) was left in
+  place rather than deleted, in case the user wants to revert or compare
+  — it's simply no longer referenced by any code path.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —
