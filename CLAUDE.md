@@ -4359,11 +4359,11 @@ not want.
   from the immediately preceding fix was spot-checked separately (a
   plain load with no pre-set flag still shows the icon pattern behind
   the big centered hero logo, as intended, untouched by this change).
-- **Not yet deployed** — the service-account key from the earlier,
-  image-less message was already deleted unused before this task could
-  actually start; a fresh one is needed to push this to
-  `mawid-app-d1d03`, same standing practice as every other deploy in
-  this file.
+- **Deployed** — see the "Deployed" note at the end of the immediately
+  following card-shortening follow-up section: both this redesign and
+  that follow-up shipped together in the same Hosting release
+  (`sites/mawid-app-d1d03/releases/1788776539339000`), once a fresh
+  service-account key arrived.
 
 ### Follow-up: role cards were still too tall — shortened to match the reference proportions
 
@@ -4417,10 +4417,15 @@ wider, closer to the reference's own proportions).
   card's own edge at any width, confirmed by eye in every screenshot).
   `tsc --noEmit` (via `next build`) and the static export build are both
   clean.
-- **Not yet deployed** — no fresh service-account key was available in
-  this pass either (the previous one was already spent on the redesign
-  commit above, which itself never got deployed) — same disclosed gap,
-  carried forward.
+- **Deployed** (once the user shared a fresh service-account key with no
+  accompanying text — read, per this project's established pattern, as
+  "deploy this once ready"): only the rebuilt `apps/web/out/` was pushed
+  via `firebase deploy --only hosting` — no `firestore.rules` changes,
+  this whole sub-thread is client-side/visual only. Verified FINALIZED
+  by reading the release back from the Hosting Management API (release
+  `sites/mawid-app-d1d03/releases/1788776539339000`). The service-account
+  key was deleted immediately after — both the copy used for the deploy
+  and the original upload.
 
 ## Next steps if resumed
 
