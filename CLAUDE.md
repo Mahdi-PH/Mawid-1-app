@@ -4276,9 +4276,10 @@ moment, and the admin dashboard.
   alongside this request): only the rebuilt `apps/web/out/` was pushed
   via `firebase deploy --only hosting` — no `firestore.rules` changes,
   this is a client-side/visual-only change. Verified FINALIZED by
-  reading the release back from the Hosting Management API. The
-  service-account key was deleted immediately after — both the copy
-  used for the deploy and the original upload.
+  reading the release back from the Hosting Management API (release
+  `sites/mawid-app-d1d03/releases/1788774351851000`). The service-
+  account key was deleted immediately after — both the copy used for
+  the deploy and the original upload.
 
 ## Next steps if resumed
 
