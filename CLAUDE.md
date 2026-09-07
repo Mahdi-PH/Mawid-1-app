@@ -4281,6 +4281,90 @@ moment, and the admin dashboard.
   account key was deleted immediately after — both the copy used for
   the deploy and the original upload.
 
+## Home screen role cards redesigned to match a reference screenshot
+
+The user sent an extremely detailed spec (colors, spacing, exact copy,
+acceptance criteria) asking the home screen's two role cards to match a
+reference image — pin/search icons in light-teal circles, a subtitle
+under "إدارة المراكز", a small circular arrow button (not full-width) at
+each card's foot, and a soft decorative wave shape along the card's own
+bottom edge — with the one deliberate exception of the reference
+image's own scattered medical-icon background, which they explicitly do
+not want.
+
+- **A real mismatch caught before writing any code**: the request arrived
+  twice — first with a giant text spec and a Firebase service-account key
+  but no image attached (confirmed by listing this session's actual
+  upload timestamps: nothing but the key had landed), so work was
+  correctly held and the user was asked to resend the image rather than
+  guessing at "the reference image" blind; the unused key was deleted
+  in the meantime, per this project's standing key-hygiene rule of never
+  leaving a live credential sitting around unused. The image arrived in
+  the next message.
+- **The reference image turned out to be this exact app's own home
+  screen** (real logo, real "مَوْعِد" wordmark, real tagline, real card
+  copy) at a moment when the settled (non-intro) view still showed the
+  line-icon background pattern — i.e. from before the immediately
+  preceding "Backdrop pattern scoped to only the home intro and the
+  admin dashboard" fix in this file. Confirmed the current source
+  already has that fix correctly in place (`git log` + re-reading
+  `page.tsx`'s `<AppBackdrop pattern={introActive} />` call) before
+  concluding no background-pattern code change was needed here — only
+  the card content itself needed building, since `ROLE_CARDS` had been
+  simplified down to title-only links in an earlier pass ("Home role-
+  card descriptions removed…", also in this file).
+- **`app/page.tsx`**: `ROLE_CARDS` gained `icon`/`subtitle` fields, and a
+  new local `HomeOptionCard` component (icon circle, title, optional
+  subtitle, a small circular teal arrow button, a soft SVG wave along
+  the card's bottom edge) renders inside each card's still-unchanged
+  `<Link>` — the click/selection/exit-animation logic, hrefs, and the
+  auth-aware `centerHref` behavior were all left exactly as they were,
+  per the request's own explicit "don't touch navigation/logic" rule.
+  Colors reuse the app's own established brand tokens (`#00ADB5` for
+  icon/title/arrow-button fill, `#EAF6F3` — the same light-teal token
+  already used for icon circles in `ClinicAccountDrawer`/
+  `PatientSettingsDrawer` — for the icon-circle and wave-fill
+  background) rather than the slightly different approximate hex values
+  the user's own color-sampling gave, per their own explicit instruction
+  to reuse existing design-system values instead of introducing a second,
+  competing palette. New small `PinIcon`/`SearchIcon`/`ArrowIcon`
+  components are plain inline-SVG line icons (no emoji, no new
+  dependency).
+- **The two-column grid is now unconditional** (`grid-cols-2`, dropping
+  the previous `grid-cols-1 sm:grid-cols-2`) — the reference shows both
+  cards side by side on an ordinary phone width, well under Tailwind's
+  `sm` (640px) breakpoint, so the old rule would have stacked them
+  vertically on every real phone. Verified down to a 320px-wide viewport
+  (close to the smallest real phone still in common use) with both cards
+  still side by side and no overflow, just more line-wrapping in the
+  longer titles/subtitles.
+- **A real, caught-before-shipping ordering bug**: the first pass kept
+  `ROLE_CARDS`' existing `[center, find]` array order, which — on this
+  `dir="rtl"` page, where a plain CSS grid's first item lands at the
+  *right* edge — rendered "إدارة المراكز" on the right and "البحث عن
+  خدمة…" on the left, mirrored from the reference (pin card left, search
+  card right). Caught by an actual screenshot comparison, not assumed;
+  fixed by reordering the array to `[find, center]`, with a comment
+  explaining why the array order and the RTL visual order are inverted,
+  since that's exactly the kind of thing that looks like a mistake on a
+  later read otherwise.
+- **Verified, not just built**: `tsc --noEmit` and `next build` (static
+  export) both clean. A local Playwright pass against the fresh export
+  confirmed by screenshot at three phone widths (375/340/320px), with
+  the intro's `localStorage` flag pre-set so each load lands straight on
+  the settled (cards-visible) view: clean flat background with zero
+  medical icons, both cards correctly ordered and rendering their icon
+  circle/title/subtitle/wave/arrow button, no overflow or breakage down
+  to 320px, zero console errors. The still-intro-only pattern behavior
+  from the immediately preceding fix was spot-checked separately (a
+  plain load with no pre-set flag still shows the icon pattern behind
+  the big centered hero logo, as intended, untouched by this change).
+- **Not yet deployed** — the service-account key from the earlier,
+  image-less message was already deleted unused before this task could
+  actually start; a fresh one is needed to push this to
+  `mawid-app-d1d03`, same standing practice as every other deploy in
+  this file.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

@@ -64,7 +64,92 @@ function isStandaloneDisplay(): boolean {
   return false;
 }
 
+// Card visual constants — kept together so the card's proportions stay
+// easy to retune in one place rather than scattered magic numbers.
+const CARD_ICON_SIZE = 56; // the light-teal circle behind each card's icon
+const CARD_ARROW_SIZE = 40; // the small circular arrow button at the card's foot
+const CARD_ICON_BG = "#EAF6F3"; // same light-teal token already used for icon circles in ClinicAccountDrawer/PatientSettingsDrawer
+const CARD_WAVE_FILL = "#EAF6F3";
+
+function PinIcon() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#00ADB5" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 21s-7-7.58-7-12a7 7 0 0 1 14 0c0 4.42-7 12-7 12Z" />
+      <circle cx="12" cy="9" r="2.5" />
+    </svg>
+  );
+}
+function SearchIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00ADB5" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M21 21l-4.3-4.3" />
+    </svg>
+  );
+}
+function ArrowIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+/** The visual content shared by both role cards — icon circle, title,
+ *  optional subtitle, the small circular arrow button, and the soft wave
+ *  shape along the card's own bottom edge. The outer `<Link>` (href,
+ *  click/selection/exit animation classes) stays in the map loop below,
+ *  since that part varies per card and already carries real navigation
+ *  logic that shouldn't move. */
+function HomeOptionCard({ icon, title, subtitle }: { icon: React.ReactNode; title: React.ReactNode; subtitle?: React.ReactNode }) {
+  return (
+    <>
+      <svg aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-12 w-full" viewBox="0 0 200 48" preserveAspectRatio="none">
+        <path d="M0,26 C50,46 150,4 200,24 L200,48 L0,48 Z" fill={CARD_WAVE_FILL} />
+      </svg>
+      <div
+        className="relative z-10 flex items-center justify-center rounded-full"
+        style={{ width: CARD_ICON_SIZE, height: CARD_ICON_SIZE, background: CARD_ICON_BG }}
+      >
+        {icon}
+      </div>
+      <h2 className="relative z-10 text-lg font-bold leading-snug" style={{ color: "#00ADB5" }}>
+        {title}
+      </h2>
+      {subtitle && (
+        <p className="relative z-10 text-sm leading-snug" style={{ color: "#666666" }}>
+          {subtitle}
+        </p>
+      )}
+      <span
+        className="relative z-10 mt-auto flex items-center justify-center rounded-full"
+        style={{ width: CARD_ARROW_SIZE, height: CARD_ARROW_SIZE, background: "#00ADB5" }}
+      >
+        <ArrowIcon />
+      </span>
+    </>
+  );
+}
+
+// Order matters here beyond just array position: this page is `dir="rtl"`,
+// where a plain CSS grid places its first item at the *right* edge — so
+// "find" is listed first specifically so it lands on the right and
+// "center" on the left, matching the reference design's own left/right
+// placement (pin card left, search card right), not just DOM/reading order.
 const ROLE_CARDS = [
+  {
+    id: "find",
+    href: "/find",
+    icon: <SearchIcon />,
+    title: (
+      <>
+        البحث عن خدمة
+        <br />
+        أو حجز موعد
+      </>
+    ) as React.ReactNode,
+    subtitle: undefined as React.ReactNode,
+  },
   {
     id: "center",
     // Default/fallback href for a not-signed-in visitor (also what static
@@ -75,14 +160,17 @@ const ROLE_CARDS = [
     // signed in) instead of being sent back through the signup/login form
     // it already passed.
     href: "/signup",
-    title: "إدارة المراكز (عيادات، مراكز تجميل ومراكز أخرى)",
+    icon: <PinIcon />,
+    title: "إدارة المراكز",
+    subtitle: (
+      <>
+        (عيادات، مراكز تجميل
+        <br />
+        ومراكز أخرى)
+      </>
+    ) as React.ReactNode,
   },
-  {
-    id: "find",
-    href: "/find",
-    title: "البحث عن خدمة أو حجز موعد",
-  },
-] as const;
+];
 
 export default function Home() {
   const router = useRouter();
@@ -334,7 +422,7 @@ export default function Home() {
 
       <div
         className={
-          "relative grid w-full max-w-2xl grid-cols-1 gap-5 text-right sm:grid-cols-2 " +
+          "relative grid w-full max-w-2xl grid-cols-2 gap-4 " +
           (contentVisible && !leaving ? "animate-fade-in-up" : contentVisible ? "" : "pointer-events-none opacity-0")
         }
         style={{ animationDelay: contentVisible && !leaving ? "120ms" : undefined }}
@@ -349,7 +437,7 @@ export default function Home() {
               href={href}
               onClick={(e) => handleRoleClick(e, href)}
               className={
-                "flex flex-col gap-2 rounded-2xl border p-7 shadow-sm transition-all duration-300 ease-out hover:-translate-y-0.5 " +
+                "relative flex flex-col items-center gap-2 overflow-hidden rounded-2xl border p-5 pb-6 text-center shadow-sm transition-all duration-300 ease-out hover:-translate-y-0.5 " +
                 (leaving
                   ? "translate-y-3 scale-95 opacity-0"
                   : isSelected
@@ -358,11 +446,9 @@ export default function Home() {
                       ? "scale-95 opacity-50"
                       : "")
               }
-              style={{ borderColor: "#d3ece9", background: "white" }}
+              style={{ borderColor: "#d3ece9", background: "white", minHeight: 200 }}
             >
-              <h2 className="text-lg font-bold" style={{ color: "#00ADB5" }}>
-                {card.title}
-              </h2>
+              <HomeOptionCard icon={card.icon} title={card.title} subtitle={card.subtitle} />
             </Link>
           );
         })}
