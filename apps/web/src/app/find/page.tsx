@@ -327,7 +327,7 @@ function TopIconCard({
     <button
       type="button"
       onClick={onClick}
-      className="relative flex w-[74px] flex-none flex-col items-center gap-1 rounded-2xl border bg-white px-2 py-3 text-center shadow-sm transition hover:-translate-y-0.5"
+      className="relative flex w-[74px] flex-none flex-col items-center justify-center gap-1 rounded-2xl border bg-white px-2 py-3 text-center shadow-sm transition hover:-translate-y-0.5"
       style={{ borderColor: "#e5eef0" }}
     >
       {!!badgeCount && badgeCount > 0 && (
@@ -355,28 +355,41 @@ function PersonBadgeIcon() {
 }
 
 /** The shared heading row for both /find phases — a calm, self-contained
- *  intro card (title + subtitle, a small round person-icon badge at its
- *  own top-right corner) on the right, the existing settings/notifications
- *  card pair on the left, matching the reference screenshot's layout.
- *  Deliberately a plain Header/Intro Section, not a navigation control —
- *  no arrow or back button lives inside it; the page's own physical back
- *  button (see FindClinicPage/BackButton) sits outside and above this
- *  row entirely. A plain `flex justify-between` inside this `dir="rtl"`
- *  page already places its first DOM child (the card) at the physical
- *  right and its second (the icon-card row) at the physical left — no
- *  manual positioning needed, same RTL-flex reasoning already documented
- *  for the home screen's own role-card order. */
+ *  intro card on the right, the existing settings/notifications card pair
+ *  on the left, matching the reference screenshot's layout. Deliberately
+ *  a plain Header/Intro Section, not a navigation control — no arrow or
+ *  back button lives inside it; the page's own physical back button (see
+ *  FindClinicPage/BackButton) sits outside and above this row entirely.
+ *  A plain `flex justify-between` inside this `dir="rtl"` page already
+ *  places its first DOM child (the card) at the physical right and its
+ *  second (the icon-card row) at the physical left — no manual
+ *  positioning needed, same RTL-flex reasoning already documented for the
+ *  home screen's own role-card order.
+ *
+ *  `title` is optional: when omitted (the category-selection screen —
+ *  see ServiceCategoryFilter below), the card keeps only its one
+ *  `subtitle` line, sized up and colored the app's own primary teal
+ *  since it's now the card's sole, primary content rather than a
+ *  secondary caption under a heading. Either way the row uses the
+ *  flexbox default (`align-items: stretch`, no `items-start` override)
+ *  so this card and the two `TopIconCard`s beside it settle on one true
+ *  shared height — driven by this card's own `min-h-[74px]`, not a
+ *  second, independently-guessed number on the icon cards — instead of
+ *  two components each assuming a height that could drift apart later. */
 function FindTopBar({
   title,
   subtitle,
   onOpenSettings,
   onOpenNotifications,
   unreadCount,
-}: TopBarActions & { title: string; subtitle?: ReactNode }) {
+}: TopBarActions & { title?: string; subtitle?: ReactNode }) {
   return (
-    <div className="mb-6 flex items-start justify-between gap-3">
+    <div className="mb-6 flex justify-between gap-3">
       <div
-        className="relative min-w-0 flex-1 rounded-2xl border p-4 shadow-sm"
+        className={
+          "relative flex min-h-[74px] min-w-0 flex-1 flex-col justify-center rounded-2xl border shadow-sm " +
+          (title ? "px-4" : "px-3")
+        }
         style={{
           borderColor: "#e5eef0",
           background: "linear-gradient(135deg, #FBF7EF 0%, #F2FBFC 55%, #EAF6F3 100%)",
@@ -389,10 +402,23 @@ function FindTopBar({
         >
           <PersonBadgeIcon />
         </span>
-        <h1 className="pr-8 text-xl font-bold leading-snug" style={{ color: "#00ADB5" }}>
-          {title}
-        </h1>
-        {subtitle && <p className="mt-1 pr-8 text-sm leading-relaxed text-gray-500">{subtitle}</p>}
+        {title && (
+          <h1 className="pr-8 text-xl font-bold leading-snug" style={{ color: "#00ADB5" }}>
+            {title}
+          </h1>
+        )}
+        {subtitle && (
+          <p
+            className={
+              title
+                ? "mt-1 pr-8 text-sm leading-relaxed text-gray-500"
+                : "pr-6 text-[13px] font-bold leading-snug sm:text-base"
+            }
+            style={title ? undefined : { color: "#00ADB5" }}
+          >
+            {subtitle}
+          </p>
+        )}
       </div>
       <div className="flex flex-none gap-2">
         <TopIconCard icon={<BellTopIcon />} label="الإشعارات" onClick={onOpenNotifications} badgeCount={unreadCount} />
@@ -419,8 +445,7 @@ function ServiceCategoryFilter({
   return (
     <div className="animate-fade-in-up">
       <FindTopBar
-        title="البحث عن خدمة"
-        subtitle="اختر نوع الخدمة التي تبحث عنها"
+        subtitle="اختر الخدمة التي تبحث عنها"
         onOpenSettings={onOpenSettings}
         onOpenNotifications={onOpenNotifications}
         unreadCount={unreadCount}

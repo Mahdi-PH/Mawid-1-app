@@ -5261,3 +5261,68 @@ client-side navigation/state/markup only. Committed and pushed per this
 project's standing practice of holding `firebase deploy` for an explicit
 go-ahead (or a bare service-account key, read as "deploy this once
 ready") — neither arrived with this request.
+
+### Follow-up: category-screen card simplified to one primary-colored line, height-matched to the icon cards
+
+The user's next request, about the exact same card: drop the "البحث عن
+خدمة" title entirely, keep only the one sentence — reworded slightly to
+"اختر الخدمة التي تبحث عنها" (dropping "نوع") — colored the app's own
+primary teal, and resize the card so its dimensions match the two
+"الإعدادات"/"الإشعارات" icon-cards beside it, adjusting the font size as
+needed to make that fit.
+
+- **`FindTopBar`'s `title` prop is now optional.** When omitted (the
+  category-selection screen's own call, `ServiceCategoryFilter`), the
+  card renders only its `subtitle` line — now sized up (`text-[13px]
+  sm:text-base font-bold`, tighter `pr-6 px-3` clearance than the
+  titled variant's `pr-8 px-4`, since there's no heading above it eating
+  space) and colored `#00ADB5` (the primary teal) directly, since it's
+  now the card's sole, primary content rather than a secondary caption
+  under a heading. `FindClinicSearch`'s own call (title="ابحث عن مركزك"
+  + the category's own subtitle) was left completely untouched — this
+  request was specifically about the one rectangle in the screenshot,
+  not a request to also collapse the search-results screen's heading.
+- **Height parity achieved structurally, not by guessing a matching
+  number on both sides**: the outer row's `items-start` was dropped
+  (falling back to flexbox's own `align-items: stretch` default), the
+  gradient card gained `min-h-[74px]`, and `TopIconCard` gained
+  `justify-center` (so its icon+label group stays vertically centered
+  once stretched taller than its own natural content height) — the row's
+  actual height becomes `max(74px, whichever icon card's natural height
+  is)`, and *both* the card and the two icon buttons stretch to that one
+  shared value automatically. This is more robust than hardcoding "74px"
+  on the icon cards independently, since the two components can never
+  silently drift apart if either one's own content changes later.
+- **A real, measured narrow-width tradeoff, disclosed not hidden**: at a
+  standard/common phone width (390px and down to ~340px), the sentence
+  now fits on one line and the card renders at exactly 74px — a true,
+  pixel-verified match with the icon cards. At this project's own
+  narrowest tested width (320px, "close to the smallest real phone still
+  in common use"), the icon cards (fixed at `w-[74px]` each, unrelated to
+  this request) leave the text card too little width for this specific
+  sentence to fit in one or two lines even at the reduced font size — it
+  wraps to 4 lines and the shared height grows to ~91px accordingly (down
+  from ~98px before the font/padding tightening in this same pass). Both
+  cards still stretch to match each other exactly at every width tested,
+  so the "equal dimensions" property itself never breaks — only the
+  absolute height at the narrowest edge case grows a bit past the literal
+  74px target. Not fixed further: doing so would mean shrinking the icon
+  cards' own already-established `w-[74px]` sizing or the page's outer
+  padding, neither of which was asked for and both of which carry real
+  regression risk to other, already-verified layouts on this same screen.
+- **Verified, not just built**: `tsc --noEmit` (via `next build`) and the
+  static export build are both clean. A Playwright pass against the
+  fresh export ran 18 assertions across three widths (390/340/320px) —
+  the old "البحث عن خدمة" title is gone; the new exact sentence renders;
+  the card's rendered height is pixel-equal to both icon cards' own
+  rendered height at every width (390: 74/74/74; 340: 74/74/74; 320:
+  91.375/91.375/91.375 — confirmed via `getBoundingClientRect()`, not
+  assumed from CSS alone); the text's computed color is exactly
+  `rgb(0, 173, 181)` (`#00ADB5`); zero horizontal overflow at any width;
+  zero console/page errors. A broader signed-out smoke pass across every
+  route (`/`, `/signup`, `/find`, `/find/wait`, `/find/requests`,
+  `/find/passport`, `/clinic`, `/admin`, `/subscribe`) confirmed zero
+  regressions from this change.
+- **Not yet deployed** — no `firestore.rules` change needed (client-side
+  markup/styling only); held for an explicit go-ahead or a bare
+  service-account key, same standing practice as the rest of this file.
