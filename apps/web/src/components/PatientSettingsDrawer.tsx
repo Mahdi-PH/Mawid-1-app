@@ -13,6 +13,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import AppBackdrop from "./AppBackdrop";
 import ConfirmPopup from "./ConfirmPopup";
 import { signOutPatient, type PatientProfile } from "../lib/patientLocal";
 
@@ -44,9 +45,9 @@ export default function PatientSettingsDrawer({ profile }: { profile: PatientPro
           <div
             dir="rtl"
             className="absolute left-0 top-0 flex h-full w-full max-w-sm flex-col shadow-2xl"
-            style={{ background: "linear-gradient(180deg, #F2FBFC 0%, #FFFFFF 220px)" }}
           >
-            <div className="flex items-center justify-between border-b border-black/5 px-5 py-4">
+            <AppBackdrop />
+            <div className="relative flex items-center justify-between border-b border-black/5 px-5 py-4">
               <h2 className="text-lg font-extrabold" style={{ color: "#00ADB5" }}>
                 إعدادات الحساب
               </h2>
@@ -60,7 +61,7 @@ export default function PatientSettingsDrawer({ profile }: { profile: PatientPro
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5">
+            <div className="relative flex-1 overflow-y-auto p-5">
               <div className="flex h-full flex-col">
                 <p className="mb-4 text-sm text-gray-500">
                   مرحباً، <span className="font-bold text-gray-800">{profile.name}</span>

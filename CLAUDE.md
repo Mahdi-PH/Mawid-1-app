@@ -4181,6 +4181,43 @@ real file.
   place rather than deleted, in case the user wants to revert or compare
   — it's simply no longer referenced by any code path.
 
+### Real bug reported and fixed: backdrop missing inside the settings drawers
+
+The user reported the new pattern doesn't show inside "إعدادات الحساب" —
+the slide-over settings drawers for both clinic and patient accounts (and,
+by the same root cause, the admin one too).
+
+- **Root cause**: `ClinicAccountDrawer.tsx`, `AdminSettingsDrawer.tsx`, and
+  `PatientSettingsDrawer.tsx` each render their own `fixed inset-0 z-40`
+  overlay with a separately-positioned panel that painted its own flat
+  `linear-gradient(180deg, #F2FBFC 0%, #FFFFFF 220px)` inline background —
+  a self-contained layer stacked on top of the page's own `<AppBackdrop
+  />`, so the pattern was never in the same box as the drawer's content to
+  begin with, regardless of the earlier fix's own correctness.
+- **Fix**: same component, three call sites — dropped each drawer's inline
+  gradient (redundant now: `AppBackdrop`'s own SVG already paints an
+  opaque `#F2FBFC` base under its icon pattern) and rendered `<AppBackdrop
+  />` as the panel's own first child, with `relative` added to the header
+  row and the scrollable content div beneath it — the exact same two-part
+  "positioned parent, `relative` content siblings" convention documented
+  in `AppBackdrop.tsx` itself and already followed by every page-level
+  call site.
+- **Verified visually, not just by a clean build**: a throwaway route
+  (`app/uitest-scratch-backdrop-drawers/`, mounting all three drawers with
+  mock clinic/patient data — no Firebase needed) was driven with
+  Playwright (dev server, real clicks to open each drawer): all three now
+  show the icon pattern behind their menu cards/content, confirmed by
+  screenshot, with zero console errors. The scratch route and screenshots
+  were deleted afterward, confirmed via `git status` showing only the
+  three real component files changed. `tsc --noEmit` and `next build`
+  (static export) both clean.
+- **Deployed**: only the rebuilt `apps/web/out/` was pushed via `firebase
+  deploy --only hosting`, verified FINALIZED (release
+  `sites/mawid-app-d1d03/releases/1788762102723000`). No `firestore.rules`
+  changes — this is a client-side/visual-only fix. The service-account
+  key was deleted immediately after — both the copy used for the deploy
+  and the original upload.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

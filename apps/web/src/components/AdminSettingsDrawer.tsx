@@ -11,6 +11,7 @@
 // since the two are siblings under the same layout, not parent/child.
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import AppBackdrop from "./AppBackdrop";
 import {
   adminDeleteClinicAccount,
   adminListApprovedClinics,
@@ -156,9 +157,9 @@ export default function AdminSettingsDrawer({ open, onClose }: { open: boolean; 
       <div
         dir="rtl"
         className="absolute left-0 top-0 flex h-full w-full max-w-lg flex-col shadow-2xl"
-        style={{ background: "linear-gradient(180deg, #F2FBFC 0%, #FFFFFF 220px)" }}
       >
-        <div className="flex items-center justify-between border-b border-black/5 px-5 py-4">
+        <AppBackdrop />
+        <div className="relative flex items-center justify-between border-b border-black/5 px-5 py-4">
           <h2 className="text-lg font-extrabold" style={{ color: "#00ADB5" }}>
             {activeTool ? toolLabel : "إعدادات لوحة التحكم"}
           </h2>
@@ -172,7 +173,7 @@ export default function AdminSettingsDrawer({ open, onClose }: { open: boolean; 
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="relative flex-1 overflow-y-auto p-5">
           {loading ? (
             <p className="text-center text-gray-400">جارٍ التحميل…</p>
           ) : error ? (
