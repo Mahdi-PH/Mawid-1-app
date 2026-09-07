@@ -5254,13 +5254,14 @@ simulation of it) — all 29 passed:
   the closest verification obtainable in this environment, not a
   simulation stood in for the real thing without disclosure.
 
-### Not yet deployed
+### Deployed
 
 No `firestore.rules` changes were needed — every change in this pass is
-client-side navigation/state/markup only. Committed and pushed per this
-project's standing practice of holding `firebase deploy` for an explicit
-go-ahead (or a bare service-account key, read as "deploy this once
-ready") — neither arrived with this request.
+client-side navigation/state/markup only. Deployed together with the
+immediately following header-simplification follow-up, in the same
+Hosting release (`sites/mawid-app-d1d03/releases/1788799278167000`),
+once the user shared a fresh service-account key and asked explicitly —
+see that follow-up's own "Deployed" note for details.
 
 ### Follow-up: category-screen card simplified to one primary-colored line, height-matched to the icon cards
 
@@ -5323,6 +5324,13 @@ needed to make that fit.
   route (`/`, `/signup`, `/find`, `/find/wait`, `/find/requests`,
   `/find/passport`, `/clinic`, `/admin`, `/subscribe`) confirmed zero
   regressions from this change.
-- **Not yet deployed** — no `firestore.rules` change needed (client-side
-  markup/styling only); held for an explicit go-ahead or a bare
-  service-account key, same standing practice as the rest of this file.
+- **Deployed** (once the user shared a fresh service-account key with an
+  explicit "انشر التعديل الآن"): only the rebuilt `apps/web/out/` was
+  pushed via `firebase deploy --only hosting` — no `firestore.rules`
+  change needed, this whole pass is client-side markup/styling only.
+  Verified FINALIZED by reading the release back from the Hosting
+  Management API (release
+  `sites/mawid-app-d1d03/releases/1788799278167000`) — this sandbox
+  still can't reach `*.web.app` directly to browse it. The service-
+  account key was deleted immediately after — both the copy used for
+  the deploy and the original upload.
