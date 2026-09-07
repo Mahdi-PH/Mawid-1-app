@@ -92,6 +92,10 @@ export interface RegisterClinicInput {
    *  SignupClient.tsx). Drives every dynamic-terminology swap this app
    *  makes; see EntityType's own comment in types.ts. */
   entityType: EntityType;
+  /** Optional free-text description, shown on the signup form right
+   *  where the old entityType selector used to sit (see
+   *  SignupClient.tsx) — never required. */
+  description?: string | null;
   /** The business-license image file, straight from a file input —
    *  registerClinic() compresses it to a data: URL itself (see
    *  licenseImage.ts) and stores it inline on the clinic doc; there is no
@@ -173,6 +177,7 @@ export async function registerClinic(input: RegisterClinicInput): Promise<{ slug
         email: input.email,
         clinicName: input.clinicName,
         entityType: input.entityType,
+        description: input.description?.trim() || null,
         // Defaults differ by entityType since the signup form doesn't
         // collect these two fields at all yet — a salon/beauty-center
         // getting "الطبيب المناوب" ("duty doctor") as its own default

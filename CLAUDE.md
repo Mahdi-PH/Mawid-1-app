@@ -4819,6 +4819,170 @@ attached with a fresh Firebase service-account key.
   list, a real clinic-driven status change bumping the badge live) still
   stand and are unaffected by this deploy.
 
+## Center-type selection moved ahead of signup; description field; dynamic name label
+
+A large, very detailed spec addressed to "a Senior Full-Stack Developer +
+UI/UX Designer", opening with an explicit pre-analysis requirement before
+any code — investigate navigation, the signup form, the entityType
+selector, the search screen's own type filter, the data model, and any
+shared components — and an equally explicit reuse mandate: the new
+type-selection step must render from the *same* component/design already
+used by `/find`'s service-category filter, not a second, independently
+built copy.
+
+- **Pre-analysis findings** (what made the reuse mandate straightforward):
+  `/find`'s category filter already had exactly the reusable pieces
+  needed — `lib/serviceCategories.ts` (the three categories' titles/
+  colors/order, keyed by `EntityType`) and `ServiceCategoryCard.tsx` (the
+  icon-circle/wave/arrow-button tile). The one thing NOT already shared
+  was the icon set and the grid-assembly JSX itself — both were private,
+  inline pieces of `app/find/page.tsx`'s own `ServiceCategoryFilter`
+  function, never extracted. `SignupClient.tsx`'s old entityType selector
+  was a completely separate three-plain-button implementation with none
+  of that visual language — exactly the "شاشتين مختلفتين لنفس الغرض"
+  situation the request asked to eliminate.
+- **`components/EntityTypeGrid.tsx`** (new): the three category icons
+  (`ClinicCategoryIcon`/`BeautyCategoryIcon`/`OtherCategoryIcon`) and the
+  grid-assembly logic extracted verbatim out of `find/page.tsx`'s
+  `ServiceCategoryFilter` into one shared component,
+  `EntityTypeGrid({ onSelect })` — same colors, icons, card component,
+  RTL order, and lone-row-two centering as before, now literally the same
+  render output wherever it's used rather than two copies that could
+  drift. `find/page.tsx`'s own `ServiceCategoryFilter` now just renders
+  `<EntityTypeGrid onSelect={onSelect} />` in place of the ~35 lines this
+  extraction removed — confirmed byte-for-byte visually unchanged via a
+  before/after screenshot comparison (see Verification below), not just
+  assumed from the refactor being "supposed to" be equivalent.
+- **New navigation step**: Home's "إدارة المراكز" card still points at
+  `/signup` unchanged — no home-page routing change was needed at all,
+  since `/signup` (`SignupClient.tsx`) now owns a two-view internal state
+  machine (`view: "type" | "form"`) with `"type"` as the default, matching
+  this project's own established "default to the state that's correct to
+  prerender, never a state that then flashes" rule (see `app/page.tsx`'s
+  own splash-flash bug fix elsewhere in this file). Picking a category
+  (`EntityTypeGrid`'s `onSelect`) sets `entityType` and switches to
+  `view: "form"` — the exact same form as before, now rendering *after*
+  the type is already known rather than asking for it itself.
+- **The old in-form three-button entityType selector is gone entirely** —
+  replaced by a plain confirmation line ("النوع المختار: مركز تجميل")
+  once a type is chosen, so the visitor sees their earlier choice
+  reflected back, never asked to repeat it, per the request's own
+  explicit "لا يجب أن يظهر للمستخدم مرة أخرى اختيار نوع المركز."
+- **Back navigation, both directions, exactly as specified**: the
+  "type" screen's physical `BackButton` (`fallbackHref="/"`, unchanged
+  default — `router.back()`-prefers-real-history) lands on `/` for any
+  visitor who arrived via a real click from Home, which every real
+  visitor does. The "form" screen gained a new in-page "‹ رجوع لاختيار
+  نوع المركز" link (only shown for a fresh signup in progress — login/
+  admin mode keeps the original physical `BackButton`, unaffected)
+  mirroring `/find/book`'s own already-established in-page-link pattern
+  (its "‹ رجوع لقائمة العيادة") — clicking it is a local `setView("type")`
+  state change, not a real navigation, so it can't be lost to browser
+  history weirdness.
+- **Every other entry point into `/signup` was checked, not assumed
+  safe** (per the request's own explicit "افحص جميع نقاط الدخول"): a
+  repo-wide grep found four — Home's card (unaffected, see above),
+  `/subscribe`'s "ابدأ مجاناً" button (correctly lands on the new type
+  screen first, matching a fresh marketing-page visitor's own intent),
+  and three signed-out-session redirects (`admin/layout.tsx`,
+  `clinic/layout.tsx`, `admin/login/page.tsx`) that used to send an
+  expired/never-started session straight to `/signup`'s form. Those three
+  now append `?mode=login` — `SignupClient.tsx` reads
+  `window.location.search` inside a `useLayoutEffect` guarded by a
+  `useRef` (the exact same pre-paint, run-once technique `app/page.tsx`'s
+  own `?intro=1` debug bypass already established, chosen specifically so
+  no `useSearchParams()`/`<Suspense>` boundary was needed) and skips
+  straight to `view: "form"` with `clinicMode: "login"` when present —
+  a returning owner whose session merely expired lands directly back on
+  a login-ready form, never an irrelevant type picker for an account that
+  already has one. This was a real, disclosed judgment call, not
+  something the request spelled out explicitly — flagged here in case a
+  literal "always show the type step" reading was actually intended.
+- **`description` — a real, persisted schema field, not UI-only**:
+  `ClinicDoc.description: string | null` (new, `lib/firebase/types.ts`),
+  `RegisterClinicInput.description?: string | null` and
+  `registerClinic()` writes `description: input.description?.trim() ||
+  null` (new, `firestore.ts`) — `null` for every pre-existing clinic doc
+  (no backfill needed or written, same "old docs simply lack the field
+  at runtime" posture this file already documents for `entityType`
+  itself) and for any signup that leaves it blank, since it was never
+  made required. **No `firestore.rules` change needed**: confirmed by
+  re-reading the `clinics/{slug}` create/update rules end-to-end — neither
+  restricts the document to a fixed field set (no `hasOnly`/`hasAll`
+  anywhere in that block, unlike e.g. the `notifications` collection's
+  own `isRead`-only update lock), so a new freely-owner-editable field
+  needed no rule at all, the same way `gov`/`district`/`street` never
+  did.
+- **Dynamic per-type wording — a real `Terminology` extension, not a
+  one-off string swap**: `lib/firebase/terminology.ts` gained two new
+  fields, `clinicNameLabel` ("اسم العيادة" / "اسم مركز التجميل" / "اسم
+  المركز" — exactly the request's own three examples) and
+  `descriptionPlaceholder` ("أدخل وصف العيادة" / "أدخل وصف مركز التجميل"
+  / "أدخل وصف المركز"), each set individually per `CLINIC_TERMS`/
+  `BEAUTY_TERMS`/`SALON_TERMS` rather than folded into the shared
+  `SALON_SHARED_TERMS` object those last two already draw from — beauty
+  and "مركز تجاري آخر" share every other term in that dictionary, but
+  these two genuinely differ between them, the same reasoning already
+  applied to `practitionerNoun`. `descriptionLabel` itself stays the
+  fixed word "الوصف" for every type, per the request's own explicit
+  instruction not to vary it. `SignupClient.tsx` resolves
+  `getTerminology(entityType || null)` once per render and reads both
+  fields directly — no new mapping object invented outside this file's
+  own established per-entityType dictionary pattern.
+- **`saveSignupAccountPdf()`** (`lib/pdf/saveAccountPdf.ts`) gained an
+  optional `description` field, added as its own row ("الوصف") in the
+  auto-saved signup backup PDF right after email — this is the exact same
+  "just-submitted data" snapshot the description now belongs in, and
+  skipping it there would have looked like an oversight rather than a
+  deliberate omission.
+- **Old data compatibility**: `ClinicDoc.description` is typed
+  non-optional (`string | null`, never `undefined`) but every clinic doc
+  written before this feature genuinely lacks the field at runtime —
+  Firestore is schemaless, so TypeScript can't see that gap, matching
+  the exact same disclosed pattern this file already documents for
+  `entityType` itself. No reader anywhere treats a missing value as an
+  error.
+- **Verified, not just built**: `tsc --noEmit` (via `next build`) and
+  the static export build are both clean (`/signup` grew 5.27 kB → 6.65
+  kB, `/find` 5.72 kB → 5.81 kB from the shared-component import). A
+  Playwright pass against the exported `out/` ran 32 assertions across
+  three widths (390/340/320px): `/signup` defaults to the type-selection
+  heading and all three cards render; picking "مراكز تجميل" shows the
+  dynamic "اسم مركز التجميل" label, the "الوصف" field with placeholder
+  "أدخل وصف مركز التجميل", confirms the old three-button selector is
+  gone, and shows "النوع المختار: مركز تجميل"; the in-page back link
+  returns to the type screen; the login-mode toggle shows neither the
+  clinicName nor description fields; `?mode=login` skips the type screen
+  entirely and lands on a form with the email field visible immediately;
+  zero console errors at every width. `/find`'s own category screen was
+  re-screenshotted after the `EntityTypeGrid` extraction and confirmed
+  pixel-identical to before (same cards, same colors, same order) — the
+  refactor genuinely didn't regress the screen it was pulled out of. One
+  assertion initially "failed" (the physical back button appearing to
+  land on `about:blank` instead of `/`) — traced to the test harness
+  itself, not the app: a fresh Playwright context's own initial
+  `about:blank` entry sat in browser history ahead of a raw `page.goto()`
+  to `/signup`, so `router.back()` correctly returned to it, exactly as
+  it should for real history. Re-verified with a realistic click-through
+  from Home instead of a raw URL load — the back button correctly landed
+  on `/`, confirming this was a test-scenario artifact, not a bug.
+- **Not independently live-verified**: no live Firestore/Auth session was
+  exercised for this pass (no `firestore.rules` change, so no service-
+  account key was needed for the write path itself) — the actual
+  `registerClinic()` call with a real `description`/pre-selected
+  `entityType` was checked by reading the diff against the already-live-
+  verified `registerClinic()` write path (its own field set was
+  exhaustively exercised end-to-end live in the `/clinic` dashboard's
+  15-assertion test, documented earlier in this file), not re-run live
+  this pass. Recommended before treating this as fully verified: a real
+  signup through the new type-screen → form flow, confirming the clinic
+  doc that lands in Firestore carries both the chosen `entityType` and a
+  non-null `description`.
+- **Not yet deployed** — no service-account key was shared alongside this
+  request; held per this project's standing practice of waiting for the
+  user's explicit go-ahead (or a key with no accompanying text, read as
+  "deploy this once ready") before pushing to `mawid-app-d1d03`.
+
 ## Next steps if resumed
 
 Paid subscription tiers remain undecided and unbuilt, in either track —

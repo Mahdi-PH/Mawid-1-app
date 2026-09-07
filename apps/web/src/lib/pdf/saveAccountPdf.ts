@@ -14,6 +14,7 @@
 export interface SignupPdfFields {
   clinicName: string;
   email: string;
+  description?: string | null;
   gov: string | null;
   district: string | null;
   street: string | null;
@@ -36,6 +37,7 @@ export async function saveSignupAccountPdf(fields: SignupPdfFields): Promise<voi
   const rows: [string, string][] = [
     ["اسم العيادة / المركز", fields.clinicName],
     ["البريد الإلكتروني", fields.email],
+    ...(fields.description ? ([["الوصف", fields.description]] as [string, string][]) : []),
     ["المحافظة", fields.gov || "—"],
     ["الحي", fields.district || "—"],
     ["الشارع", fields.street || "—"],

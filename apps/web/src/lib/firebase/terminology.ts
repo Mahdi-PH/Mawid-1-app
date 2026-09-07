@@ -72,6 +72,19 @@ export interface Terminology {
    *  own longer "الصالون أو المركز" phrasing, which reads fine inline
    *  but was never meant to double as a short menu-row label. */
   centerLinkLabel: string;
+  /** "اسم العيادة" / "اسم مركز التجميل" / "اسم المركز" — the signup
+   *  form's own name-field label, swapped per entityType now that the
+   *  type is chosen on its own step *before* this field is even shown
+   *  (see SignupClient.tsx) rather than picked alongside it. Its own
+   *  fixed string per type, not derived from centerNoun/ENTITY_TYPE_LABEL
+   *  — Arabic's definite-article agreement ("العيادة" vs. plain
+   *  "عيادة") isn't a mechanical concatenation. */
+  clinicNameLabel: string;
+  /** Placeholder for the signup form's "الوصف" textarea — the label
+   *  itself stays the fixed word "الوصف" for every type (per the
+   *  request's own explicit instruction), only the placeholder hint
+   *  varies. */
+  descriptionPlaceholder: string;
 }
 
 const CLINIC_TERMS: Terminology = {
@@ -88,11 +101,17 @@ const CLINIC_TERMS: Terminology = {
   addEntryTitle: "إضافة وصفة أو تقرير جديد",
   addEntryPlaceholder: "اكتب تفاصيل الوصفة أو الملاحظة…",
   centerLinkLabel: "رابط العيادة",
+  clinicNameLabel: "اسم العيادة",
+  descriptionPlaceholder: "أدخل وصف العيادة",
 };
 
 /** Every term "beauty" and "salon" share — everything except
- *  practitionerNoun, which each type sets on its own below. */
-const SALON_SHARED_TERMS: Omit<Terminology, "practitionerNoun"> = {
+ *  practitionerNoun/clinicNameLabel/descriptionPlaceholder, which each
+ *  type sets on its own below (a beauty center's own name-field label
+ *  reads "اسم مركز التجميل", genuinely different from "مركز تجاري
+ *  آخر"'s plain "اسم المركز" — these two types no longer share every
+ *  term the way they still do for the rest of this dictionary). */
+const SALON_SHARED_TERMS: Omit<Terminology, "practitionerNoun" | "clinicNameLabel" | "descriptionPlaceholder"> = {
   centerNoun: "الصالون أو المركز",
   centerPossessive: "لمركزك",
   personNoun: "الزبون",
@@ -107,9 +126,19 @@ const SALON_SHARED_TERMS: Omit<Terminology, "practitionerNoun"> = {
   centerLinkLabel: "رابط المركز",
 };
 
-const BEAUTY_TERMS: Terminology = { ...SALON_SHARED_TERMS, practitionerNoun: "أخصائي التجميل" };
+const BEAUTY_TERMS: Terminology = {
+  ...SALON_SHARED_TERMS,
+  practitionerNoun: "أخصائي التجميل",
+  clinicNameLabel: "اسم مركز التجميل",
+  descriptionPlaceholder: "أدخل وصف مركز التجميل",
+};
 
-const SALON_TERMS: Terminology = { ...SALON_SHARED_TERMS, practitionerNoun: "الموظف المختص" };
+const SALON_TERMS: Terminology = {
+  ...SALON_SHARED_TERMS,
+  practitionerNoun: "الموظف المختص",
+  clinicNameLabel: "اسم المركز",
+  descriptionPlaceholder: "أدخل وصف المركز",
+};
 
 /** The one place every screen resolves entityType -> wording. A
  *  missing/unrecognized value (an old clinic doc from before this field

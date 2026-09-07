@@ -63,8 +63,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       // started session should still go to /signup. Both look identical
       // here (auth state -> null), so the sign-out button marks itself
       // first; see auth.ts and the identical pattern already used for
-      // /clinic's own sign-out.
-      router.replace(consumeIntentionalSignOut() ? "/" : "/signup");
+      // /clinic's own sign-out. `?mode=login` skips /signup's own new
+      // center-type-selection step (see SignupClient.tsx) — this visitor
+      // already has (or is trying to reach) an existing account, not
+      // starting a fresh signup, so the type picker would be a dead end.
+      router.replace(consumeIntentionalSignOut() ? "/" : "/signup?mode=login");
     }
     if (status === "ok" && pathname === "/admin/login") router.replace("/admin");
   }, [status, pathname, router]);

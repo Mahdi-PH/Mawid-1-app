@@ -61,6 +61,13 @@ export interface ClinicDoc {
    *  missing/unrecognized value as "clinic" so an old doc silently keeps
    *  today's medical wording rather than crashing or showing "undefined". */
   entityType: EntityType;
+  /** Optional free-text description collected at signup (replaced the old
+   *  entityType selector's spot on the form once type-selection moved to
+   *  its own step ahead of account creation — see SignupClient.tsx and
+   *  CLAUDE.md's "Center-type selection moved ahead of signup" section).
+   *  `null` for every clinic created before this field existed, and for
+   *  any signup that leaves it blank — never required. */
+  description: string | null;
   doctorName: string;
   specialty: string;
   gov: string | null;

@@ -31,8 +31,11 @@ export default function ClinicLayout({ children }: { children: React.ReactNode }
       // button) should land on the home screen, not the login form — an
       // expired/never-started session should still go to /signup. Both
       // look identical here (auth state -> null), so the sign-out button
-      // marks itself first; see auth.ts.
-      router.replace(consumeIntentionalSignOut() ? "/" : "/signup");
+      // marks itself first; see auth.ts. `?mode=login` skips /signup's
+      // own new center-type-selection step (see SignupClient.tsx) — a
+      // returning clinic owner needs the login form directly, not the
+      // type picker a fresh signup starts from.
+      router.replace(consumeIntentionalSignOut() ? "/" : "/signup?mode=login");
     }
   }, [status, pathname, router]);
 

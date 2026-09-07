@@ -7,15 +7,28 @@
 // included, landing in the admin dashboard's pending-approval queue. There
 // is deliberately no separate "admin registration" flow anywhere — the one
 // real admin account only ever comes from scripts/seed-admin.mjs.
-import { useMemo, useRef, useState } from "react";
+//
+// Center-type selection now happens on its own step BEFORE this form
+// appears at all — Home's "إدارة المراكز" card still points straight at
+// this same route, but this component's own default view is now the type
+// grid (EntityTypeGrid, the exact same shared component /find's own
+// service-category filter uses — see that file's own comment on why this
+// is one component, not two drifting copies). Only after a type is picked
+// does the actual account-creation form render, already knowing the type
+// — the old in-form three-button selector is gone; nothing asks twice.
+// A returning owner (or the admin) skips the type step entirely via the
+// "لديك حساب بالفعل؟" link, or via the `?mode=login` query param a
+// signed-out session redirect (admin/clinic layouts, /admin/login) now
+// appends so an expired session lands straight back on a login-ready
+// form, not an irrelevant type picker.
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { isConfiguredAdminEmail, signInWithEmail } from "../../lib/firebase/auth";
 import { registerClinic, SlugTakenError } from "../../lib/firebase/firestore";
-import { ENTITY_TYPE_LABEL } from "../../lib/firebase/terminology";
+import { ENTITY_TYPE_LABEL, getTerminology } from "../../lib/firebase/terminology";
 import type { EntityType } from "../../lib/firebase/types";
 import { saveSignupAccountPdf } from "../../lib/pdf/saveAccountPdf";
-
-const ENTITY_TYPE_OPTIONS: EntityType[] = ["clinic", "beauty", "salon"];
+import EntityTypeGrid from "../../components/EntityTypeGrid";
 import BackButton from "../../components/BackButton";
 import AppBackdrop from "../../components/AppBackdrop";
 
@@ -31,13 +44,28 @@ function toMinutes(time: string): number {
 
 export default function SignupClient() {
   const router = useRouter();
+  // "type" (the new entry step — pick a center type, reusing /find's own
+  // EntityTypeGrid) or "form" (the actual account-creation/login form).
+  // Defaults to "type" — the correct state to prerender for the common
+  // case (a fresh visitor from Home's "إدارة المراكز" card or /subscribe's
+  // "ابدأ مجاناً"), matching this project's own established rule of never
+  // defaulting to a state that then flashes into the right one (see
+  // app/page.tsx's own "phase defaults to home, not null" fix in
+  // CLAUDE.md). The one exception — a signed-out session redirect that
+  // needs the login form directly, not this type step — is handled below
+  // via a pre-paint effect, not a different default.
+  const [view, setView] = useState<"type" | "form">("type");
+  const decidedInitialView = useRef(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
   const [clinicName, setClinicName] = useState("");
-  // Required, no default — "Dynamic Entity Specialization" needs every
-  // new account to make this choice explicitly, since it's what every
-  // later terminology swap (see lib/firebase/terminology.ts) keys off.
+  const [description, setDescription] = useState("");
+  // Required, no default — "Dynamic Entity Specialization" still needs
+  // every new account to make this choice explicitly, since it's what
+  // every later terminology swap (see lib/firebase/terminology.ts) keys
+  // off — it's just chosen one step earlier now, on its own screen,
+  // before this form ever renders.
   const [entityType, setEntityType] = useState<EntityType | "">("");
   const [gov, setGov] = useState("");
   const [district, setDistrict] = useState("");
@@ -54,6 +82,25 @@ export default function SignupClient() {
   // auth/email-already-in-use for a returning owner and left them stuck.
   const [clinicMode, setClinicMode] = useState<"signup" | "login">("signup");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Same `?query=` pre-paint-bypass technique app/page.tsx already
+  // established for `?intro=1` — reads window.location.search directly
+  // (not useSearchParams(), so no <Suspense> boundary is needed just for
+  // this) inside a pre-paint effect guarded by a ref so it only ever
+  // runs once. admin/layout.tsx, clinic/layout.tsx, and /admin/login now
+  // append `?mode=login` when redirecting a signed-out session back here
+  // — that visitor already had (or was trying to reach) an existing
+  // account, so they need the login-ready form immediately, not an
+  // irrelevant "which type of center is this" question a signup-only
+  // step exists to ask.
+  useLayoutEffect(() => {
+    if (decidedInitialView.current) return;
+    decidedInitialView.current = true;
+    if (typeof window !== "undefined" && window.location.search.includes("mode=login")) {
+      setClinicMode("login");
+      setView("form");
+    }
+  }, []);
 
   const isAdminEmail = useMemo(() => isConfiguredAdminEmail(email), [email]);
   const isClinicLogin = !isAdminEmail && clinicMode === "login";
@@ -108,8 +155,18 @@ export default function SignupClient() {
     e.preventDefault();
     setError(null);
 
-    if (!clinicName.trim()) return setError("أدخل اسم العيادة أو مركز التجميل");
-    if (!entityType) return setError("اختر نوع المركز");
+    if (!entityType) {
+      // Shouldn't be reachable through the real UI flow (the form only
+      // ever renders once a type is picked), but defensively sends the
+      // visitor back to that step rather than showing a dead-end error
+      // for a field this screen no longer has any control for — covers
+      // the request's own explicit "لم يختر أي نوع، لا تسمح له بالانتقال"
+      // case.
+      setView("type");
+      return setError("يرجى اختيار نوع المركز أولاً");
+    }
+    const terms = getTerminology(entityType);
+    if (!clinicName.trim()) return setError(`أدخل ${terms.clinicNameLabel}`);
     if (!/^[^\s@]+@gmail\.com$/i.test(email.trim())) return setError("أدخل عنوان Gmail صحيحاً (example@gmail.com)");
     if (password.length < 8) return setError("كلمة المرور 8 أحرف على الأقل");
     if (password !== password2) return setError("كلمتا المرور غير متطابقتين");
@@ -128,7 +185,8 @@ export default function SignupClient() {
         email: email.trim(),
         password,
         clinicName: clinicName.trim(),
-        entityType: entityType as EntityType,
+        entityType,
+        description: description.trim() || null,
         licenseImageFile: licenseFile,
         gov: gov.trim() || null,
         district: gov.trim() ? district.trim() : null,
@@ -146,6 +204,7 @@ export default function SignupClient() {
         await saveSignupAccountPdf({
           clinicName: clinicName.trim(),
           email: email.trim(),
+          description: description.trim() || null,
           gov: gov.trim() || null,
           district: gov.trim() ? district.trim() : null,
           street: street.trim() || null,
@@ -174,6 +233,46 @@ export default function SignupClient() {
     }
   }
 
+  // The signup-only fields (name/description/license/etc.) key their own
+  // dynamic labels off whichever type was picked on the "type" step —
+  // getTerminology() already falls back to "clinic" wording for a null/
+  // empty value, so this stays safe even before a type is chosen.
+  const terms = useMemo(() => getTerminology(entityType || null), [entityType]);
+
+  if (view === "type") {
+    return (
+      <div dir="rtl" className="relative flex min-h-screen items-center justify-center bg-gray-50 p-6">
+        <AppBackdrop />
+        <div className="relative w-full max-w-sm rounded-xl border bg-white p-6 shadow-sm">
+          <BackButton fallbackHref="/" className="mb-3 block text-sm text-brand-600 hover:underline" />
+
+          <h1 className="mb-1 text-lg font-bold text-brand-700">إدارة المراكز</h1>
+          <p className="mb-4 text-sm text-gray-500">اختر نوع مركزك للمتابعة إلى إنشاء الحساب.</p>
+
+          <EntityTypeGrid
+            onSelect={(t) => {
+              setEntityType(t);
+              setError(null);
+              setView("form");
+            }}
+          />
+
+          <button
+            type="button"
+            onClick={() => {
+              setClinicMode("login");
+              setError(null);
+              setView("form");
+            }}
+            className="mt-5 block w-full text-center text-sm text-brand-600 hover:underline"
+          >
+            لديك حساب بالفعل؟ سجّل الدخول
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div dir="rtl" className="relative flex min-h-screen items-center justify-center bg-gray-50 p-6">
       <AppBackdrop />
@@ -181,7 +280,24 @@ export default function SignupClient() {
         onSubmit={isAdminEmail ? handleAdminSubmit : isClinicLogin ? handleClinicLogin : handleClinicSubmit}
         className="relative w-full max-w-sm rounded-xl border bg-white p-6 shadow-sm"
       >
-        <BackButton fallbackHref="/" className="mb-3 block text-sm text-brand-600 hover:underline" />
+        {!isAdminEmail && clinicMode === "signup" ? (
+          // Fresh signup, type already chosen on the previous step — "back"
+          // here returns to that step (an in-page state change, matching
+          // /find/book's own "‹ رجوع لقائمة العيادة" pattern), not literally
+          // out of the flow.
+          <button
+            type="button"
+            onClick={() => {
+              setView("type");
+              setError(null);
+            }}
+            className="mb-3 block text-sm text-brand-600 hover:underline"
+          >
+            ‹ رجوع لاختيار نوع المركز
+          </button>
+        ) : (
+          <BackButton fallbackHref="/" className="mb-3 block text-sm text-brand-600 hover:underline" />
+        )}
 
         {showPlanInfo && (
           <div className="mb-4 rounded-xl border-2 bg-brand-50/40 p-4" style={{ borderColor: "#00ADB5" }}>
@@ -195,14 +311,33 @@ export default function SignupClient() {
           </div>
         )}
 
-        <h1 className="mb-1 text-lg font-bold text-brand-700">إدارة المراكز (عيادات، مراكز تجميل ومراكز أخرى)</h1>
-        <p className="mb-4 text-sm text-gray-500">أنشئ حساباً جديداً، أو سجّل دخولك إذا كان حسابك موجوداً.</p>
+        {showPlanInfo ? (
+          <>
+            <h1 className="mb-1 text-lg font-bold text-brand-700">إنشاء حساب جديد</h1>
+            <p className="mb-4 text-sm text-gray-500">
+              النوع المختار: <span className="font-bold" style={{ color: "#00ADB5" }}>{ENTITY_TYPE_LABEL[entityType as EntityType]}</span>
+            </p>
+          </>
+        ) : (
+          <>
+            <h1 className="mb-1 text-lg font-bold text-brand-700">إدارة المراكز (عيادات، مراكز تجميل ومراكز أخرى)</h1>
+            <p className="mb-4 text-sm text-gray-500">سجّل دخولك إذا كان حسابك موجوداً.</p>
+          </>
+        )}
 
         {!isAdminEmail && (
           <button
             type="button"
             onClick={() => {
-              setClinicMode(clinicMode === "signup" ? "login" : "signup");
+              if (clinicMode === "signup") {
+                // Leaving signup mode from here has no type-selection step
+                // behind it to return to — treat it the same as arriving
+                // via the login link on the "type" screen.
+                setClinicMode("login");
+              } else {
+                setClinicMode("signup");
+                setView("type");
+              }
               setError(null);
             }}
             className="mb-4 text-sm text-brand-600 hover:underline"
@@ -226,7 +361,7 @@ export default function SignupClient() {
 
         {!isAdminEmail && !isClinicLogin && (
           <label className="mb-3 block text-sm">
-            اسم العيادة أو مركز التجميل
+            {terms.clinicNameLabel}
             <input
               type="text"
               value={clinicName}
@@ -237,28 +372,16 @@ export default function SignupClient() {
         )}
 
         {!isAdminEmail && !isClinicLogin && (
-          <div className="mb-4">
-            <div className="mb-1 text-sm">نوع المركز</div>
-            <div className="grid grid-cols-3 gap-2">
-              {ENTITY_TYPE_OPTIONS.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setEntityType(t)}
-                  className={
-                    "rounded-lg border px-2 py-2 text-sm font-bold " +
-                    (entityType === t ? "border-brand-600 bg-brand-50 text-brand-700" : "text-gray-600")
-                  }
-                  style={entityType === t ? { borderColor: "#00ADB5", color: "#00ADB5" } : undefined}
-                >
-                  {ENTITY_TYPE_LABEL[t]}
-                </button>
-              ))}
-            </div>
-            <p className="mt-1 text-xs text-gray-400">
-              يحدّد هذا الاختيار المصطلحات المستخدمة في حسابك (مريض/زبون، طبيب/أخصائي تجميل، وغيرها).
-            </p>
-          </div>
+          <label className="mb-4 block text-sm">
+            الوصف
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder={terms.descriptionPlaceholder}
+              rows={3}
+              className="mt-1 w-full rounded-lg border px-3 py-2"
+            />
+          </label>
         )}
 
         <label className="mb-3 block text-sm">
