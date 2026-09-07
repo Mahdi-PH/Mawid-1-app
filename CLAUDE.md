@@ -4168,11 +4168,15 @@ real file.
   untouched and fully readable, i.e. the "non-dominance" rule actually
   holding, not just intended. `document.querySelectorAll("svg use")`
   confirmed exactly 12 icon instances render into the pattern tile.
-- **Not yet deployed** — committed only, per this project's standing
-  practice of holding `firebase deploy` for the user's explicit
-  go-ahead (or a freshly shared service-account key, deleted right after
-  use, as in every earlier deploy in this file). No `firestore.rules`
-  changes were needed — this is a client-side/visual-only change.
+- **Deployed** (once the user asked and shared a fresh service-account
+  key): only `apps/web/out/` was pushed via `firebase deploy --only
+  hosting` — no `firestore.rules` changes were needed, this is a
+  client-side/visual-only change. Verified FINALIZED by reading the
+  release back from the Hosting Management API (release
+  `sites/mawid-app-d1d03/releases/1788761578806000`), same technique as
+  every other deploy in this file, since this sandbox still can't reach
+  `*.web.app` directly. The service-account key was deleted immediately
+  after — both the copy used for the deploy and the original upload.
   `public/brand/backdrop.jpg` (the now-unused old photo) was left in
   place rather than deleted, in case the user wants to revert or compare
   — it's simply no longer referenced by any code path.
