@@ -4978,10 +4978,20 @@ built copy.
   signup through the new type-screen → form flow, confirming the clinic
   doc that lands in Firestore carries both the chosen `entityType` and a
   non-null `description`.
-- **Not yet deployed** — no service-account key was shared alongside this
-  request; held per this project's standing practice of waiting for the
-  user's explicit go-ahead (or a key with no accompanying text, read as
-  "deploy this once ready") before pushing to `mawid-app-d1d03`.
+- **Deployed** (once the user shared a fresh service-account key with no
+  accompanying text — read, per this project's established pattern, as
+  "deploy this once ready"): no `firestore.rules` changes were needed
+  for this pass, so only the rebuilt `apps/web/out/` was pushed via
+  `firebase deploy --only hosting`, verified FINALIZED by reading the
+  release back from the Hosting Management API (release
+  `sites/mawid-app-d1d03/releases/1788783393633000`) — this sandbox
+  still can't reach `*.web.app` directly to browse it. The service-
+  account key was deleted immediately after — both the copy used for the
+  deploy and the original upload. The "not independently live-verified"
+  gap above (a real signup through the new type-screen → form flow,
+  confirming Firestore actually receives the chosen `entityType` and a
+  non-null `description`) is unaffected by deploying — still worth doing
+  once there's a real test signup to run.
 
 ## Next steps if resumed
 
