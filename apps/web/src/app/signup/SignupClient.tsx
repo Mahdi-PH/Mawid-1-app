@@ -21,9 +21,9 @@
 // signed-out session redirect (admin/clinic layouts, /admin/login) now
 // appends so an expired session lands straight back on a login-ready
 // form, not an irrelevant type picker.
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { isConfiguredAdminEmail, signInWithEmail } from "../../lib/firebase/auth";
+import { isAdminUser, isConfiguredAdminEmail, onAuthChange, signInWithEmail } from "../../lib/firebase/auth";
 import { registerClinic, SlugTakenError } from "../../lib/firebase/firestore";
 import { ENTITY_TYPE_LABEL, getTerminology } from "../../lib/firebase/terminology";
 import type { EntityType } from "../../lib/firebase/types";
@@ -116,6 +116,36 @@ export default function SignupClient() {
       setView("form");
     }
   }, []);
+
+  // Real gap closed, not a new system: /clinic's and /admin's own
+  // layout.tsx already redirect a SIGNED-OUT visitor straight to /signup
+  // (see their own effects) — this is the missing mirror image. Any
+  // REAL (non-anonymous — a patient's own anonymous booking session must
+  // never trip this) signed-in visitor who ends up on /signup, from
+  // whatever entry point (a home-screen click that raced auth-state
+  // resolution, a stale bookmark, browser back/forward, a shared link),
+  // already has an account and is never someone who still needs this
+  // screen — "إنشاء حساب" must not be shown to them again. Sent straight
+  // to the real dashboard, which already handles a missing/deleted
+  // clinic doc gracefully on its own (see /clinic's own null-clinic
+  // branch) — so this one guard covers every way of landing here, rather
+  // than patching each entry point (the home card's click handler, any
+  // future link into /signup) separately.
+  useEffect(() => {
+    let cancelled = false;
+    const unsubscribe = onAuthChange(async (user) => {
+      if (cancelled || !user || user.isAnonymous) return;
+      if (user.email && isConfiguredAdminEmail(user.email) && (await isAdminUser(user))) {
+        if (!cancelled) router.replace("/admin");
+        return;
+      }
+      if (!cancelled) router.replace("/clinic");
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [router]);
 
   const isAdminEmail = useMemo(() => isConfiguredAdminEmail(email), [email]);
   const isClinicLogin = !isAdminEmail && clinicMode === "login";

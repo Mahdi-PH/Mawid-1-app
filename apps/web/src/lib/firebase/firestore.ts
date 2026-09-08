@@ -351,18 +351,79 @@ export function getAppointmentId(clinicSlug: string, date: string, startTime: st
  *  from the visitor's point of view — without this, onSnapshot logs the
  *  error to the console and just stops, leaving onChange() never called
  *  again and the page stuck on "جارٍ التحميل" forever instead of falling
- *  back to the not-found state. */
+ *  back to the not-found state.
+ *
+ *  Real root cause of "the first booking a patient ever makes shows
+ *  'appointment not found', even though it was actually created" (a
+ *  second attempt then works, because by then the session is no longer
+ *  brand new): right after ensurePatientSession() mints a *fresh*
+ *  anonymous credential, the very first realtime Listen stream this
+ *  browser opens on a rules-protected document can receive a transient
+ *  permission-denied — the Firestore SDK's own persistent stream needs a
+ *  moment to pick up the newly-issued auth token, a known timing gap
+ *  distinct from whether the document (and the caller's right to read
+ *  it) actually exists. Treating every stream error as final and
+ *  unrecoverable (the previous behavior) reported this exact transient
+ *  condition as a permanent "not found". Fixed by verifying with a
+ *  direct, one-shot getDoc() — a fresh request, not reusing the same
+ *  stream — before trusting the stream's own error: if that direct read
+ *  succeeds, the appointment is real after all and the listener resumes
+ *  from there; only after a bounded, short number of such checks all
+ *  agree "still failing" does this report not-found. This is a real,
+ *  error-code-driven retry (verifies the actual document each time), not
+ *  a guessed delay standing in for one. */
 export function watchAppointment(
   appointmentId: string,
   onChange: (appt: AppointmentDoc | null) => void
 ): () => void {
-  return onSnapshot(
-    doc(db, "appointments", appointmentId),
-    (snap) => {
-      onChange(snap.exists() ? ({ id: snap.id, ...snap.data() } as AppointmentDoc) : null);
-    },
-    () => onChange(null)
-  );
+  const ref = doc(db, "appointments", appointmentId);
+  let cancelled = false;
+  let unsubscribe: (() => void) | undefined;
+  let attemptsLeft = 3;
+
+  function toAppt(snap: { exists: () => boolean; id: string; data: () => unknown }): AppointmentDoc | null {
+    return snap.exists() ? ({ id: snap.id, ...(snap.data() as object) } as AppointmentDoc) : null;
+  }
+
+  function attach() {
+    unsubscribe = onSnapshot(
+      ref,
+      (snap) => {
+        attemptsLeft = 3; // a real update arrived over the stream; any earlier error was indeed transient
+        onChange(toAppt(snap));
+      },
+      (err) => {
+        if (cancelled) return;
+        const transient = err.code === "permission-denied" || err.code === "unavailable" || err.code === "cancelled";
+        if (!transient || attemptsLeft <= 0) {
+          onChange(null);
+          return;
+        }
+        attemptsLeft -= 1;
+        unsubscribe?.();
+        getDoc(ref)
+          .then((snap) => {
+            if (cancelled) return;
+            onChange(toAppt(snap));
+            attach(); // resume live updates either way, from whatever the direct read just confirmed
+          })
+          .catch(() => {
+            if (cancelled) return;
+            if (attemptsLeft <= 0) {
+              onChange(null);
+              return;
+            }
+            attach(); // one more stream attempt before giving up
+          });
+      }
+    );
+  }
+
+  attach();
+  return () => {
+    cancelled = true;
+    unsubscribe?.();
+  };
 }
 
 /** Per-slot availability for the patient-facing booking grid, without ever

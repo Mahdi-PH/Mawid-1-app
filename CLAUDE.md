@@ -5334,3 +5334,165 @@ needed to make that fit.
   still can't reach `*.web.app` directly to browse it. The service-
   account key was deleted immediately after — both the copy used for
   the deploy and the original upload.
+
+## Root-cause fixes: first-booking "not found", booking loss on refresh/reopen, "حجوزاتي" rename
+
+A large maintenance/QA pass, addressed to a combined Full-Stack/Mobile/
+Navigation/Database/QA/Reliability persona, opening with a mandatory
+whole-system inspection and an explicit ban on band-aid timing fixes
+(`setTimeout`/blind delays to hide a race) — only "return created entity",
+"invalidate/refetch by ID", "await persistence", "proper state
+synchronization" were sanctioned. Two real, reported bugs were root-
+caused by reading the actual SDK-interaction code, not guessed:
+
+- **Root cause A — a patient's very first booking sometimes shows
+  "تعذّر العثور على هذا الحجز" (not found) even though it was created,
+  and a retry then shows it fine**: `watchAppointment()`
+  (`lib/firebase/firestore.ts`) opened a bare `onSnapshot()` with no
+  error handling beyond falling back to `null` on ANY error. Firestore's
+  realtime Listen stream needs a brief moment after `signInAnonymously()`
+  resolves to actually attach the freshly-issued auth token to its
+  persistent connection — the very first listener opened in that window
+  can receive a transient `permission-denied` that has nothing to do
+  with the document's real existence/ownership, and the old code treated
+  that identically to a genuine denial: silently rendered as "not found."
+  **Fixed**: `watchAppointment()` now distinguishes retryable error codes
+  (`permission-denied`, `unavailable`, `cancelled`) from a real, final
+  denial — on one of those three, it re-verifies via a direct one-shot
+  `getDoc()` (bounded to a few attempts) before ever reporting "gone",
+  and re-attaches the live listener once that resolves. This is the
+  request's own sanctioned "refetch by ID" pattern, not a delay guess —
+  nothing here waits a fixed number of milliseconds; it reacts to the
+  SDK's own reported error code.
+- **Root cause B — a booking/session disappears after refresh, pull-to-
+  refresh, or fully closing and reopening the app**: `ensurePatientSession()`
+  (`lib/firebase/auth.ts`) checked `auth.currentUser` synchronously the
+  instant it ran. Firebase Auth's persisted-session restore (from
+  IndexedDB, via the explicit `browserLocalPersistence` this project
+  already set in an earlier pass) is asynchronous — `auth.currentUser`
+  reads `null` until that restore finishes, even though a real session
+  exists. Any code checking it synchronously on mount can wrongly
+  conclude "no session" and mint a **brand-new** anonymous uid — silently
+  orphaning every earlier booking, which stays safely in Firestore under
+  the OLD uid, just unreachable from the new one. This is the actual
+  mechanism behind "my booking vanished" — the booking was never lost;
+  the patient's own identity was swapped out from under it.
+  **Fixed**: added `waitForAuthReady()` — a memoized promise around the
+  FIRST `onAuthStateChanged` callback (Firebase's own event announcing
+  "restore finished, here is the real current user, or null if there
+  truly isn't one"). `ensurePatientSession()` now awaits this before
+  ever deciding whether to sign in fresh — an event-driven readiness
+  gate, not a guessed delay, exactly the request's own "await
+  persistence"/"proper state synchronization" sanctioned pattern.
+- **"طلباتي" renamed to "حجوزاتي"** everywhere it's user-facing
+  (`/find/requests`'s own `<h1>`, `PatientSettingsDrawer`'s menu link) —
+  reframed in both files' comments as the one central, durable place a
+  patient reaches every booking they've ever made (Firestore is the
+  source of truth, not `localStorage` — this list was already, and
+  remains, keyed off the patient's own persisted anonymous uid via
+  `listAppointmentsForPatient()`, unchanged). Its own duplicate
+  `STATUS_LABEL` map was deleted in favor of the already-shared one in
+  `statusMeta.ts` — the same map `/clinic` and `/find/wait` already use,
+  so a status can never read differently in two places, per the
+  request's own "no parallel systems" instruction. Each row is now a
+  real `<Link href="/find/wait?clinic=...&appt=...">` — tapping a
+  booking opens the existing, already-built `/find/wait` screen (no new
+  screen invented), which is bound to that specific `clinic`+`appt` pair
+  in the URL, never a "last booking" lookup — the same real, previously-
+  built booking-specific-binding guarantee this project's own
+  `/find/wait` already had from earlier work.
+- **A real, independent Empty-vs-Error bug found and fixed while doing
+  this**: `/find/requests`'s old fetch chain had no `.catch()` at all — a
+  network failure or a session hiccup fell through to the exact same
+  "لا توجد حجوزات بعد" (no bookings yet) text a genuinely empty list
+  shows, telling a patient with real bookings that they have none.
+  Fixed with a proper three-way `loadState: "loading"|"success"|"error"`
+  (plus `loadError`) — a failed load now shows "تعذّر تحميل حجوزاتك" with
+  a real "إعادة المحاولة" (retry) button calling the same named `load()`
+  function again, never silently repainted as an empty list. This is the
+  exact Loading/Success/Empty/Error distinction the request required,
+  applied to the one place this project had it wrong.
+- **Already-registered clinic owner no longer sees "إنشاء حساب" again**:
+  `/clinic`'s and `/admin`'s own `layout.tsx` files already redirect a
+  SIGNED-OUT visitor to `/signup` — this pass added the missing mirror:
+  a new effect in `SignupClient.tsx` subscribes to `onAuthChange()` and,
+  the instant it reports a REAL (non-anonymous — a patient's own
+  anonymous booking session must never trip this) signed-in user,
+  redirects straight to `/clinic` (or `/admin`, if it resolves as the
+  configured admin address via the existing `isAdminUser()` check) —
+  covering every entry point (a raced home-screen click, a stale
+  bookmark, browser back/forward, a shared link) from one place, rather
+  than patching each one individually. This closes the exact gap the
+  request described: an owner who never logged out and later revisits
+  Manage Centers → their center type no longer sees the signup form.
+- **Manage-Centers navigation stack, checked against this request's own
+  TEST G/H, not assumed carried over**: `/signup`'s type↔form sub-view
+  already used `useLocalBackStep()` (built in an earlier pass) — a real
+  same-URL history marker pushed the instant the deeper "form" view
+  opens, so a real back press/gesture (the same History API an installed
+  Android TWA's physical back delegates to) and the in-page "‹ رجوع
+  لاختيار نوع المركز" link now converge on the exact same one-step
+  return, confirmed still correct and not regressed by this pass's own
+  new signed-in-redirect effect (the two run independently — the redirect
+  effect only ever fires for a real signed-in user, which never coexists
+  with an active type/form walkthrough in practice). `/clinic`'s own
+  physical back button intentionally keeps its separate, already-shipped,
+  already-live-tested `alwaysUseFallback` behavior (straight to `/`,
+  never back through login/signup) from the earlier "Sign-out from
+  /clinic…" section above — a deliberate, disclosed exception: reverting
+  it to retrace signup/login would reintroduce the exact race/bounce bug
+  that section documents finding and fixing live against the real
+  project. Not touched this pass.
+- **Duplicate-booking prevention**: confirmed, not newly built —
+  `bookSlot()`'s existing transaction against the deterministic
+  `${clinicSlug}_${date}_${startTime}` document id already rejects a
+  second write to the same slot atomically; every real booking button in
+  this app already disables itself while its own request is in flight
+  (`busy`/`disabled` state, pre-existing pattern used throughout
+  `/find/book`). No change needed — verified by re-reading the existing
+  code, not assumed.
+- **Verified**: `rm -rf .next out && npm run build` (typecheck + static
+  export) clean across all 19 routes, zero new TypeScript errors. A
+  Playwright pass against the freshly exported `out/`, served from an
+  explicit absolute path, ran 6 assertions, all passed: `/find/requests`
+  now shows "حجوزاتي" (not "طلباتي"); a genuine network failure in this
+  offline sandbox (no live Firebase reachable here outside the
+  interception pattern documented elsewhere in this file) now correctly
+  surfaces the new ERROR state with its retry button, and does **not**
+  fall through to the old false-empty text — the concrete, mechanically-
+  observed proof the Empty/Error conflation bug is fixed; `/signup` still
+  renders its ordinary type-selection screen normally when signed out,
+  with zero page errors introduced by the new redirect-guard effect.
+- **Not independently live-verified**: the two root-cause fixes
+  themselves (`waitForAuthReady()` correctly waiting out a real delayed
+  `onAuthStateChanged` restore; `watchAppointment()`'s retry correctly
+  recovering from a real transient `permission-denied` moments after a
+  real `signInAnonymously()`) could not be exercised against the real
+  `mawid-app-d1d03` project this pass — no live Firebase network path is
+  reachable from this sandbox's offline static-file-server harness, and
+  no fresh service-account key was shared with this request specifically.
+  What was verified is the reasoning traced directly against the actual
+  Firebase JS SDK's own documented async-restore/stream-attachment
+  behavior and the exact original code that ignored it, plus the
+  concrete, screenshot/assertion-confirmed UI-level consequences above
+  (the error-vs-empty distinction, the rename, the signed-in redirect).
+  Recommended before treating the two root-cause fixes as fully verified:
+  a real first-time patient booking a real slot on a fresh anonymous
+  session and confirming `/find/wait` shows it immediately with no
+  "not found" flash, then a real page reload/app-reopen confirming the
+  same booking still resolves under the same identity.
+- **Not built this pass, disclosed as a deliberate scoping decision, not
+  a gap silently dropped**: `watchClinicQueue()` (`lib/firebase/
+  queue.ts`) has a structurally similar bare-`onSnapshot`-falls-back-to-
+  empty-array pattern on error — left unchanged, since its worst-case
+  failure mode (a transiently wrong "N ahead of you" count on the
+  waiting screen) is materially lower-severity than a booking wrongly
+  reported as nonexistent, and widening this pass to it wasn't asked for
+  specifically. Worth the same retry treatment in a future pass if a
+  real "queue count briefly wrong" report ever surfaces.
+- **Not deployed** — no `firestore.rules` changes were needed (every fix
+  in this pass is client-side: error-handling/retry logic, an auth-
+  readiness gate, a rename, and a redirect guard), but no service-account
+  key was shared with this specific request either, so per this
+  project's own standing practice, `firebase deploy` was held for the
+  user's explicit go-ahead rather than assumed.

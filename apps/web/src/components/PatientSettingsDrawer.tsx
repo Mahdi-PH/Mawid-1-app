@@ -4,8 +4,10 @@
 // a settings icon pinned at the screen's physical top-left corner (same
 // spot, same gear icon, same slide-over shell as those two) replacing the
 // old inline PatientAccountBar ("مرحباً {name}" + a bare sign-out button).
-// Menu is intentionally short: two navigation links (طلباتي، السجل الطبي —
-// renamed from "بطاقتي الصحية" per the user's explicit ask) plus sign-out
+// Menu is intentionally short: two navigation links (حجوزاتي — renamed
+// from "طلباتي", now the one central place for every booking a patient
+// has ever made, not just pending requests — والسجل الطبي, renamed from
+// "بطاقتي الصحية" per the user's explicit ask) plus sign-out
 // pinned at the bottom, exactly the three options a patient needs and
 // nothing else — there's no nested tool state here (unlike the clinic/
 // admin drawers) since both menu items are just page navigations, not
@@ -106,7 +108,7 @@ export default function PatientSettingsDrawer({
                     >
                       📋
                     </span>
-                    <span className="font-bold text-gray-800">طلباتي</span>
+                    <span className="font-bold text-gray-800">حجوزاتي</span>
                     <span className="mr-auto text-gray-300">‹</span>
                   </Link>
 

@@ -49,11 +49,44 @@ export function consumeIntentionalSignOut(): boolean {
   return was;
 }
 
+/** Real root cause of "a patient's booking/session disappears after a
+ *  page reload or reopening the app": `auth.currentUser` reads `null`
+ *  until Firebase Auth finishes restoring its persisted session from
+ *  IndexedDB — an async step that hasn't necessarily completed by the
+ *  time a component's own mount effect runs. Code that trusted a
+ *  synchronous `auth.currentUser` check (as `ensurePatientSession()`
+ *  used to) would, on a fresh reload, wrongly conclude "no session yet"
+ *  during that restore window and mint a brand-new anonymous uid — which
+ *  then can never find the patient's own earlier bookings again (those
+ *  stay in Firestore forever, correctly, just filed under the OLD uid).
+ *  `onAuthStateChanged`'s first callback is Firebase's own, real
+ *  readiness signal (fires only once the persisted-session check has
+ *  actually completed, with either the restored user or a genuine
+ *  `null`) — waiting for exactly that once, memoized so every later call
+ *  resolves instantly, replaces the guessed-timing read with the real
+ *  one. */
+let authReadyPromise: Promise<User | null> | null = null;
+export function waitForAuthReady(): Promise<User | null> {
+  if (!authReadyPromise) {
+    authReadyPromise = new Promise((resolve) => {
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        unsubscribe();
+        resolve(user);
+      });
+    });
+  }
+  return authReadyPromise;
+}
+
 /** Ensures the current visitor has *some* Firebase Auth identity before a
  *  patient-side write (booking, request) — signs in anonymously if needed.
- *  Safe to call on every page load; it's a no-op once a session exists. */
+ *  Safe to call on every page load; it's a no-op once a session exists.
+ *  Waits for the real persisted-session restore (see waitForAuthReady())
+ *  before deciding whether a fresh anonymous sign-in is actually needed —
+ *  the fix for the reload-loses-your-bookings bug described above. */
 export async function ensurePatientSession(): Promise<User> {
-  if (auth.currentUser) return auth.currentUser;
+  const restored = await waitForAuthReady();
+  if (restored) return restored;
   const cred = await signInAnonymously(auth);
   return cred.user;
 }
