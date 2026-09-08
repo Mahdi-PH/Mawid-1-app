@@ -5490,9 +5490,14 @@ caused by reading the actual SDK-interaction code, not guessed:
   reported as nonexistent, and widening this pass to it wasn't asked for
   specifically. Worth the same retry treatment in a future pass if a
   real "queue count briefly wrong" report ever surfaces.
-- **Not deployed** — no `firestore.rules` changes were needed (every fix
-  in this pass is client-side: error-handling/retry logic, an auth-
-  readiness gate, a rename, and a redirect guard), but no service-account
-  key was shared with this specific request either, so per this
-  project's own standing practice, `firebase deploy` was held for the
-  user's explicit go-ahead rather than assumed.
+- **Deployed** (once the user shared a fresh service-account key with
+  "انشرها الآن"): no `firestore.rules` changes were needed (every fix in
+  this pass is client-side: error-handling/retry logic, an auth-readiness
+  gate, a rename, and a redirect guard), so only the already-built
+  `apps/web/out/` was pushed via `firebase deploy --only hosting`,
+  verified FINALIZED by reading the release back from the Hosting
+  Management API (release
+  `sites/mawid-app-d1d03/releases/1788892272122000`) — this sandbox still
+  can't reach `*.web.app` directly to browse it. The service-account key
+  was deleted immediately after — both the copy used for the deploy and
+  the original upload.
