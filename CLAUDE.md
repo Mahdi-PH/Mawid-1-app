@@ -5501,3 +5501,276 @@ caused by reading the actual SDK-interaction code, not guessed:
   can't reach `*.web.app` directly to browse it. The service-account key
   was deleted immediately after — both the copy used for the deploy and
   the original upload.
+
+## Time & Booking Availability system — server-authoritative slot cutoff, timezone-aware scheduling
+
+A large, explicitly-specified architecture request, addressed to a
+combined Full-Stack/Backend/Mobile/Booking-Architect/Timezone/Database/QA/
+Performance persona: the booking grid must stop offering a slot the
+instant its own start time has passed, this must hold against a
+manipulated device clock (the real security boundary must be
+server-side), and the whole system must be timezone-aware rather than
+assuming the visiting device's own clock. Root-caused first, not guessed:
+
+- **What existed before this pass, confirmed by reading the actual code,
+  not assumed**: `apps/web/src/lib/firebase/slotEngine.ts`'s
+  `generateDaySlots()` only ever split a clinic's `workStart..workEnd`
+  into fixed-length slots — it had **no concept of "now" at all**, and
+  neither did `/find/book/page.tsx`'s render path
+  (`slots.map((s) => ...)`), which rendered every slot on the grid
+  regardless of whether its own start time had already passed. `bookSlot()`
+  validated the clinic exists, is approved/subscribed, and that the
+  requested `startTime` falls on the clinic's real slot grid
+  (`resolveSlotEndTime()`) — but never that the slot's own start was still
+  in the future. **This meant a patient opening `/find/book` at, say,
+  18:15 would see 16:00/16:30/17:00/17:30/18:00 rendered as normal,
+  clickable, bookable buttons** — exactly the reported gap, confirmed by
+  reading the render loop, not by reproducing it live.
+- **A second, independent, more serious gap found during the same
+  read**: `firestore.rules`' `appointments/{apptId}` `create` rule
+  (`isValidApptCreate()`) validated field *shapes* only (date/time string
+  patterns, the id-matches-tuple check, name/phone length caps) — it had
+  **no time check whatsoever**. Since `bookSlot()`'s own
+  `resolveSlotEndTime()` "is this on the grid" check runs entirely
+  client-side, before the Firestore write, nothing stopped a client from
+  calling the Firestore SDK directly (bypassing `bookSlot()` altogether)
+  to create a perfectly well-formed appointment for a slot that had
+  already passed hours or days ago — a real, previously-undisclosed
+  security gap, not a hypothetical, found by reading the rule text
+  itself against what it actually checks.
+- **Why this matters architecturally**: this Firebase track has no
+  custom backend compute layer at all — no Express server, no Cloud
+  Functions (Cloud Functions themselves require the paid Blaze plan to
+  deploy, the same wall this file already documents hitting for Storage/
+  Phone-Auth SMS/FCM). So "the backend must be the final authority,
+  never the client clock" — the request's own repeated, explicit
+  instruction — has exactly one place in this architecture where it can
+  actually be enforced with real, unspoofable server authority:
+  **Firestore Security Rules' `request.time`**, which Firestore's own
+  servers stamp at the moment they evaluate a write, completely outside
+  any client's reach — the same mechanism this project already relies on
+  elsewhere (e.g. `access_grants`' own `expiresAt > request.time` cap).
+  This is the one, deliberate architectural anchor the whole fix is
+  built on, not a full custom backend, which this Spark-plan track
+  cannot have.
+
+### What was built
+
+- **`lib/time/clinicTime.ts`** (new): `zonedTimeToUtcMillis(dateISO,
+  "HH:mm", timeZone)` — converts a clinic's own wall-clock schedule into
+  a real, absolute instant (epoch ms), via the standard `Intl.
+  DateTimeFormat`-based IANA-zone-offset trick (two-pass fixed-point
+  resolution, so it stays correct across a DST transition in any zone
+  that observes one, not just a fixed-offset one like Baghdad) — no new
+  timezone library dependency needed. `DEFAULT_CLINIC_TIMEZONE =
+  "Asia/Baghdad"` and `getClinicTimezone()` fall back to this app's own
+  already-established default location (see the artifact section above)
+  for every clinic that hasn't set one — which today is every clinic,
+  since no signup/settings UI collects this yet (see "Deliberately out
+  of scope" below).
+- **`ClinicDoc.timezone?: string | null`** (new, optional field,
+  `types.ts`) — an IANA zone id, not a fixed `+03:00` offset, per the
+  request's own explicit "استخدم IANA Time Zone IDs" instruction, so this
+  keeps working correctly the moment a non-Baghdad, DST-observing clinic
+  is ever needed, with zero further code changes. `null`/missing for
+  every clinic that exists today — backward compatible, same disclosed
+  pattern this file already uses for `entityType`/`description`.
+- **`lib/time/timeService.ts`** (new) — the one shared "what time is it,
+  really?" for the whole app, per the request's own explicit "لا تكرر
+  Logic الوقت في عدة أماكن" instruction. **Explicitly disclosed as UX-only,
+  never the security boundary** (see its own header comment): estimates
+  a clock offset once per session (write one scratch doc with Firestore's
+  `serverTimestamp()`, read it back with `getDocFromServer()`, take the
+  round-trip midpoint) and re-syncs only when the app becomes visible
+  again after being backgrounded — **never a per-second poll**, per the
+  request's own explicit ban on exactly that. `now()` is then just
+  `Date.now() + cachedOffset`, an in-process arithmetic op with zero
+  network cost between syncs.
+- **`serverTimeProbe/{uid}`** (new Firestore collection + rule) — the
+  scratch document TimeService's own sync writes to/reads back, one per
+  signed-in identity (including an anonymous patient's own uid), locked
+  to `allow read, write: if isOwner(uid)` — carries no PII, never queried
+  or listed, and (disclosed plainly) is never itself trusted for
+  anything security-relevant; its only job is producing a *display*
+  estimate.
+- **`lib/time/useReliableNow.ts`** (new) — the one React hook every
+  time-sensitive screen calls instead of reinventing its own timer:
+  returns a live `now` that updates on mount, once per real wall-clock
+  **minute boundary** (not a fixed 60000ms-from-mount timer, and
+  explicitly not every second — the request's own explicit "لا تستخدم
+  polling ثقيل" /"لا تستخدم Polling كل ثانية" ban), and again immediately
+  on `visibilitychange`/`focus` — the exact "App Resume" case the request
+  called out by name.
+- **`slotEngine.ts` gained `isSlotBookable()`/`filterBookableSlots()`** —
+  the one, precise cutoff rule used identically everywhere a slot's time
+  decides bookability: a slot is bookable only while its own start is
+  **strictly** in the future (`slotStart > now`) — the deliberate,
+  disclosed boundary choice for the "is 18:00 itself still offered at
+  exactly 18:00:00.000?" question the request itself flagged as needing
+  a precise, non-arbitrary answer: no, a slot is treated as already
+  begun the instant the clock reaches its own start, not one moment
+  before. Verified against the request's own worked example exactly
+  (16:00–22:00 working hours, 30-minute slots, current time 18:00 →
+  16:00/16:30/17:00/17:30 excluded, 18:00 excluded at the boundary,
+  18:30 onward included) via a standalone logic test — see Verification.
+- **`bookSlot()` (`firestore.ts`)**: now computes the requested slot's
+  real start instant through the clinic's own timezone and (a) fails
+  fast, client-side, with a new `SlotExpiredError` if it's already
+  passed — a cheap, honest UX rejection, explicitly **not** the security
+  check — and (b) writes a new `startAt: Timestamp` field on the
+  appointment document, which IS what the real security check below
+  reads.
+- **`AppointmentDoc.startAt?: Timestamp`** (new, optional field) — every
+  other existing display/lookup path (`date`/`startTime` strings) is
+  completely untouched; nothing was changed to read `startAt` for
+  display anywhere, so this is purely additive and every appointment
+  created before this pass simply lacks it at runtime, same disclosed
+  backward-compat posture as `entityType` above.
+- **`firestore.rules`' `isValidApptCreate()` gained the actual, real
+  security check**: `data.startAt is timestamp && data.startAt >
+  request.time` — evaluated against **Firestore's own server clock**,
+  not anything a client supplies or claims. This is what makes TEST 6
+  (device clock manually rolled forward, attempts to book an
+  already-real-past slot) actually hold: whatever a tampered client's
+  own `Date.now()` believes "now" is, the write is only accepted if
+  Firestore's real server clock agrees the slot genuinely hasn't started
+  — the one place in this whole architecture where "backend
+  authoritative, not client clock" is truly, unspoofably enforced.
+- **`/find/book/page.tsx` wired to all of the above**: the rendered grid
+  is `filterBookableSlots(...)`, not the raw day's grid — an expired slot
+  disappears from the choices entirely (per the request's own explicit
+  "الأفضل إخفاؤه من قائمة الاختيار", not merely greyed out), re-derived
+  live off `useReliableNow()`'s ticking `nowMs`, so a slot crossing from
+  bookable to expired **while the screen sits open** disappears on its
+  own with no manual refresh, no full-page reload, no flicker — a new
+  effect keyed on the same `nowMs` also re-runs `reloadAvailability()`
+  each minute (booked-vs-free staleness, a separate axis, gets refreshed
+  on the same cadence) and a second new effect clears an already-`selected`
+  slot (and shows an honest message) the instant it itself expires while
+  sitting on the confirm form — the exact "user picked 18:30, sat there
+  past 18:30, then pressed confirm" scenario the request named explicitly.
+  `handleConfirm()`'s catch block now also recognizes `SlotExpiredError`
+  distinctly from `SlotTakenError`, showing the correct honest message
+  for each rather than a raw error string.
+- **Race-condition guard, duplicate-booking prevention, offline
+  handling — all confirmed unchanged and still correct, not re-built**:
+  `bookSlot()`'s existing Firestore transaction (reads the deterministic
+  `${clinicSlug}_${date}_${startTime}` doc, writes only if unoccupied) is
+  untouched in structure — only additional fields ride along inside the
+  same transaction's write, which doesn't affect Firestore's own
+  same-document transaction serialization at all. `runTransaction()`
+  itself doesn't support Firestore's offline write-queueing (unlike a
+  plain `setDoc`), so a genuinely offline confirm attempt already threw
+  before this pass and still does — verified by reading the SDK's own
+  documented behavior, not assumed, so §30/§12 ("no false booking
+  success while offline") already held by construction and needed no
+  new code.
+
+### Deliberately out of scope, disclosed (not gaps silently dropped)
+
+- **No visible clock/timer widget was added anywhere** — the request's
+  own §31 explicitly permits using a time service purely internally when
+  no UI need exists, and nothing in this pass needed one; `TimeService`
+  is consumed only for filtering logic, never rendered.
+- **No per-weekday working-hours/holiday/closed-day model** — every
+  clinic in this schema (`ClinicDoc.workStart/workEnd/slotMin/
+  breakStart/breakEnd`) has always used ONE working window for every day
+  of the week forever; there is no "Saturday differs from Sunday" or
+  "closed on Fridays" concept anywhere in this track today, and adding
+  one would be a much larger, unrequested schema migration touching
+  signup, `/clinic`'s settings tab, the PDF export, and this file's own
+  established slot-generation contract — out of scope for this pass,
+  which was specifically about time-of-day cutoff correctness within
+  today's existing one-window-per-day model, not about building calendar
+  features that don't exist yet.
+- **No timezone-selection UI** — `ClinicDoc.timezone` exists in the
+  schema and is fully wired through the availability math, but no
+  signup/settings form collects it, since every real clinic today is in
+  Iraq and the app's one established default (`Asia/Baghdad`) already
+  covers all of them correctly. Architecture is ready; UI wasn't built
+  speculatively for a need that doesn't exist yet.
+- **Overnight/midnight-spanning shifts** (`workEnd` earlier than
+  `workStart`) — confirmed, not assumed, that `generateDaySlots()`
+  already degrades gracefully to an empty grid in this case (its loop
+  condition `cursor + duration <= end` simply never holds when `end <
+  start`) rather than erroring or producing garbage slots — exactly the
+  request's own "لا تضفه بشكل عشوائي... لكن تأكد أن الكود لا يسبب أخطاء"
+  instruction, satisfied by the existing code with no change needed.
+- **Booking lead time is zero** — a slot is bookable up until the exact
+  instant it starts, with no extra buffer (e.g. "must book at least 5
+  minutes ahead"), per the request's own explicit "لا تخترع قيمة
+  عشوائية" — no such buffer existed before, and none was invented now.
+
+### Verification
+
+- **The core time-conversion/cutoff algorithm was verified against the
+  request's own exact worked example**, not just read for correctness:
+  a standalone Node logic test (mirroring `clinicTime.ts`/`slotEngine.ts`
+  line-for-line) confirmed 7/7 assertions — `2026-09-08 16:00 Asia/
+  Baghdad` resolves to exactly `13:00 UTC`; a DST-observing zone
+  (`America/New_York`) resolves the *same* wall-clock time to two
+  genuinely different UTC instants six months apart (proving this isn't
+  a fixed-offset assumption); the exact boundary rule (`now == slot
+  start` → not bookable, one ms before → bookable, one ms after → not
+  bookable); and the request's own full worked example — 16:00–22:00,
+  30-minute slots, current time 18:00 — reproduced **exactly**:
+  `[18:30, 19:00, 19:30, 20:00, 20:30, 21:00, 21:30]` and nothing else.
+- **The actual security-critical change — `firestore.rules`' new
+  `startAt` check — was verified against a real, locally-running
+  Firestore emulator**, not just read through by eye (same standing
+  practice as every other rules change in this file; the Firestore
+  emulator jar was already cached in this sandbox from earlier work).
+  Since the Auth emulator itself couldn't start this pass (blocked
+  `firebase-public.firebaseio.com`, the same class of network block this
+  file already documents for `dl.google.com`), `@firebase/rules-unit-
+  testing` (installed into a throwaway scratch directory outside the
+  repo, never added to this project's own `package.json`/lockfile, fully
+  deleted after use) was used instead — it authenticates test identities
+  directly against the Firestore emulator without needing the Auth
+  emulator at all. 9 assertions, all passed: a future `startAt` (+5 min)
+  create succeeds; a past `startAt` (-5 min) create is rejected; the
+  exact boundary (`startAt == now`) is rejected; a create with `startAt`
+  missing entirely is rejected; a create with `startAt` as a raw number
+  instead of a real `Timestamp` is rejected; a patient can write/read
+  their own `serverTimeProbe` doc; a patient CANNOT write or read a
+  *different* patient's probe doc; and — a regression check — a
+  create with a deliberately mismatched `apptId` (the pre-existing,
+  unrelated `isValidApptCreate` check) is still correctly rejected,
+  confirming the new check didn't loosen anything already enforced.
+  Scratch test script, its throwaway `node_modules`, and the emulator's
+  own debug logs were all deleted after — confirmed via `git status`
+  showing only the five real production files (plus the new `lib/time/`
+  directory) changed.
+- **`rm -rf .next out && npm run build` (typecheck + static export)
+  clean** across all 19 routes. A local Playwright smoke pass against
+  the freshly exported `out/` (served from an explicit absolute path)
+  confirmed zero unexpected console/page errors on `/find/book`
+  (including its not-found branch, which still exercises
+  `useReliableNow()`'s own mount effect with no live Firebase reachable
+  in this offline harness — confirming TimeService's own sync failure is
+  swallowed silently, per its own documented fallback, not a crash),
+  `/find`, `/clinic`, and `/`.
+- **Not independently live-verified against the real `mawid-app-d1d03`
+  project**: no fresh service-account key was shared with this specific
+  request, so the actual end-to-end flow (a real patient opening
+  `/find/book` mid-afternoon, watching earlier slots disappear on their
+  own as the clock crosses into the next minute with the screen left
+  open, confirming a genuinely-past-slot booking attempt is rejected
+  against the *live* project's real server clock) was not exercised live
+  this pass — the emulator test above is what stands in for the rules
+  half of that; the client-side timing/UI behavior was verified via the
+  logic test and the smoke pass instead. Recommended before treating
+  this as fully verified end-to-end: a real clinic with real working
+  hours, watched live across an actual slot-boundary crossing.
+- **Performance/reliability, checked not assumed**: no new interval
+  faster than once per real minute was introduced anywhere; the one
+  network-touching operation (`timeService.sync()`) fires at most once
+  per session plus once per resume-after-backgrounding, never on a
+  fixed short timer; `useReliableNow()`'s effect cleans up both its
+  `setTimeout` and its two event listeners on unmount, confirmed by
+  reading the returned cleanup function, not assumed.
+- **Not deployed** — `firestore.rules` changed (the new `startAt` check
+  and the new `serverTimeProbe` collection) and no service-account key
+  was shared with this request, so per this project's own standing
+  practice, both the rules deploy and the Hosting rebuild are held for
+  the user's explicit go-ahead rather than assumed.

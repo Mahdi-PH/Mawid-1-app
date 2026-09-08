@@ -21,9 +21,12 @@ import {
   getClinic,
   getSlotAvailability,
   isSubscriptionActive,
+  SlotExpiredError,
   SlotTakenError,
 } from "../../../lib/firebase/firestore";
-import { generateDaySlots } from "../../../lib/firebase/slotEngine";
+import { filterBookableSlots, generateDaySlots, isSlotBookable } from "../../../lib/firebase/slotEngine";
+import { useReliableNow } from "../../../lib/time/useReliableNow";
+import { now as reliableNow } from "../../../lib/time/timeService";
 import type { ClinicDoc } from "../../../lib/firebase/types";
 import { getActiveBooking, getPatientProfile, saveActiveBooking, type PatientProfile } from "../../../lib/patientLocal";
 
@@ -118,21 +121,57 @@ function BookClinic() {
     setActiveBooking(getActiveBooking());
   }, []);
 
-  const slots = clinic ? generateDaySlots(clinic) : [];
+  // The one live "what time is it, really?" this whole page hangs off —
+  // see lib/time/useReliableNow.ts. Recomputes on mount, once per real
+  // wall-clock minute, and again the instant this tab/app comes back to
+  // the foreground — never a raw `new Date()`/polling loop.
+  const nowMs = useReliableNow();
+
+  // Today's full grid, narrowed to what's still bookable AT ALL right now
+  // — a slot whose own start has already passed never appears here, per
+  // the user's own explicit "الأفضل إخفاؤه من قائمة الاختيار" ask, not
+  // merely greyed out. Booked-vs-free (a completely separate axis, see
+  // `availability` below) is what actually disables one of these.
+  const slots = clinic ? filterBookableSlots(clinic, date, generateDaySlots(clinic), nowMs) : [];
 
   const reloadAvailability = useCallback(
     async (c: ClinicDoc) => {
       setAvailabilityLoading(true);
-      const map = await getSlotAvailability(
-        c.slug,
-        date,
-        generateDaySlots(c).map((s) => s.startTime)
-      );
+      // Read availability only for slots that are still bookable right
+      // now — an already-expired slot is hidden from the grid regardless
+      // of whether it was ever booked, so checking its booked/free state
+      // would just be a wasted Firestore read.
+      const bookableNow = filterBookableSlots(c, date, generateDaySlots(c), reliableNow());
+      const map = await getSlotAvailability(c.slug, date, bookableNow.map((s) => s.startTime));
       setAvailability(map);
       setAvailabilityLoading(false);
     },
     [date]
   );
+
+  // Re-run the same reload on every minute tick (not just on mount) so a
+  // slot that crosses from "bookable" to "expired" while this screen sits
+  // open disappears on its own — no manual refresh, no full page reload,
+  // matching the same minute-tick nowMs already drives for the grid
+  // filter above. Also the moment `useReliableNow`'s own resync-on-resume
+  // fires (backgrounding the app for 20 minutes and coming back), so a
+  // stale grid from before the gap never lingers.
+  useEffect(() => {
+    if (clinic) reloadAvailability(clinic);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nowMs, clinic?.slug]);
+
+  // A slot the patient already picked can itself expire while they're
+  // still looking at the confirm form (e.g. selected 18:30, then sat on
+  // the form past 18:30) — clear the stale selection instead of letting
+  // "تأكيد طلب الموعد" be pressed against a slot that's no longer valid.
+  useEffect(() => {
+    if (selected && clinic && !isSlotBookable(clinic, date, selected, nowMs)) {
+      setSelected(null);
+      setError("انتهى وقت هذا الموعد — اختر وقتاً آخر.");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nowMs]);
 
   useEffect(() => {
     if (!slug) {
@@ -151,8 +190,10 @@ function BookClinic() {
       .then(() =>
         getClinic(slug).then((c) => {
           const live = c && c.status === "approved" && isSubscriptionActive(c);
+          // Availability loads itself once `clinic` actually changes —
+          // see the effect keyed on `[nowMs, clinic?.slug]` above — so
+          // this doesn't also need to call reloadAvailability() directly.
           setClinic(live ? c : null);
-          if (live && c) reloadAvailability(c);
         })
       );
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -201,6 +242,14 @@ function BookClinic() {
       if (err instanceof SlotTakenError) {
         setError("هذا الموعد حُجز للتو من شخص آخر — اختر وقتاً آخر.");
         setAvailability((prev) => ({ ...prev, [selected]: false }));
+        setSelected(null);
+      } else if (err instanceof SlotExpiredError) {
+        // Re-validated fresh at the exact moment of confirming (see
+        // bookSlot()'s own pre-check) rather than trusting whatever the
+        // grid showed when the patient first tapped this slot — this is
+        // the honest rejection message for that case, not a raw
+        // Firestore/rules error string.
+        setError("انتهى وقت هذا الموعد — اختر وقتاً آخر.");
         setSelected(null);
       } else {
         setError(err instanceof Error ? err.message : String(err));

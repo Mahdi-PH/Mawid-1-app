@@ -78,6 +78,19 @@ export interface ClinicDoc {
   slotMin: 5 | 10 | 15 | 20;
   breakStart: string | null;
   breakEnd: string | null;
+  /** IANA zone id (e.g. "Asia/Baghdad") the clinic's own workStart/workEnd
+   *  are wall-clock times IN — never the visiting patient's device
+   *  timezone, which must not shift what "4:00 PM" means for a given
+   *  clinic. `null`/missing (every clinic created before this field
+   *  existed, and any signup that leaves it unset — no UI collects this
+   *  yet) falls back to DEFAULT_CLINIC_TIMEZONE (see lib/time/
+   *  clinicTime.ts) — Asia/Baghdad, this app's one established default
+   *  location (see CLAUDE.md). Not exposed in any signup/settings form
+   *  yet since every real clinic today is in Iraq; the field exists so
+   *  availability math is already timezone-aware architecture, not a
+   *  fixed +3-hours assumption, the moment a non-Baghdad clinic is ever
+   *  needed. */
+  timezone?: string | null;
   status: ClinicStatus;
   /** Storage download URL for the uploaded business license (clinic or
    *  beauty-center registration document) — see lib/firebase/storage.ts. */
@@ -133,6 +146,22 @@ export interface AppointmentDoc {
   date: string; // "2026-09-02"
   startTime: string; // "09:15"
   endTime: string;
+  /** The slot's real start instant, resolved through the clinic's own
+   *  timezone at booking time (see lib/time/clinicTime.ts) — the field
+   *  firestore.rules' appointments `create` rule actually checks against
+   *  `request.time` (Firestore's own server clock) to reject a booking
+   *  for a slot that has already started, regardless of what a client's
+   *  own device clock claims "now" is; see that rule's comment and
+   *  bookSlot()'s. `date`/`startTime` above stay the source of truth for
+   *  every existing display/lookup path (grid rendering, "حجوزاتي",
+   *  the admin table, notifications) — nothing in this app was changed to
+   *  read `startAt` for display, so this is purely additive. Appointments
+   *  created before this field existed simply lack it at runtime (same
+   *  disclosed backward-compat posture as `entityType`/`description`
+   *  above) — never read as an error, and never needed for an existing
+   *  booking's own display, only for a NEW booking's own create-time
+   *  validation. */
+  startAt?: Timestamp;
   patientUid: string;
   patientName: string;
   patientPhone: string;

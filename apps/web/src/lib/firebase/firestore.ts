@@ -23,6 +23,8 @@ import { compressLicenseImageToDataUrl } from "./licenseImage";
 import { createStatusNotification } from "./notificationCenter";
 import { syncQueueSlot } from "./queue";
 import { generateDaySlots, resolveSlotEndTime } from "./slotEngine";
+import { getClinicTimezone, zonedTimeToUtcMillis } from "../time/clinicTime";
+import { now as reliableNow } from "../time/timeService";
 import { OCCUPYING_STATUSES } from "./types";
 import type { AppointmentDoc, AppointmentStatus, ClinicDoc, ClinicStatus, EntityType, UserDoc } from "./types";
 
@@ -473,6 +475,13 @@ export interface BookSlotInput {
  *  exactly one commits — the other's transaction function re-runs, observes
  *  the now-occupied doc, and throws SlotTakenError. This is the Firestore-
  *  native equivalent of the Postgres slotLockKey unique-index guard. */
+export class SlotExpiredError extends Error {
+  constructor(startTime: string) {
+    super(`${startTime} has already started or passed — pick a still-upcoming time.`);
+    this.name = "SlotExpiredError";
+  }
+}
+
 export async function bookSlot(input: BookSlotInput): Promise<void> {
   const clinic = await getClinic(input.clinicSlug);
   if (!clinic) throw new Error(`Unknown clinic "${input.clinicSlug}"`);
@@ -480,6 +489,17 @@ export async function bookSlot(input: BookSlotInput): Promise<void> {
     throw new Error(`Clinic "${input.clinicSlug}" is not currently accepting bookings.`);
   }
   const endTime = resolveSlotEndTime(clinic, input.startTime); // throws SlotNotAvailableError if off-grid
+
+  // Fast, UX-only pre-check — never the real security boundary (a
+  // device's own clock is exactly what a client can lie about). Catches
+  // the common, honest case (the grid was open a while and this slot's
+  // start time has since passed) before ever attempting a write; the
+  // actual, unspoofable enforcement is startAt's own `> request.time`
+  // check in firestore.rules below, evaluated against Firestore's real
+  // server clock regardless of what this client's Date.now() claims.
+  const timezone = getClinicTimezone(clinic);
+  const slotStartMillis = zonedTimeToUtcMillis(input.date, input.startTime, timezone);
+  if (slotStartMillis <= reliableNow()) throw new SlotExpiredError(input.startTime);
 
   const ref = doc(db, "appointments", apptId(input.clinicSlug, input.date, input.startTime));
   await runTransaction(db, async (tx) => {
@@ -493,6 +513,7 @@ export async function bookSlot(input: BookSlotInput): Promise<void> {
       date: input.date,
       startTime: input.startTime,
       endTime,
+      startAt: Timestamp.fromMillis(slotStartMillis),
       patientUid: input.patientUid,
       patientName: input.patientName,
       patientPhone: input.patientPhone,

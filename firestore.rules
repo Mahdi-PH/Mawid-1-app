@@ -62,7 +62,22 @@ service cloud.firestore {
         && isTimeString(data.endTime)
         && apptId == data.clinicSlug + '_' + data.date + '_' + data.startTime
         && data.patientName is string && data.patientName.size() > 0 && data.patientName.size() <= 120
-        && data.patientPhone is string && data.patientPhone.size() > 0 && data.patientPhone.size() <= 30;
+        && data.patientPhone is string && data.patientPhone.size() > 0 && data.patientPhone.size() <= 30
+        // The one real, unspoofable "is this slot already in the past?"
+        // check in the whole system — request.time is stamped by
+        // Firestore's own servers at the moment this write is evaluated,
+        // completely outside any client's control, unlike a client-
+        // supplied "now" or the device clock a client-side pre-check (see
+        // bookSlot()'s own comment) relies on for UX only. `startAt` is
+        // client-computed (the slot's start, resolved through the
+        // clinic's own timezone — see lib/time/clinicTime.ts) but its
+        // *comparison* against request.time is evaluated by Firestore
+        // itself, so a device with a manipulated clock cannot talk its
+        // way past this: whatever "now" a tampered client believes in,
+        // the booking is only accepted if Firestore's real clock agrees
+        // the slot genuinely hasn't started yet.
+        && data.startAt is timestamp
+        && data.startAt > request.time;
     }
 
     // ---------------------------------------------------------------
@@ -465,6 +480,24 @@ service cloud.firestore {
                         ));
 
       allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // serverTimeProbe/{uid} — TimeService's own clock-offset probe (see
+    // lib/time/timeService.ts). One tiny scratch doc per signed-in
+    // identity (including an anonymous patient's own uid), overwritten in
+    // place on every sync, never queried or listed — its only real use is
+    // "write a serverTimestamp(), immediately read it back", so the only
+    // access this needs is that same identity reading/writing its own
+    // doc. Carries no PII, no booking data, nothing worth an admin
+    // dashboard or anyone else ever reading. This document's *content* is
+    // never trusted for anything security-relevant (see that file's own
+    // comment on why) — the real, unspoofable "is this slot in the
+    // past?" authority stays request.time itself, on the actual
+    // appointments create rule above.
+    // ---------------------------------------------------------------
+    match /serverTimeProbe/{uid} {
+      allow read, write: if isOwner(uid);
     }
   }
 }

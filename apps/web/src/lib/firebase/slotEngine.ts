@@ -7,6 +7,7 @@
 
 import type { AppointmentStatus, ClinicDoc } from "./types";
 import { OCCUPYING_STATUSES } from "./types";
+import { getClinicTimezone, zonedTimeToUtcMillis } from "../time/clinicTime";
 
 export interface Slot {
   startTime: string;
@@ -50,6 +51,46 @@ export function generateDaySlots(clinic: Pick<ClinicDoc, "workStart" | "workEnd"
 
 export function isOccupyingStatus(status: AppointmentStatus): boolean {
   return OCCUPYING_STATUSES.has(status);
+}
+
+/** The one, precise cutoff rule for "has this slot's booking window
+ *  already closed?" — used identically everywhere a slot's time (not its
+ *  booked/free state, which is a separate axis) decides whether it can
+ *  still be offered: the patient-facing grid, the re-check right before
+ *  confirming, and the client-side mirror of the same rule bookSlot()
+ *  enforces before ever writing. A slot is bookable only while its own
+ *  start is still strictly in the future — the exact instant `now` reaches
+ *  a slot's start, that slot is treated as already begun, not "about to
+ *  begin" (this is a deliberate boundary choice, not an accident: 18:00 is
+ *  no longer offered once the clock reads 18:00:00, only while it still
+ *  reads something earlier). `now` must be an absolute epoch-ms instant —
+ *  see lib/time/timeService.ts — compared against the slot's own start
+ *  converted through the clinic's own timezone (lib/time/clinicTime.ts),
+ *  never the two clock strings compared as plain text, since "6:00" vs
+ *  "18:00" and cross-midnight dates both need real instant arithmetic to
+ *  get right. */
+export function isSlotBookable(
+  clinic: Pick<ClinicDoc, "workStart" | "workEnd" | "slotMin" | "breakStart" | "breakEnd"> & { timezone?: string | null },
+  dateISO: string,
+  startTime: string,
+  nowMillis: number
+): boolean {
+  const slotStartMillis = zonedTimeToUtcMillis(dateISO, startTime, getClinicTimezone(clinic));
+  return slotStartMillis > nowMillis;
+}
+
+/** generateDaySlots(), narrowed to the slots that are still bookable right
+ *  now — i.e. today's grid minus whatever has already started or passed.
+ *  A slot that's simply already taken by another booking is a *different*
+ *  axis (see isOccupyingStatus()/getSlotAvailability() in firestore.ts)
+ *  and isn't this function's concern at all. */
+export function filterBookableSlots(
+  clinic: Pick<ClinicDoc, "workStart" | "workEnd" | "slotMin" | "breakStart" | "breakEnd"> & { timezone?: string | null },
+  dateISO: string,
+  slots: Slot[],
+  nowMillis: number
+): Slot[] {
+  return slots.filter((s) => isSlotBookable(clinic, dateISO, s.startTime, nowMillis));
 }
 
 export class SlotNotAvailableError extends Error {
