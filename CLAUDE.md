@@ -5769,8 +5769,16 @@ assuming the visiting device's own clock. Root-caused first, not guessed:
   fixed short timer; `useReliableNow()`'s effect cleans up both its
   `setTimeout` and its two event listeners on unmount, confirmed by
   reading the returned cleanup function, not assumed.
-- **Not deployed** — `firestore.rules` changed (the new `startAt` check
-  and the new `serverTimeProbe` collection) and no service-account key
-  was shared with this request, so per this project's own standing
-  practice, both the rules deploy and the Hosting rebuild are held for
-  the user's explicit go-ahead rather than assumed.
+- **Deployed** (once the user shared a fresh service-account key with
+  "انشرها الآن"): `firestore.rules` (the new `startAt` check and the new
+  `serverTimeProbe` collection) was pushed live via the direct Rules API
+  technique (ruleset
+  `projects/mawid-app-d1d03/rulesets/fdba3e87-08ca-4063-99a7-584cae6e2f7b`,
+  verified by reading the live release back and confirming its
+  `rulesetName` matches), and the rebuilt `apps/web/out/` via
+  `firebase deploy --only hosting`, verified FINALIZED by reading the
+  release back from the Hosting Management API (release
+  `sites/mawid-app-d1d03/releases/1788894636908000`) — this sandbox
+  still can't reach `*.web.app` directly to browse it. The service-
+  account key was deleted immediately after — both the copy used for
+  the deploy and the original upload.
