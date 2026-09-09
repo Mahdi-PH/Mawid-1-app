@@ -6100,3 +6100,228 @@ pending clinic should never reach that branch at all.
   directly on `/clinic` with no "no clinic registered" flash) is
   unaffected by deploying — still worth a real on-device check next
   time a returning owner logs in.
+
+## Real bug, actual root cause: the SAME "no clinic registered" message during a BRAND-NEW registration — a redirect race, not a permission race
+
+The fix immediately above turned out to fix only ONE of two distinct
+causes behind the identical user-visible message. The user reported the
+exact same "هذا الحساب لا يملك عيادة مسجَّلة. سجّل عيادتك أولاً عبر صفحة
+التسجيل." error again, this time explicitly during a **brand-new**
+account-creation attempt (Home → إدارة المراكز → عيادة → إنشاء حساب →
+submit), not a returning owner's login — and demanded a full Root Cause
+Analysis across Registration/Login/Auth/Navigation/Database, explicitly
+warning against assuming a device/local-storage cause and against a
+`setTimeout`/blind-delay "fix." This traced to a genuinely different bug
+from the one above — the previous fix (retrying `watchClinicByOwner()`
+on a *transient Firestore error*) does nothing for this case, since here
+the query isn't erroring at all — it's correctly, non-transiently
+finding nothing, because the clinic document really doesn't exist **yet**.
+
+### Root cause, confirmed by reading the actual code and its exact execution order, not guessed
+
+`registerClinic()` (`lib/firebase/firestore.ts`) calls
+`createUserWithEmailAndPassword()` **first**, before the Firestore
+`runTransaction()` that actually creates the `clinics/{slug}` document —
+a hard Firebase-platform ordering, not a choice this app made: the
+transaction writes documents keyed by the new account's `uid`, which
+Firebase Auth only hands back once the account itself exists, and this
+Spark-plan/client-SDK-only track has no Admin SDK available to mint a
+`uid` ahead of time. `createUserWithEmailAndPassword()` resolving fires
+every subscribed `onAuthStateChanged` listener app-wide **immediately**
+— and `SignupClient.tsx` has exactly such a listener of its own (built
+in an earlier pass specifically to catch an *already-registered*
+returning owner who lands on `/signup` by mistake, and send them
+straight to `/clinic`). That effect has no way to know "this exact
+auth-state change was caused by this same component's own in-flight
+NEW registration, whose clinic document doesn't exist yet" — so it fires
+`router.replace("/clinic")` a full step ahead of `registerClinic()`'s own
+subsequent code (the slug/license-image generation and the transaction
+itself). `/clinic/layout.tsx` lets the now-real, non-anonymous user
+through, `/clinic/page.tsx` mounts and queries for a clinic doc that
+genuinely does not exist yet, and — correctly, per the fix immediately
+above — reports `null`, rendering the "no clinic registered" branch.
+This is a pure JavaScript async/await race (`await` yields control back
+to the event loop the instant it resolves, and Firebase's own internal
+auth-state notification is exactly the kind of thing queued to run in
+that gap), **not** a device-local-storage/cache issue at all — which is
+exactly why the user's own suspicion (uninstall → reinstall reproduces
+identically) was correct: this app has no local-storage-based source of
+truth for clinic/registration data at all (`watchClinicByOwner()` always
+queries live Firestore by `ownerUid`), so a reinstall could never have
+been the actual cause, and indeed wasn't — the race is 100% server/code
+-side and reproduces on literally every fresh registration attempt this
+same way, independent of any device state.
+
+This is precisely the "Authenticated ≠ Approved" conflation the user's
+own request warned about, one layer earlier than they framed it: the bug
+wasn't reading Authenticated as Approved — it was reading **Authenticated
+as "the account/clinic record already fully exists,"** and navigating
+into a dashboard for a document that was still mid-creation.
+
+### The fix — closes the race with real synchronization, not a timing guess
+
+Same disambiguation technique this file already uses for exactly this
+class of problem (`markIntentionalSignOut()`/`consumeIntentionalSignOut()`,
+used to tell a deliberate sign-out apart from an expired session — both
+look identical as a bare auth-state change to `null`) — a new pair,
+`markRegistrationInProgress()`/`clearRegistrationInProgress()`/
+`isRegistrationInProgress()` (`lib/firebase/auth.ts`):
+
+- `SignupClient.tsx`'s `handleClinicSubmit()` calls
+  `markRegistrationInProgress()` **synchronously**, immediately before
+  the only `await` in this whole flow that can yield control to the
+  auth-state listener (`await registerClinic(...)`) — JavaScript's
+  single-threaded execution model guarantees the flag is already `true`
+  by the time `createUserWithEmailAndPassword()` can possibly resolve
+  and fire that listener, since nothing else can run in between two
+  pieces of synchronous code in the same call stack. This closes the
+  race by construction, not by hoping a timeout is "long enough" — the
+  exact "استخدم Proper State Synchronization, لا Timing Guesses" standard
+  the user's own request demanded.
+- The signed-in-redirect effect now checks `isRegistrationInProgress()`
+  first and returns immediately if true — skipping the auto-redirect
+  entirely for this one case. `handleClinicSubmit()`'s own success path
+  already navigates deliberately (`router.push("/subscribe?registered=1
+  &slug=...")`) once `registerClinic()` has genuinely resolved, i.e.
+  once the transaction — and therefore the clinic document — is
+  confirmed to exist. The flag is cleared in a `finally`, so both outcomes
+  are handled correctly: on success, the auth state doesn't change again
+  afterward, so the (now-irrelevant) effect never fires a second time for
+  this session; on failure (e.g. `SlugTakenError`, a Firestore write
+  failure), `registerClinic()`'s own existing `cred.user.delete()`
+  rollback fires a **second**, distinct auth-state change (to `null`),
+  which the effect already correctly ignores regardless of this flag
+  (`if (... || !user || ...) return;`).
+- **This does not touch, and does not need to touch, `handleClinicLogin()`
+  or `handleAdminSubmit()`** — a login never creates a new clinic
+  document (any existing document the owner is signing back into was
+  already created by a *previous* registration), so there is no
+  document-doesn't-exist-yet window for a login to race against. Scoped
+  exactly to the one flow that actually has this race.
+- **A second, real, explicitly-requested hardening added alongside it**:
+  a synchronous `submittingRef` guard (a `useRef`, not `useState`) at the
+  very top of `handleClinicSubmit()` — `disabled={busy}` on the submit
+  button already prevents a double-submit in practice, but that's a
+  React state update that only actually disables the DOM node on the
+  next render/paint, leaving a real, if narrow, gap for two near-
+  simultaneous clicks to both reach the handler before either paint
+  lands. The ref is checked/set synchronously on every call, closing
+  that gap with the same "real synchronization, not a guessed delay"
+  standard — satisfying the user's explicit "rapid multi-click → exactly
+  one request" test case.
+- **A third, small, explicitly-requested hardening**: the catch block's
+  generic `else` branch (previously used for anything that wasn't
+  `SlugTakenError`/`auth/email-already-in-use`, including a genuine
+  network failure) now distinguishes `auth/network-request-failed`
+  explicitly — "تعذّر الاتصال بالشبكة — تحقّق من اتصالك بالإنترنت وحاول
+  مرة أخرى." — rather than folding it into the same generic
+  "تعذّر إنشاء الحساب: …" message a real registration failure would show,
+  per the user's explicit demand to differentiate Network Error from
+  Registration Failed.
+
+### Investigation findings for the request's other, secondary scenarios (confirmed, not assumed)
+
+- **Duplicate email handling, already correct**: this signup form has no
+  phone field at all for a center account (only Gmail address + password
+  — phone/PIN is a *patient*-side-only concept, see `lib/patientLocal.ts`),
+  so "duplicate phone" doesn't apply here. A duplicate **email** attempt
+  is already caught server-side by Firebase Auth's own uniqueness
+  constraint (`auth/email-already-in-use`) and already shown as "هذا
+  البريد مسجَّل بالفعل — إذا كان حسابك، سجّل الدخول بدلاً من إنشاء حساب
+  جديد." — correctly never the wrong "no clinic" message.
+- **Pending-request re-submission, already correct**: a visitor with an
+  existing PENDING request who tries to register again with the same
+  email hits that identical `auth/email-already-in-use` path (no
+  duplicate request is ever created — Firebase Auth's own account
+  uniqueness is the enforcement) and is directed to log in instead; once
+  they do, `handleClinicLogin()` signs them into the *existing* account,
+  and `/clinic` — via `watchClinicByOwner()`'s already-fixed retry logic
+  from the section above — correctly finds their existing pending clinic
+  doc and shows "طلب تسجيلك قيد المراجعة…", never asking them to
+  register again and never showing "no clinic."
+- **Approved-account handling, already correct**: the identical login
+  path lets an approved owner straight into their existing dashboard —
+  no re-registration prompt.
+- **Transaction/data-integrity, already correct**: `registerClinic()`'s
+  `runTransaction()` already creates the `users/{uid}` and
+  `clinics/{slug}` documents atomically together — never one without
+  the other — and already rolls back the just-created Auth account
+  (`cred.user.delete()`) if that transaction fails for any reason, so no
+  orphaned User-without-Center or Center-without-Request state can
+  result from a failed attempt. The one piece that is necessarily
+  *outside* that transaction (the Auth account itself) is a hard
+  Firebase-platform constraint, not a choice, and was already the
+  correct target for this whole investigation, not something to
+  "fix" by trying to force it into the transaction.
+- **Backend security, already correct and unaffected by this fix**:
+  `firestore.rules`' existing admin-only lock on `clinics/{slug}.status`
+  (a clinic can never self-approve — verified via the Firestore emulator
+  in earlier passes, see this file's own history) already satisfies the
+  "client can never set approved=true itself" requirement. Nothing here
+  needed to change it.
+- **Rejected-account reapplication — a real, disclosed, deliberately
+  out-of-scope gap, not silently dropped**: there is currently no
+  edit-and-resubmit flow for a rejected clinic; `/clinic` just shows
+  "تعذّر تفعيل هذا الحساب. تواصل مع الإدارة لمزيد من التفاصيل." with no
+  path forward. Building a full reapplication feature (new UI, a new
+  `resubmitRejectedClinic()`-style function, possibly new rules) is a
+  genuinely separate, larger feature from the one critical bug this pass
+  was scoped to fix (a false error during brand-new registration) — not
+  built speculatively, matching this project's own standing scope
+  discipline. The three states themselves (`pending`/`approved`/
+  `rejected`) are already mutually exclusive and non-contradictory, which
+  is the one part of this specific ask already true today.
+- **No Local Storage is, or ever was, a source of truth for this data**:
+  confirmed by re-reading `watchClinicByOwner()`/`getClinicByOwner()` —
+  both always query live Firestore by `ownerUid`, never a cached/local
+  value — so the "does this survive uninstall/reinstall" requirement was
+  already structurally satisfied; the bug this pass fixes was never a
+  local-storage bug to begin with, exactly as reasoned above.
+
+### Verified
+
+- **The race itself, and the fix's correctness, were verified with a
+  standalone JavaScript event-loop test** (not a Firebase mock, no live
+  network needed) — mirroring the exact mechanism at fault: a fake
+  `createUserWithEmailAndPassword()` that resolves its promise while
+  firing an "auth state changed" callback as a queued microtask first
+  (the real, documented ordering that produces this bug), wired through
+  a fake `registerClinic()`/`handleClinicSubmit()` using the identical
+  mark/clear/check flag sequence as the real fix. Three assertions, all
+  passed: **with** the guard, the redirect callback never fires during
+  registration and the flag is correctly cleared afterward; **without**
+  the guard (a negative control, proving the race is genuinely
+  reproducible and the test itself isn't vacuous), the callback does
+  fire — confirming both that the bug is real and that the fix closes it
+  deterministically, not by luck or timing.
+- `rm -rf .next out && npm run build` (typecheck + static export) clean
+  across all 19 routes, zero new TypeScript errors.
+- A local Playwright smoke pass against the freshly exported `out/`
+  (served from an explicit absolute path) confirmed zero unexpected
+  console/page errors on `/signup` (default type-selection screen),
+  `/clinic` (signed-out redirect), `/admin` (signed-out redirect), `/`,
+  and `/find`.
+- **Not independently live-verified against the real `mawid-app-d1d03`
+  project** — no fresh service-account key was shared with this request,
+  so the actual end-to-end scenario (a real brand-new registration
+  submitted against the live project, confirming it lands on the
+  intended `/subscribe?registered=1…` pending-confirmation screen and
+  never on `/clinic`, then a real admin approval, then a real returning
+  login landing directly in the now-approved dashboard) was not
+  exercised live this pass. The event-loop test above is what stands in
+  for reproducing/confirming the race mechanism itself, since this
+  sandbox has no way to drive a real `createUserWithEmailAndPassword()`
+  call against live Firebase to observe the real timing directly.
+  Recommended before treating this as fully, live-verified: a real
+  signup submitted end-to-end against the live project, watched closely
+  for which screen it actually lands on immediately after submit.
+- **Deliberately unchanged**: `/clinic/layout.tsx`, `/admin/layout.tsx`,
+  and `watchClinicByOwner()`'s own already-shipped transient-error retry
+  (the fix immediately above this section) — none of these needed any
+  change; the fix is scoped entirely to stopping the premature
+  navigation at its one real source (`SignupClient.tsx`'s redirect
+  effect), not to papering over its symptom on the receiving end.
+- **Not yet deployed** — this is a client-side-only fix (no
+  `firestore.rules` change), held per this project's standing practice of
+  waiting for the user's explicit go-ahead or a fresh service-account key
+  before publishing to `mawid-app-d1d03`.

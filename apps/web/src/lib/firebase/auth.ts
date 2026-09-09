@@ -49,6 +49,40 @@ export function consumeIntentionalSignOut(): boolean {
   return was;
 }
 
+/** Root cause of a brand-new center registration showing "هذا الحساب لا
+ *  يملك عيادة مسجَّلة" (this account has no registered clinic) instead of
+ *  the intended pending-approval confirmation: registerClinic()
+ *  (firestore.ts) calls createUserWithEmailAndPassword() FIRST — this
+ *  fires every onAuthStateChanged listener for the brand-new account the
+ *  instant it resolves, including SignupClient.tsx's own, separate
+ *  signed-in-redirect effect (built to catch an ALREADY-registered
+ *  returning owner who lands on /signup by mistake and send them
+ *  straight to /clinic) — well before registerClinic()'s own subsequent
+ *  Firestore transaction, the part that actually creates the
+ *  clinics/{slug} document, has even started. Firebase Auth's own
+ *  server-side account creation is a hard platform constraint that can't
+ *  be reordered to happen after that transaction (a doc keyed by uid
+ *  needs the uid first, and this Spark-plan/client-SDK-only track has no
+ *  Admin SDK to mint one ahead of time) — so the fix is to stop the
+ *  *other* effect from racing ahead of the registration it has no idea
+ *  is still in flight. Same flag-based disambiguation technique as
+ *  markIntentionalSignOut() above: set for the exact duration of
+ *  registerClinic()'s own call, synchronously, before any `await` that
+ *  could yield to the auth-state listener — JS's single-threaded
+ *  execution guarantees the flag is already true by the time
+ *  createUserWithEmailAndPassword() can possibly resolve, so this closes
+ *  the race deterministically, not by timing. */
+let registrationInProgress = false;
+export function markRegistrationInProgress(): void {
+  registrationInProgress = true;
+}
+export function clearRegistrationInProgress(): void {
+  registrationInProgress = false;
+}
+export function isRegistrationInProgress(): boolean {
+  return registrationInProgress;
+}
+
 /** Real root cause of "a patient's booking/session disappears after a
  *  page reload or reopening the app": `auth.currentUser` reads `null`
  *  until Firebase Auth finishes restoring its persisted session from

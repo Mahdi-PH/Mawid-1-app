@@ -23,7 +23,15 @@
 // form, not an irrelevant type picker.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { isAdminUser, isConfiguredAdminEmail, onAuthChange, signInWithEmail } from "../../lib/firebase/auth";
+import {
+  clearRegistrationInProgress,
+  isAdminUser,
+  isConfiguredAdminEmail,
+  isRegistrationInProgress,
+  markRegistrationInProgress,
+  onAuthChange,
+  signInWithEmail,
+} from "../../lib/firebase/auth";
 import { registerClinic, SlugTakenError } from "../../lib/firebase/firestore";
 import { ENTITY_TYPE_LABEL, getTerminology } from "../../lib/firebase/terminology";
 import type { EntityType } from "../../lib/firebase/types";
@@ -97,6 +105,10 @@ export default function SignupClient() {
   // auth/email-already-in-use for a returning owner and left them stuck.
   const [clinicMode, setClinicMode] = useState<"signup" | "login">("signup");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Synchronous double-submit guard for handleClinicSubmit() — see its
+  // own comment. A ref, not state, specifically so it's checked/set
+  // synchronously on every call with no render/paint delay in between.
+  const submittingRef = useRef(false);
 
   // Same `?query=` pre-paint-bypass technique app/page.tsx already
   // established for `?intro=1` — reads window.location.search directly
@@ -135,6 +147,20 @@ export default function SignupClient() {
     let cancelled = false;
     const unsubscribe = onAuthChange(async (user) => {
       if (cancelled || !user || user.isAnonymous) return;
+      // A brand-new registration's own createUserWithEmailAndPassword()
+      // call (inside registerClinic(), see handleClinicSubmit() below)
+      // fires this exact auth-state-change event before its own
+      // Firestore transaction — the part that actually creates the
+      // clinics/{slug} document — has even started. Without this guard
+      // this effect would race ahead and send a still-registering
+      // visitor to /clinic before any clinic document exists, showing
+      // "this account has no registered clinic" instead of the intended
+      // pending-approval confirmation. See markRegistrationInProgress()'s
+      // own comment in lib/firebase/auth.ts for why this closes the race
+      // deterministically rather than by timing. handleClinicSubmit()'s
+      // own success path already navigates deliberately, only once the
+      // clinic document is confirmed created.
+      if (isRegistrationInProgress()) return;
       if (user.email && isConfiguredAdminEmail(user.email) && (await isAdminUser(user))) {
         if (!cancelled) router.replace("/admin");
         return;
@@ -198,6 +224,13 @@ export default function SignupClient() {
 
   async function handleClinicSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // A real, synchronous guard against a fast double-click submitting
+    // twice — `disabled={busy}` on the button already covers this in
+    // practice, but that's a React state update that only actually
+    // disables the DOM node on the next render/paint; a ref check here
+    // is checked synchronously on every call, closing that small gap
+    // with real synchronization rather than a timing assumption.
+    if (submittingRef.current) return;
     setError(null);
 
     if (!entityType) {
@@ -224,7 +257,14 @@ export default function SignupClient() {
       return setError("ساعات الدوام يجب أن تتسع لموعد واحد على الأقل بالمدة المختارة");
     }
 
+    submittingRef.current = true;
     setBusy(true);
+    // Set synchronously, before the only `await` that can yield to
+    // Firebase's own auth-state-change listeners (inside registerClinic()
+    // itself) — see this function's own comment in lib/firebase/auth.ts
+    // for why this reliably closes the redirect race rather than just
+    // narrowing it.
+    markRegistrationInProgress();
     try {
       const { slug } = await registerClinic({
         email: email.trim(),
@@ -270,10 +310,14 @@ export default function SignupClient() {
         setError(
           code === "auth/email-already-in-use"
             ? "هذا البريد مسجَّل بالفعل — إذا كان حسابك، سجّل الدخول بدلاً من إنشاء حساب جديد."
+            : code === "auth/network-request-failed"
+            ? "تعذّر الاتصال بالشبكة — تحقّق من اتصالك بالإنترنت وحاول مرة أخرى."
             : `تعذّر إنشاء الحساب: ${err instanceof Error ? err.message : String(err)}`
         );
       }
     } finally {
+      clearRegistrationInProgress();
+      submittingRef.current = false;
       setBusy(false);
     }
   }
