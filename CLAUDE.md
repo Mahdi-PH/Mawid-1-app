@@ -6086,8 +6086,17 @@ pending clinic should never reach that branch at all.
   deferral in the "Clinic landing menu…" section above). Worth the same
   retry treatment in a future pass if a real "appointments briefly
   missing" report ever surfaces.
-- **Not deployed yet** — no service-account key was shared with this
-  request; held per this project's standing practice of waiting for the
-  user's explicit go-ahead (or a key with no accompanying text) before
-  running `firebase deploy`. No `firestore.rules` changes were needed —
-  this is a client-side read-retry fix only.
+- **Deployed** (once the user shared a fresh service-account key with
+  "انشر الان"): no `firestore.rules` changes were needed — this is a
+  client-side read-retry fix only — so only the already-built
+  `apps/web/out/` was pushed via `firebase deploy --only hosting`,
+  verified FINALIZED by reading the release back from the Hosting
+  Management API (release
+  `sites/mawid-app-d1d03/releases/1788993235604000`) — this sandbox
+  still can't reach `*.web.app` directly to browse it. The service-
+  account key was deleted immediately after — both the copy used for
+  the deploy and the original upload. The "not independently live-
+  verified" gap above (a real clinic owner signing in and landing
+  directly on `/clinic` with no "no clinic registered" flash) is
+  unaffected by deploying — still worth a real on-device check next
+  time a returning owner logs in.
