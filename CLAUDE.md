@@ -6005,3 +6005,89 @@ Management API (release
 can't reach `*.web.app` directly to browse it. The service-account key
 was deleted immediately after — both the copy used for the deploy and
 the original upload.
+
+## Real bug: a real clinic owner signed in and saw "هذا الحساب لا يملك عيادة مسجَّلة" instead of the pending-approval screen
+
+The user reported (with a screenshot from a real device) that after
+account creation, `/clinic` showed a red "this account has no registered
+clinic — register first" error — asking for the approval workflow they
+described (submitted data → held for admin to approve the license image
+and open the account → account only opens once approved) to be built
+"professionally." **That exact workflow already exists and was not the
+gap** — confirmed by re-reading `registerClinic()` (`lib/firebase/
+firestore.ts`): every signup already writes the clinic doc with
+`status: "pending"` in the same transaction as the Auth account (rolling
+the Auth account back if the write fails), and `/clinic` already has a
+completely separate, correctly-worded pending-approval screen (distinct
+`clinic.status !== "approved"` branch, `clinic/page.tsx` line 95) for
+exactly that state. The screenshot's error is `/clinic`'s **other**
+branch — `clinic === null` — which only renders when the live Firestore
+query for "does any clinic doc have `ownerUid == this uid`" comes back
+completely empty, not merely unapproved. A real, registered, still-
+pending clinic should never reach that branch at all.
+
+- **Root cause, found by comparing this call site against an
+  already-fixed sibling, not guessed**: `watchClinicByOwner()` (the
+  function `/clinic` subscribes to) had a bare `onSnapshot` error
+  handler — `() => onChange(null)` — that treats **any** Firestore
+  error identically to "this account genuinely has no clinic." This is
+  the *exact* bug class this project already found and fixed once
+  before, documented in "Root-cause fixes: first-booking 'not found'…"
+  above: Firestore's realtime Listen stream needs a brief moment after
+  sign-in resolves to actually attach the freshly-issued auth token to
+  its persistent connection, and the very first listener opened inside
+  that window can receive a transient `permission-denied` that has
+  nothing to do with the document's real existence. `SignupClient.tsx`'s
+  login flow signs a returning clinic owner in and routes straight to
+  `/clinic`, which mounts `watchClinicByOwner()` immediately — landing
+  exactly inside that narrow race window on every real login, not just
+  occasionally. That earlier fix was applied to `watchAppointment()`
+  (the patient side) but never carried over to this clinic-owner-side
+  sibling, which is structurally the same shape (a live Firestore
+  listener opened right after sign-in) — a real, previously-undisclosed
+  gap, not a new kind of bug.
+- **Fix**: `watchClinicByOwner()` now uses the identical retry pattern
+  `watchAppointment()` already established — on a transient error code
+  (`permission-denied`/`unavailable`/`cancelled`), it re-verifies with a
+  direct one-shot `getDocs()` on the same query (bounded to a few
+  attempts) before ever reporting "no clinic," and resumes the live
+  listener once that resolves either way. A genuinely nonexistent clinic
+  (a signed-in account that truly never registered one) still correctly
+  reaches the error screen — this only changes what happens on a
+  *transient* denial, not a real one.
+- **Verified**: `rm -rf .next out && npm run build` (typecheck + static
+  export) clean across all 19 routes, `getDocs` needed no new import
+  (already imported and used elsewhere in the same file). The fix
+  mirrors `watchAppointment()`'s own control flow line-for-line (same
+  attempt-counting, same "resume live updates from whatever the direct
+  read just confirmed" behavior) — verified by direct code comparison
+  against that already-shipped function, the same standard this
+  project's own CLAUDE.md entry for the original fix used ("verified by
+  reading the reasoning against the actual Firebase JS SDK's documented
+  async-restore/stream-attachment behavior," not a mock harness).
+- **Not independently live-verified against the real `mawid-app-d1d03`
+  project this pass** (no service-account key was shared with this
+  report) — the fix's logic was validated by direct structural
+  comparison against `watchAppointment()`'s own already-verified retry
+  mechanism, not a fresh emulator/live run. Recommended before treating
+  this as fully verified: a real clinic owner signing in and landing
+  directly on `/clinic` without ever seeing the "no clinic registered"
+  flash, confirmed on a real device where the race window is most
+  likely to actually manifest (this sandbox's own offline harness can't
+  reproduce a live Firestore auth-token-attachment race at all).
+- **Deliberately left as a disclosed, lower-priority gap, not silently
+  fixed**: `watchAppointmentsForClinic()` (also on `/clinic`, watching
+  today's appointment list) has the same bare-error-handler shape, but
+  its failure mode — a momentarily empty appointment list that
+  self-corrects on the next real snapshot — is far lower severity than a
+  blocking, alarming "your account doesn't exist" page, matching this
+  file's own already-established severity-based triage for this class
+  of gap (see `watchClinicQueue()`'s identical, already-disclosed
+  deferral in the "Clinic landing menu…" section above). Worth the same
+  retry treatment in a future pass if a real "appointments briefly
+  missing" report ever surfaces.
+- **Not deployed yet** — no service-account key was shared with this
+  request; held per this project's standing practice of waiting for the
+  user's explicit go-ahead (or a key with no accompanying text) before
+  running `firebase deploy`. No `firestore.rules` changes were needed —
+  this is a client-side read-retry fix only.

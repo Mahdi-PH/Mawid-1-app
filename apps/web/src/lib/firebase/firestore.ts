@@ -245,14 +245,71 @@ export async function getClinicByOwner(ownerUid: string): Promise<ClinicDoc | nu
  *  approving/rejecting the clinic (or renewing its subscription) reflects
  *  on the clinic's own already-open dashboard immediately, with no manual
  *  refresh. Same query shape (single equality filter), so this needs no
- *  rules change and no composite index, identical to the one-shot version. */
+ *  rules change and no composite index, identical to the one-shot version.
+ *
+ *  Same retry-on-transient-error pattern as watchAppointment() (see its
+ *  own comment for the full mechanism) — a real, previously-undiscovered
+ *  instance of that exact bug class: a clinic owner signing in and
+ *  landing straight on /clinic opens this listener in the same narrow
+ *  window where Firestore's realtime Listen stream hasn't yet attached
+ *  the freshly-issued auth token, so the very first snapshot can arrive
+ *  as a transient permission-denied that has nothing to do with the
+ *  clinic doc's real existence. The old bare `() => onChange(null)`
+ *  handler rendered that identically to "this account never registered
+ *  a clinic" — the exact wrong, alarming error screen a real owner
+ *  reported seeing right after logging in. Distinguishing retryable
+ *  codes from a real, final empty result (and re-verifying with a
+ *  direct one-shot query before ever reporting null) fixes it the same
+ *  way, not with a guessed delay. */
 export function watchClinicByOwner(ownerUid: string, onChange: (clinic: ClinicDoc | null) => void): () => void {
   const q = query(collection(db, "clinics"), where("ownerUid", "==", ownerUid));
-  return onSnapshot(
-    q,
-    (snap) => onChange(snap.empty ? null : (snap.docs[0].data() as ClinicDoc)),
-    () => onChange(null)
-  );
+  let cancelled = false;
+  let unsubscribe: (() => void) | undefined;
+  let attemptsLeft = 3;
+
+  function toClinic(snap: { empty: boolean; docs: { data: () => unknown }[] }): ClinicDoc | null {
+    return snap.empty ? null : (snap.docs[0].data() as ClinicDoc);
+  }
+
+  function attach() {
+    unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        attemptsLeft = 3; // a real update arrived over the stream; any earlier error was indeed transient
+        onChange(toClinic(snap));
+      },
+      (err) => {
+        if (cancelled) return;
+        const transient = err.code === "permission-denied" || err.code === "unavailable" || err.code === "cancelled";
+        if (!transient || attemptsLeft <= 0) {
+          onChange(null);
+          return;
+        }
+        attemptsLeft -= 1;
+        unsubscribe?.();
+        getDocs(q)
+          .then((snap) => {
+            if (cancelled) return;
+            onChange(toClinic(snap));
+            attach(); // resume live updates either way, from whatever the direct read just confirmed
+          })
+          .catch(() => {
+            if (cancelled) return;
+            if (attemptsLeft <= 0) {
+              onChange(null);
+              return;
+            }
+            attach(); // one more stream attempt before giving up
+          });
+      }
+    );
+  }
+
+  attach();
+  return () => {
+    cancelled = true;
+    unsubscribe?.();
+  };
 }
 
 /** The patient-facing directory: single-field equality only (no orderBy),
