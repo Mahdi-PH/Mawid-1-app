@@ -5995,8 +5995,13 @@ wait/page.tsx`, `apps/web/src/app/find/passport/page.tsx`,
 `apps/web/src/app/signup/SignupClient.tsx`, `apps/web/src/app/subscribe/
 page.tsx`, `apps/web/src/components/PatientGate.tsx`.
 
-**Deployed**: not yet — no service-account key was shared with this
-request; held per this project's standing practice of waiting for the
-user's explicit go-ahead (or a key with no accompanying text) before
-running `firebase deploy`. No `firestore.rules` changes were needed —
-this entire pass is client-side navigation/state/markup only.
+**Deployed** (once the user shared a fresh service-account key with
+"انشر الآن"): no `firestore.rules` changes were needed — this entire
+pass is client-side navigation/state/markup only — so only the already-
+built `apps/web/out/` was pushed via `firebase deploy --only hosting`,
+verified FINALIZED by reading the release back from the Hosting
+Management API (release
+`sites/mawid-app-d1d03/releases/1788992373526000`) — this sandbox still
+can't reach `*.web.app` directly to browse it. The service-account key
+was deleted immediately after — both the copy used for the deploy and
+the original upload.
