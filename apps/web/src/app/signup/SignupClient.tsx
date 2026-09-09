@@ -289,7 +289,7 @@ export default function SignupClient() {
       <div dir="rtl" className="relative flex min-h-screen items-center justify-center bg-gray-50 p-6">
         <AppBackdrop />
         <div className="relative w-full max-w-sm rounded-xl border bg-white p-6 shadow-sm">
-          <BackButton fallbackHref="/" className="mb-3 block text-sm text-brand-600 hover:underline" />
+          <BackButton fallbackHref="/" className="mb-3" />
 
           <h1 className="mb-1 text-lg font-bold text-brand-700">إدارة المراكز</h1>
           <p className="mb-4 text-sm text-gray-500">اختر نوع مركزك للمتابعة إلى إنشاء الحساب.</p>
@@ -351,7 +351,7 @@ export default function SignupClient() {
             ‹ رجوع لاختيار نوع المركز
           </button>
         ) : (
-          <BackButton fallbackHref="/" className="mb-3 block text-sm text-brand-600 hover:underline" />
+          <BackButton fallbackHref="/" className="mb-3" />
         )}
 
         {showPlanInfo && (

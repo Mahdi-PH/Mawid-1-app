@@ -122,7 +122,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="mb-2 flex items-center justify-between">
             <BackButton
               fallbackHref={pathname === "/admin" ? "/" : "/admin"}
-              className="block text-sm text-brand-600 hover:underline"
+              // alwaysUseFallback, matching /clinic's own established
+              // pattern (see BackButton.tsx's own doc comment): an admin
+              // who just signed in via /signup's login form has that
+              // route sitting right behind /admin in real history —
+              // without this, a real Back press would retrace straight
+              // into the login form instead of landing on Home/`/admin`,
+              // the same class of bug this project already fixed once
+              // for /clinic and is now made consistent here too.
+              alwaysUseFallback
             />
             <button
               type="button"

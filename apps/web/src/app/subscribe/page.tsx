@@ -50,7 +50,7 @@ function SubscribeContent() {
     >
       <AppBackdrop />
       <div className="relative">
-      <BackButton fallbackHref="/" />
+      <BackButton fallbackHref="/" className="mb-1" />
 
       <h1 className="mb-1 mt-3 text-xl font-bold" style={{ color: "#00ADB5" }}>
         اشتراك مركزك

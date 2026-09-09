@@ -230,9 +230,9 @@ export default function FindClinicPage() {
           // screen first — same destination as the in-page "‹ رجوع
           // لاختيار نوع الخدمة" link, just reachable from the fixed
           // corner control too, and from a real back press/gesture.
-          <BackButton label="رجوع" overrideOnClick={leaveCategoryStep} className="mb-3 block text-sm text-brand-600 hover:underline" />
+          <BackButton label="رجوع" overrideOnClick={leaveCategoryStep} className="mb-3" />
         ) : (
-          <BackButton fallbackHref="/" alwaysUseFallback className="mb-3 block text-sm text-brand-600 hover:underline" />
+          <BackButton fallbackHref="/" alwaysUseFallback className="mb-3" />
         )}
 
         {activeBooking && (

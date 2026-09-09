@@ -85,7 +85,7 @@ export default function ClinicDashboardPage() {
           <BackButton
             fallbackHref="/"
             alwaysUseFallback
-            className="mb-4 inline-block text-sm text-brand-600 hover:underline"
+            className="mb-4"
           />
           <p className="text-red-600">هذا الحساب لا يملك عيادة مسجَّلة. سجّل عيادتك أولاً عبر صفحة التسجيل.</p>
         </div>
@@ -163,7 +163,7 @@ export default function ClinicDashboardPage() {
         </button>
 
         <div className="pl-11">
-          <BackButton fallbackHref="/" alwaysUseFallback className="mb-1 block text-sm text-brand-600 hover:underline" />
+          <BackButton fallbackHref="/" alwaysUseFallback className="mb-1" />
         </div>
 
         {/* Clinic name is the header's own focal point — large, bold, and

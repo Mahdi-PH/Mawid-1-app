@@ -286,7 +286,7 @@ function BookClinic() {
         <AppBackdrop />
         <div className="relative">
           <p className="text-red-600">هذه العيادة غير موجودة أو غير متاحة للحجز حالياً.</p>
-          <BackButton fallbackHref={backToFindHref} label="رجوع للبحث" alwaysUseFallback className="mt-4 inline-block text-brand-600 hover:underline" />
+          <BackButton fallbackHref={backToFindHref} label="رجوع للبحث" alwaysUseFallback className="mt-4" />
         </div>
       </main>
     );

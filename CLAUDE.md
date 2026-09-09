@@ -5782,3 +5782,221 @@ assuming the visiting device's own clock. Root-caused first, not guessed:
   still can't reach `*.web.app` directly to browse it. The service-
   account key was deleted immediately after — both the copy used for
   the deploy and the original upload.
+
+## Navigation/back-stack rebuild: Home-is-Root, standalone-Back-into-Intro fix, unified circular back button
+
+A large architecture request, addressed to a combined Mobile Navigation
+Architect/UX Engineer/QA/Performance persona: audit and rebuild this
+app's Back-navigation system end to end, with one rule repeated as the
+single most important requirement of the whole task — **after reaching
+Home from the intro pose, a real Back press must never, under any
+ordinary in-app path, return the visitor to the intro again**. The
+request was written in native-mobile-navigation terms (push/pop/
+Navigator/AppBar/Android system back) that don't literally exist in this
+codebase — `apps/web` is a Next.js App Router **web app**, wrapped for
+Android only as a TWA (a chromeless WebView pointed at the live hosted
+URL — see the Android section above); there is no native navigation
+stack anywhere in this project, only the real browser History API, so
+every requirement below is translated onto that actual architecture
+rather than a Navigator class that doesn't exist here.
+
+### Pre-analysis performed before any edit
+
+Read, in order: `components/BackButton.tsx` (the app's own already-
+existing, already-shared back control); `lib/useLocalBackStep.ts` (the
+mechanism that gives a same-route sub-view — e.g. `/find`'s category↔
+results, `/find/book`'s menu↔book, `/signup`'s type↔form — its own real
+history entry, so a real Back/Android-gesture press can't skip past it);
+`app/page.tsx` in full; `clinic/layout.tsx` and `admin/layout.tsx`'s auth
+guards; `SignupClient.tsx`'s own auth-redirect and `useLocalBackStep`
+wiring; and a repo-wide grep for every `<BackButton>` call site (13
+files) plus every direct `router.push("/")`/`router.replace("/")` call
+(2 more: the clinic/patient settings-drawer sign-out buttons).
+
+**Finding 1 — the existing back architecture is already sound, not
+"navigation spaghetti."** `BackButton.tsx` already implements the exact
+golden rule this request demanded — prefer the real previous screen via
+`router.back()`, fall back to a fixed `fallbackHref` only at a small,
+named, deliberate set of flow boundaries (`alwaysUseFallback`, used only
+on `/clinic` and, after this pass, `/admin` — see Finding 3) — from ONE
+centralized component, not scattered per-screen `if(screen===X)
+goTo(Home)` patchwork. `useLocalBackStep.ts` already gives every same-
+route sub-view a real history entry, so Android's physical/gesture back
+(which a TWA delegates straight to the WebView's own `History.back()` —
+the same API `router.back()` itself calls) already behaves identically
+to the in-app control, by construction, with no separate native-side
+work needed. The repo-wide grep found no ad-hoc navigation patchwork
+outside this one component's two documented, narrow escape hatches. This
+meant the real work was a **targeted root-cause fix + a visual
+redesign**, not a ground-up rebuild — building a redundant new Router/
+Navigator service on top of an already-correct one was exactly what this
+request's own instructions warned against.
+
+**Finding 2 — the actual, confirmed root cause of "Back returns to
+Intro."** `app/page.tsx` has no separate Intro *route* — `/` holds one
+internal `phase: "intro" | "home"` state (the FLIP shared-element hero-
+logo transform, documented in "Follow-up: shared-element 'hero' logo…"
+above). Its `useLayoutEffect` unconditionally set `phase="intro"`
+whenever `isStandaloneDisplay()` was true, on **every mount** of this
+component — a decision built earlier in this project specifically so a
+killed-and-relaunched installed app always replays the intro (see
+"Follow-up: intro must show on EVERY launch of the installed app, not
+just once" above). The bug: navigating Home → `/find` → a real Back
+press doesn't reuse the old Home component instance — `/` and `/find`
+are different route components, so leaving `/` tears the instance down,
+and a real Back into `/` mounts a **brand-new** instance, resetting the
+mount-guard ref to its initial state. The standalone branch had no way
+to tell "a genuine fresh app launch" apart from "an ordinary in-app Back
+press that happened to remount this route" — so it replayed the intro on
+both, exactly matching the report, and only in the installed-app case
+(a regular browser tab's `localStorage` "seen" flag survives the
+remount, so this was invisible there). The same root cause also explains
+why signing out of `/clinic`/`/admin` (both `router.push("/")`) would
+show Intro instead of Home while running standalone.
+- **Fix**: `app/page.tsx` gained `INTRO_SHOWN_THIS_SESSION_KEY`, a
+  `sessionStorage` flag (deliberately not `localStorage`): sessionStorage
+  survives in-process navigation — including a real Back/forward press
+  and this component remounting — but is cleared when the browsing
+  session/WebView process is genuinely torn down and relaunched, which
+  is what "a real app launch" should actually mean. The standalone
+  branch now shows the intro once per real session and never again for
+  any later remount within that same running session, while every other
+  behavior (a regular tab's one-time `localStorage` flag, the `?intro=1`
+  debug bypass, the FLIP transform, the indefinite tap-to-continue hold)
+  is completely unchanged.
+
+**Finding 3 — a smaller, real inconsistency, fixed alongside it.**
+`/admin/layout.tsx`'s physical `BackButton` was missing
+`alwaysUseFallback` (unlike `/clinic`'s, which deliberately has it, per
+the "Sign-out from /clinic…" section above) — so a real Back press from
+`/admin` could retrace straight into `/signup`'s login form if that's
+how the admin arrived, instead of landing on Home/`/admin`. Added
+`alwaysUseFallback` to `/admin`'s own back button, matching the
+already-established `/clinic` pattern for the same reason: an
+authenticated dashboard's Back should never literally walk back through
+the login screen the owner already passed.
+
+**Finding 4 — the already-registered-and-signed-in owner shortcut
+already works, confirmed not assumed.** `SignupClient.tsx` already has a
+signed-in-redirect effect (built in the earlier "Root-cause fixes" pass)
+that sends any real, non-anonymous signed-in user straight to `/clinic`
+or `/admin` the instant auth resolves — so Home → إدارة المراكز → (the
+same center type) already lands directly in the existing account with no
+repeat registration screen and no Intro, for a still-signed-in owner.
+No new code was needed for this; only re-confirmed against this
+request's own framing (its TEST K).
+
+### The new unified back button
+
+`BackButton.tsx` was **visually redesigned** (same file, same exported
+component, same three props — `fallbackHref`/`alwaysUseFallback`/
+`overrideOnClick` — so every one of its 13 call sites needed zero logic
+changes) from a plain inline text link (`‹ رجوع`, `text-sm text-brand-
+600 hover:underline`) into a circular icon button: a solid `#00ADB5`
+(this app's own primary brand teal) circle, a real SVG chevron (not a
+Unicode `‹`/`›` glyph, which can render inconsistently and carries no
+semantic meaning to a screen reader), pointing left — the same visual
+direction this project's own established in-page "‹ رجوع لـ..." links
+already use, reused rather than re-decided. A 40×40px touch target
+(`h-10 w-10`, close to the illustrative ~44px guidance and consistent
+with this project's own already-established icon-button sizing, e.g.
+the admin/clinic drawers' 36–40px gear buttons), a real `aria-label`/
+`title` (the same `label` prop that used to render as visible text),
+`active:scale-90` for tactile press feedback, and a light `shadow-sm` —
+this is literally the same solid-teal-circle/white-icon language the
+home screen's own arrow button already established (`CARD_ARROW_SIZE`
+button in `app/page.tsx`), reused rather than a new visual identity
+invented for this. Every call site's now-inapplicable text-styling
+classes (`text-sm text-brand-600 hover:underline`, stray `block`/
+`inline-block`) were cleaned up to plain spacing utilities only (`mb-3`,
+`mt-4`, etc.) — confirmed via a repo-wide grep that zero
+`hover:underline`/text-color classes remain attached to any
+`<BackButton>` call.
+
+### Verified — not just a clean build
+
+`rm -rf .next out && npm run build` (typecheck + static export) clean
+across all 19 routes, zero bundle-size change beyond the expected small
+growth from the sessionStorage logic (home page unchanged at ~6 kB).
+
+A Playwright suite against the exported `out/`, using **real
+`page.goBack()`** (the same History API a TWA's physical/gesture back
+delegates to — this project's own established way of testing this class
+of behavior without a real Android device) ran 15 assertions, all
+passed:
+- **The actual regression under test**: with `matchMedia('(display-
+  mode: standalone)')` forced to `true` (simulating the installed app),
+  a fresh session shows the intro, tapping through reveals Home, a real
+  navigation to `/find` followed by a real `page.goBack()` lands
+  correctly on Home — role cards visible, no intro hint — not the intro
+  pose; a **second** round-trip in the same session (Home → `/find` →
+  Back) also correctly lands on Home, confirming this isn't a one-shot
+  fix that only survives the first Back press.
+- A regular (non-standalone) tab with `?intro=1` still shows the intro
+  pose exactly as before — confirming the fix didn't touch the
+  unrelated, already-correct regular-browser-tab behavior.
+- `/find`'s existing category→results→Home back-chain (real clicks +
+  real `goBack()`, twice) still returns one step at a time, unchanged.
+- `/signup`'s type→form→Home back-chain (real clicks + real `goBack()`,
+  twice) still returns one step at a time, landing on Home with no
+  intro hint — TEST L (Manage-Centers → Register → Back → Back → Home,
+  never Intro) explicitly confirmed.
+- 6 rapid repeated real Back presses from mid-flow produced zero page
+  errors/crashes (TEST J).
+- A visual screenshot of the new circular button confirmed it renders
+  correctly and consistently (top-right corner, matching RTL flow, no
+  merge with the title text below it) on both a signed-out `/subscribe`
+  visit and the `/admin` → `/signup` redirect landing.
+
+**Not independently live-verified**: TEST K (an authenticated owner's
+Manage-Centers shortcut) and TEST F/G (Settings-drawer/Notifications-
+drawer Back behavior — both are plain conditionally-*mounted* local
+overlays, `if(!open) return null`, already confirmed structurally correct
+in an earlier pass, not re-driven live here) needed a real signed-in
+session; no fresh service-account key was shared with this request, so
+these rest on the code-level confirmation in Finding 4 above and the
+existing, earlier live verification of those drawers, not a fresh live
+run this pass. Android's own real physical/gesture back button was not
+tested on a real device or emulator (same standing limitation as every
+other Android item in this file) — `page.goBack()` is the closest
+verification obtainable in this sandbox, and is the same technique this
+project has already relied on for this exact class of test.
+
+### Navigation Matrix (the required table)
+
+| Current Screen | Previous Screen | Back Result | Expected |
+|---|---|---|---|
+| Home (intro pose, standalone) | — (fresh launch) | tap reveals Home | Home, once per session |
+| Home (settled) | Intro (same route, same session) | — | never re-shown this session (the fix) |
+| `/find` (category step) | Home | → Home | ✅ |
+| `/find` (results step) | `/find` (category step, local step) | → category step | ✅ |
+| `/find/book` (menu step) | `/find` (results, real nav) | → `/find` results (restores category+query) | ✅ |
+| `/find/book` (book step) | `/find/book` (menu, local step) | → menu step | ✅ |
+| `/find/wait` | `/find/book` (real nav) | → `/find` (`alwaysUseFallback`) | ✅ one step, never `/find/book` |
+| `/find/requests` | any | → `/find` (`alwaysUseFallback`) | ✅ |
+| `/find/passport` | any | → `/find` (`alwaysUseFallback`) | ✅ |
+| `/signup` (type step) | Home | → Home | ✅ |
+| `/signup` (form step) | `/signup` (type, local step) | → type step | ✅ |
+| `/subscribe` | Home | → Home (`router.back()`-preferring default) | ✅ |
+| `/clinic` (any state) | login/signup (real history) | → Home (`alwaysUseFallback`) | ✅ never retraces login |
+| `/admin` (any state) | login (real history) | → Home/`/admin` (`alwaysUseFallback`, fixed this pass) | ✅ never retraces login |
+| Home (auth-aware center card) | signed-in owner, any screen | → `/clinic`/`/admin` directly | ✅ no repeat registration |
+| Settings/Notifications drawer (any screen) | underlying screen (never a route) | closes drawer, screen unchanged | ✅ by construction |
+
+### Files modified (no files deleted — the existing architecture was sound)
+
+`apps/web/src/app/page.tsx` (root-cause fix: sessionStorage-gated
+standalone intro), `apps/web/src/app/admin/layout.tsx` (`alwaysUseFallback`
+consistency fix), `apps/web/src/components/BackButton.tsx` (visual
+redesign, same API), and 8 call sites cleaned of now-dead text-link
+classes: `apps/web/src/app/clinic/page.tsx`, `apps/web/src/app/find/
+page.tsx`, `apps/web/src/app/find/book/page.tsx`, `apps/web/src/app/find/
+wait/page.tsx`, `apps/web/src/app/find/passport/page.tsx`,
+`apps/web/src/app/signup/SignupClient.tsx`, `apps/web/src/app/subscribe/
+page.tsx`, `apps/web/src/components/PatientGate.tsx`.
+
+**Deployed**: not yet — no service-account key was shared with this
+request; held per this project's standing practice of waiting for the
+user's explicit go-ahead (or a key with no accompanying text) before
+running `firebase deploy`. No `firestore.rules` changes were needed —
+this entire pass is client-side navigation/state/markup only.

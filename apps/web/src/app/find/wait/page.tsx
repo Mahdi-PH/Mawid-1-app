@@ -168,7 +168,7 @@ function Wait() {
         <AppBackdrop />
         <div className="relative">
           <p className="text-red-600">تعذّر العثور على هذا الحجز.</p>
-          <BackButton fallbackHref="/find" label="رجوع للبحث" className="mt-4 inline-block text-brand-600 hover:underline" />
+          <BackButton fallbackHref="/find" label="رجوع للبحث" className="mt-4" />
         </div>
       </main>
     );

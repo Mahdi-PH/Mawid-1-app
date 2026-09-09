@@ -35,6 +35,10 @@ import { isAdminUser, isConfiguredAdminEmail, onAuthChange } from "../lib/fireba
 // data fetch, so none of it can slow down anything this page actually
 // depends on.
 const SPLASH_SEEN_KEY = "mawid_splash_seen";
+// Marks that the intro has already been shown once for THIS running
+// process/session (see the useLayoutEffect below for why this exists —
+// fixes a real "Back returns to Intro" bug in the installed app).
+const INTRO_SHOWN_THIS_SESSION_KEY = "mawid_intro_shown_this_session";
 const HERO_SIZE_PX = 112; // the logo's size while it's the big, centered "opening" mark
 const REVEAL_MS = 650; // how long the logo takes to glide back into its header spot
 const HINT_DELAY_MS = 650; // delay before the "tap to continue" hint fades in
@@ -253,15 +257,48 @@ export default function Home() {
     if (decidedIntro.current) return;
     decidedIntro.current = true;
     // The installed app (Android TWA/APK, or Safari's "Add to Home
-    // Screen") shows the intro on EVERY launch, no "already seen" check
-    // at all — per the user's explicit, repeated request. This is
-    // deliberately different from a regular browser tab, which still
-    // shows it once (see below): opening an installed app is its own
-    // distinct "launch" each time in a way that reopening a browser tab
-    // to the same site isn't, and the user asked for exactly that
-    // distinction.
+    // Screen") shows the intro on every GENUINE launch — per the user's
+    // explicit, repeated request — but NOT on every remount of this
+    // route. Those are two different things: navigating Home -> /find ->
+    // Back (a real, ordinary in-app path — including Android's physical/
+    // gesture back, which a TWA delegates straight to the WebView's own
+    // History API) tears down and remounts this page's component fresh,
+    // since "/" and "/find" are different route components, not a
+    // preserved instance — so `decidedIntro` itself resets to false on
+    // every one of those remounts too, same as a real fresh launch would.
+    // The original code below (an unconditional per-mount check) couldn't
+    // tell those two apart, so it replayed the intro on ordinary Back
+    // navigation whenever running standalone — exactly the "Back sends me
+    // to Intro" bug reported against this app's own installed-app case.
+    // `sessionStorage` is the fix: it survives in-process navigation
+    // (including Back/forward, and this component remounting) but is
+    // cleared when the browsing session/WebView process is genuinely
+    // torn down and relaunched — which is what "a real app launch" should
+    // actually mean here. First real launch this session -> shows the
+    // intro once, exactly as before; any later Back/forward navigation
+    // that remounts "/" during that same running session -> home, never
+    // intro again, closing the loop this app's own navigation rules
+    // require ("Home is Root after Intro — Back must never return to
+    // Intro under ordinary in-app navigation").
     if (isStandaloneDisplay()) {
-      setPhase("intro");
+      let alreadyShown = false;
+      try {
+        alreadyShown = sessionStorage.getItem(INTRO_SHOWN_THIS_SESSION_KEY) === "1";
+      } catch {
+        // Storage blocked — fail open to "not yet shown" (worst case: the
+        // intro replays once more this navigation, never a stuck/broken
+        // page) rather than fail closed and risk never showing it at all.
+      }
+      if (!alreadyShown) {
+        setPhase("intro");
+        try {
+          sessionStorage.setItem(INTRO_SHOWN_THIS_SESSION_KEY, "1");
+        } catch {
+          // Nothing to do if storage is unavailable — worst case the
+          // intro replays again on the next remount this same session,
+          // a harmless fallback, not a crash.
+        }
+      }
       return;
     }
     // ?intro=1 forces the opening pose regardless of the "already seen"

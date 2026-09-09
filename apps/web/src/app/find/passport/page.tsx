@@ -78,11 +78,7 @@ function Passport({ profile }: { profile: PatientProfile }) {
       <main dir="rtl" className="relative min-h-screen mx-auto max-w-md p-6">
         <AppBackdrop />
         <div className="relative">
-          <BackButton
-            fallbackHref="/find"
-            alwaysUseFallback
-            className="mb-3 block text-sm text-brand-600 hover:underline"
-          />
+          <BackButton fallbackHref="/find" alwaysUseFallback className="mb-3" />
           <p className="text-red-600">{error}</p>
         </div>
       </main>
@@ -104,11 +100,7 @@ function Passport({ profile }: { profile: PatientProfile }) {
       <div className="relative">
         <PatientSettingsDrawer profile={profile} />
         <div className="pl-11">
-          <BackButton
-            fallbackHref="/find"
-            alwaysUseFallback
-            className="mb-3 block text-sm text-brand-600 hover:underline"
-          />
+          <BackButton fallbackHref="/find" alwaysUseFallback className="mb-3" />
         </div>
 
         <h1 className="mb-1 text-xl font-bold" style={{ color: "#00ADB5" }}>
