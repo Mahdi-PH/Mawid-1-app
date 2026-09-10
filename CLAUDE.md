@@ -6604,3 +6604,23 @@ specifically about `/clinic`'s reception view and the booking/waiting
 flow, and widening this pass to every remaining bare listener in the app
 wasn't asked for. Worth the same treatment in a future pass if a similar
 report ever surfaces there.
+
+### Deployed
+
+Once the user shared a fresh service-account key with "انشر الان": no
+`firestore.rules` changes were needed for this pass, so only the already-
+built `apps/web/out/` (already confirmed to carry `sw.js`'s
+`CACHE_VERSION = "mawid-shell-v3"` before deploying, per the standing
+practice) was pushed via `firebase deploy --only hosting --project
+mawid-app-d1d03`, verified FINALIZED by reading the release back from the
+Hosting Management API (release
+`sites/mawid-app-d1d03/releases/1789020231412000`) — this sandbox still
+can't reach `*.web.app` directly to browse it. The service-account key
+was deleted immediately after — both the copy used for the deploy and the
+original upload — confirmed gone from both locations via a directory
+listing. The "not independently live-verified against the real project"
+gaps disclosed above (the chunk-recovery mechanism's real trigger, the
+live end-to-end populated-notification/badge behavior from earlier
+sections) are unaffected by this deploy — the underlying logic was
+verified via real browser event-dispatch/`page.goBack()` tests in this
+sandbox, not against the live project's own network conditions.
