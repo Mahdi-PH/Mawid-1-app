@@ -6416,6 +6416,22 @@ correct:
   the fastest way to confirm the *already-live* fix from the previous
   round on that specific device, independent of this pass's own
   additional architectural cleanup.
-- **Not yet deployed** — held per this project's standing practice of
-  waiting for an explicit go-ahead or a fresh service-account key before
-  publishing to `mawid-app-d1d03`.
+- **Deployed** (once the user shared a fresh service-account key with
+  "انشر الان"): no `firestore.rules` changes were needed — this is
+  client-side navigation/synchronization logic plus the service-worker
+  cache-version bump from the previous round, both already committed —
+  so only the rebuilt `apps/web/out/` was pushed via `firebase deploy
+  --only hosting`, verified FINALIZED by reading the release back from
+  the Hosting Management API (release
+  `sites/mawid-app-d1d03/releases/1789018382407000`) — this sandbox
+  still can't reach `*.web.app` directly to browse it. Confirmed the
+  exported `sw.js` actually carries `CACHE_VERSION = "mawid-shell-v3"`
+  before deploying, not assumed from the source edit alone. The
+  service-account key was deleted immediately after — both the copy
+  used for the deploy and the original upload. The "not independently
+  live-verified" gap above (a real brand-new registration submitted
+  against the live project) is unaffected by deploying — still worth
+  doing, and worth clearing the installed app's cache (or reinstalling)
+  before that retest, since this deploy is what finally ships the new
+  `CACHE_VERSION` that forces the previous round's already-live fix to
+  stop being shadowed by a stale cached bundle on that specific device.
