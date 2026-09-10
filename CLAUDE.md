@@ -6321,7 +6321,17 @@ look identical as a bare auth-state change to `null`) — a new pair,
   change; the fix is scoped entirely to stopping the premature
   navigation at its one real source (`SignupClient.tsx`'s redirect
   effect), not to papering over its symptom on the receiving end.
-- **Not yet deployed** — this is a client-side-only fix (no
-  `firestore.rules` change), held per this project's standing practice of
-  waiting for the user's explicit go-ahead or a fresh service-account key
-  before publishing to `mawid-app-d1d03`.
+- **Deployed** (once the user shared a fresh service-account key with
+  "انشر الان"): no `firestore.rules` changes were needed — this entire
+  fix is client-side navigation/synchronization logic only — so only the
+  rebuilt `apps/web/out/` was pushed via `firebase deploy --only
+  hosting`, verified FINALIZED by reading the release back from the
+  Hosting Management API (release
+  `sites/mawid-app-d1d03/releases/1789016858494000`) — this sandbox
+  still can't reach `*.web.app` directly to browse it. The service-
+  account key was deleted immediately after — both the copy used for
+  the deploy and the original upload. The "not independently live-
+  verified" gap above (a real brand-new registration submitted against
+  the live project, confirming it lands on `/subscribe?registered=1…`
+  and never on `/clinic`) is unaffected by deploying — still worth doing
+  once there's a real fresh signup to test with.
