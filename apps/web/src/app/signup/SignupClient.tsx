@@ -23,15 +23,7 @@
 // form, not an irrelevant type picker.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  clearRegistrationInProgress,
-  isAdminUser,
-  isConfiguredAdminEmail,
-  isRegistrationInProgress,
-  markRegistrationInProgress,
-  onAuthChange,
-  signInWithEmail,
-} from "../../lib/firebase/auth";
+import { isAdminUser, isConfiguredAdminEmail, onAuthChange, signInWithEmail } from "../../lib/firebase/auth";
 import { registerClinic, SlugTakenError } from "../../lib/firebase/firestore";
 import { ENTITY_TYPE_LABEL, getTerminology } from "../../lib/firebase/terminology";
 import type { EntityType } from "../../lib/firebase/types";
@@ -143,24 +135,39 @@ export default function SignupClient() {
   // branch) — so this one guard covers every way of landing here, rather
   // than patching each entry point (the home card's click handler, any
   // future link into /signup) separately.
+  //
+  // Architecturally, this is a ONE-SHOT check of whoever was ALREADY
+  // signed in the moment this screen was reached (Path A: an existing
+  // account landed here by mistake) — it is deliberately NOT a live
+  // subscription that keeps listening for the rest of this component's
+  // lifetime. A live listener has no legitimate reason to exist here:
+  // the only two things that can make THIS page's own auth state change
+  // *after* it has already mounted are (1) handleClinicLogin()/
+  // handleAdminSubmit() below, which already navigate deliberately on
+  // their own success, and (2) registerClinic()'s own
+  // createUserWithEmailAndPassword() call for a brand-new registration
+  // (Path B) — whose newly-created account must NEVER be treated as "an
+  // existing account that landed here by mistake", since its clinic
+  // document doesn't exist yet at that exact instant. A previous version
+  // of this fix kept the live listener and added a flag
+  // (markRegistrationInProgress()) to make it ignore that one event —
+  // which worked in reasoning but left a live listener with no ongoing
+  // purpose still wired up, and depended on remembering to guard every
+  // future auth-state change with the flag. Removing the subscription
+  // itself removes the whole class of race by construction: once this
+  // one-shot check's own single callback has fired (and unsubscribed
+  // itself, synchronously, before doing anything else), it is
+  // structurally impossible for it to react to ANY later auth-state
+  // change for the rest of this mount, registration included — there is
+  // nothing left listening.
   useEffect(() => {
     let cancelled = false;
     const unsubscribe = onAuthChange(async (user) => {
+      // Unsubscribe immediately, before anything else — this callback
+      // must only ever act on the FIRST auth state this mount observes,
+      // never a later one.
+      unsubscribe();
       if (cancelled || !user || user.isAnonymous) return;
-      // A brand-new registration's own createUserWithEmailAndPassword()
-      // call (inside registerClinic(), see handleClinicSubmit() below)
-      // fires this exact auth-state-change event before its own
-      // Firestore transaction — the part that actually creates the
-      // clinics/{slug} document — has even started. Without this guard
-      // this effect would race ahead and send a still-registering
-      // visitor to /clinic before any clinic document exists, showing
-      // "this account has no registered clinic" instead of the intended
-      // pending-approval confirmation. See markRegistrationInProgress()'s
-      // own comment in lib/firebase/auth.ts for why this closes the race
-      // deterministically rather than by timing. handleClinicSubmit()'s
-      // own success path already navigates deliberately, only once the
-      // clinic document is confirmed created.
-      if (isRegistrationInProgress()) return;
       if (user.email && isConfiguredAdminEmail(user.email) && (await isAdminUser(user))) {
         if (!cancelled) router.replace("/admin");
         return;
@@ -259,12 +266,6 @@ export default function SignupClient() {
 
     submittingRef.current = true;
     setBusy(true);
-    // Set synchronously, before the only `await` that can yield to
-    // Firebase's own auth-state-change listeners (inside registerClinic()
-    // itself) — see this function's own comment in lib/firebase/auth.ts
-    // for why this reliably closes the redirect race rather than just
-    // narrowing it.
-    markRegistrationInProgress();
     try {
       const { slug } = await registerClinic({
         email: email.trim(),
@@ -316,7 +317,6 @@ export default function SignupClient() {
         );
       }
     } finally {
-      clearRegistrationInProgress();
       submittingRef.current = false;
       setBusy(false);
     }

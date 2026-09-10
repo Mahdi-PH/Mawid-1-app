@@ -6335,3 +6335,87 @@ look identical as a bare auth-state change to `null`) — a new pair,
   the live project, confirming it lands on `/subscribe?registered=1…`
   and never on `/clinic`) is unaffected by deploying — still worth doing
   once there's a real fresh signup to test with.
+
+## Same bug reported a third time after that deploy: cache theory ruled in, then a genuine architectural weakness found and removed
+
+The user reported the identical false "no clinic registered" message yet
+again after the deploy above, this time explicitly testing through the
+**installed Android/PWA app** (confirmed via a direct question — not
+assumed). That answer matters: the installed app is the one surface with
+its own persistent JS cache (`public/sw.js`'s cache-first strategy for
+`_next/static` assets), so a stale, pre-fix bundle serving the identical
+symptom was already the leading theory before this exchange, and
+`CACHE_VERSION` was bumped (`v2`→`v3`, commit `cbc1da8`) as a real,
+disclosed hardening for exactly that — force every already-installed
+client to drop its cache on next activation, rather than relying on a
+manual clear.
+
+The user then asked for the registration flow to be **re-architected**,
+not patched again — and a genuine, real weakness in the previous fix was
+found by taking that seriously rather than re-asserting it was already
+correct:
+
+- **The previous fix (`markRegistrationInProgress()`) was reasoned
+  correctly but was itself an unnecessary patch on a mechanism that
+  should never have existed in its previous shape.** It kept
+  `SignupClient.tsx`'s signed-in-redirect effect as a **live**
+  `onAuthStateChanged` subscription — one that stays subscribed for the
+  component's entire lifetime — and added a module-level flag the
+  listener had to remember to check on every future invocation to avoid
+  reacting to the registration's own sign-in event. That flag made the
+  reasoning correct, but a live listener with no legitimate reason to
+  keep listening is exactly the kind of "patch on top of patch" this
+  project's own standing practice tries to avoid, and depends on every
+  future maintainer remembering the flag exists.
+- **Root design fix**: the effect's only real job is to catch **Path
+  A** — a visitor who was *already* signed in the instant this screen
+  was reached (a stale bookmark, browser back/forward, a raced
+  home-screen click, a shared link) — a check that only ever needs to
+  run **once**, at mount, against whatever the current auth state
+  already is. It has no legitimate reason to keep listening for the
+  rest of the component's life, since **Path B** (a brand-new
+  registration) already navigates deliberately through its own success
+  handler once `registerClinic()` resolves. Rewritten as a **one-shot**
+  listener: the callback calls its own `unsubscribe()` as its very first
+  statement, before doing anything else, so it can only ever act on the
+  very first auth-state notification this mount observes — structurally
+  incapable of reacting to a *later* one (the registration's own
+  `createUserWithEmailAndPassword()` sign-in event), since by the time
+  that fires, this listener has already unsubscribed. This removes the
+  entire race by construction rather than by remembering to check a
+  flag — no flag exists to forget.
+- **`markRegistrationInProgress()`/`clearRegistrationInProgress()`/
+  `isRegistrationInProgress()` were deleted entirely** from
+  `lib/firebase/auth.ts`, along with their two call sites in
+  `handleClinicSubmit()` — dead code once the live listener that needed
+  guarding no longer exists, per this project's own standing rule:
+  clean the logic, don't stack a second mechanism on top of the first.
+- **Verified the new design closes the race with the same rigor as the
+  original fix, plus the one case that could have regressed**: a
+  standalone JS event-loop test (no Firebase, no live network) confirmed
+  two things — (1) with the one-shot listener already having fired (and
+  unsubscribed) as "signed-out" before a simulated registration's own
+  sign-in notification arrives, no redirect fires, exactly the fix's
+  claim; (2) an *already*-signed-in visitor landing on `/signup` (the
+  legitimate Path A case the whole mechanism exists for) still correctly
+  triggers the redirect — proving the simplification didn't break the
+  one thing this effect is actually for.
+- `rm -rf .next out && npm run build` (typecheck + static export) clean
+  across all 19 routes. A local Playwright smoke pass against the fresh
+  export confirmed zero unexpected console/page errors on `/signup`,
+  `/clinic` (signed-out), `/admin` (signed-out), and `/`.
+- **Not independently live-verified** — same standing gap as the
+  previous round: no fresh service-account key was shared with this
+  message, and this sandbox still can't reach `*.web.app` directly
+  (confirmed again this pass: both `curl` and plain Node `fetch` to the
+  live URL return a `403` on the CONNECT tunnel — a standing, disclosed
+  environment limitation, not something routed around). The user's own
+  answer (testing via the installed app) means the cache-clear
+  instruction given in that exchange — Android Settings → Apps → the
+  app → Storage → Clear cache (or a full uninstall/reinstall) — is still
+  the fastest way to confirm the *already-live* fix from the previous
+  round on that specific device, independent of this pass's own
+  additional architectural cleanup.
+- **Not yet deployed** — held per this project's standing practice of
+  waiting for an explicit go-ahead or a fresh service-account key before
+  publishing to `mawid-app-d1d03`.
