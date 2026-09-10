@@ -1,0 +1,64 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Trusted Web Activity (TWA) wrapper around the already-live PWA at
+// https://mawid-app-d1d03.web.app — this app has almost no native code of
+// its own; it launches androidbrowserhelper's LauncherActivity pointed at
+// that URL (see AndroidManifest.xml / res/values/strings.xml), so the
+// installed app always shows whatever is currently deployed to Firebase
+// Hosting. Release signing is optional at build time: with no
+// ANDROID_KEYSTORE_PATH env var set, `assembleDebug` still works out of the
+// box (Android's own auto-generated debug keystore) for sideloading and
+// testing; `assembleRelease` only produces a properly signed build once the
+// four ANDROID_KEYSTORE_* secrets are present (see
+// .github/workflows/android-build.yml).
+def hasReleaseKeystore = System.getenv("ANDROID_KEYSTORE_PATH") != null
+
+android {
+    namespace 'com.mawid.clinic'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.mawid.clinic"
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "1.0.0"
+    }
+
+    if (hasReleaseKeystore) {
+        signingConfigs {
+            release {
+                storeFile file(System.getenv("ANDROID_KEYSTORE_PATH"))
+                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            if (hasReleaseKeystore) {
+                signingConfig signingConfigs.release
+            }
+            minifyEnabled false
+        }
+    }
+
+    buildFeatures {
+        buildConfig = false
+    }
+}
+
+dependencies {
+    // Google's official TWA launcher helper - handles the Custom Tabs /
+    // Trusted Web Activity connection, status bar/nav bar theming, and the
+    // Digital Asset Links handshake with the hosted origin. Pinned to 2.5.0
+    // rather than the newer 2.6.0: that version pulls in an alpha
+    // androidx.browser that requires compileSdk 36 + AGP 8.9.1+, which
+    // cascades into needing a newer Gradle wrapper too - 2.5.0 stays on a
+    // stable androidx.browser that's happy with compileSdk 34 / AGP 8.5.2.
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+}

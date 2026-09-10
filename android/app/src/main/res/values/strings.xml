@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">موعد</string>
+    <string name="launch_url">https://mawid-app-d1d03.web.app/</string>
+    <string name="host_name">mawid-app-d1d03.web.app</string>
+    <string name="asset_statements">
+        [{
+            \"relation\": [\"delegate_permission/common.handle_all_urls\"],
+            \"target\": {
+                \"namespace\": \"web\",
+                \"site\": \"https://mawid-app-d1d03.web.app\"
+            }
+        }]
+    </string>
+</resources>

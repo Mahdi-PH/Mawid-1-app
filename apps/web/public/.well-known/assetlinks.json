@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.mawid.clinic",
+      "sha256_cert_fingerprints": [
+        "5A:FB:CF:30:B2:F5:22:11:48:63:D4:24:39:86:E1:78:C7:D5:C5:A7:B5:77:CF:38:3D:79:30:8B:9B:48:39:49"
+      ]
+    }
+  }
+]

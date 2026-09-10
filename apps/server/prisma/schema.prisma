@@ -1,0 +1,167 @@
+// Mawid - Prisma schema
+// Postgres is assumed for production; the offline client (apps/web) mirrors
+// this shape in IndexedDB (see apps/web/src/lib/offline/db.ts) so payloads
+// round-trip without translation.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Clinic {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+
+  doctors      Doctor[]
+  patients     Patient[]
+  appointments Appointment[]
+
+  @@map("clinics")
+}
+
+model Doctor {
+  id                   String   @id @default(uuid())
+  clinicId             String
+  fullName             String
+  specialty            String?
+  slotDurationMinutes  Int      @default(15)
+  active               Boolean  @default(true)
+  createdAt            DateTime @default(now())
+
+  clinic       Clinic        @relation(fields: [clinicId], references: [id])
+  workingHours WorkingHour[]
+  breaks       BreakBlock[]
+  appointments Appointment[]
+  visits       Visit[]
+
+  @@index([clinicId])
+  @@map("doctors")
+}
+
+/// One row per weekly recurring work block, e.g. Sun-Thu 09:00-17:00.
+model WorkingHour {
+  id        String @id @default(uuid())
+  doctorId  String
+  weekday   Int // 0=Sunday .. 6=Saturday
+  startTime String // "09:00"
+  endTime   String // "17:00"
+
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([doctorId])
+  @@map("working_hours")
+}
+
+/// Recurring break inside a working day (lunch, prayer time, etc).
+model BreakBlock {
+  id        String  @id @default(uuid())
+  doctorId  String
+  weekday   Int
+  startTime String
+  endTime   String
+  label     String?
+
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([doctorId])
+  @@map("break_blocks")
+}
+
+model Patient {
+  id          String   @id @default(uuid())
+  clinicId    String
+  fullName    String
+  phone       String
+  patientCode String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  /// Client-generated id from an offline-created record; kept for audit /
+  /// idempotent re-sync (see SyncOperation.opId for the actual dedupe key).
+  localId     String?
+
+  clinic       Clinic        @relation(fields: [clinicId], references: [id])
+  appointments Appointment[]
+  visits       Visit[]
+
+  @@index([clinicId, phone])
+  @@map("patients")
+}
+
+enum AppointmentStatus {
+  booked
+  arrived
+  in_progress
+  completed
+  cancelled
+  no_show
+}
+
+model Appointment {
+  id        String            @id @default(uuid())
+  clinicId  String
+  doctorId  String
+  patientId String
+  date      String // "2026-08-30" (clinic-local calendar day, not UTC-shifted)
+  startTime String // "09:15"
+  endTime   String // "09:30"
+  status    AppointmentStatus @default(booked)
+  queueNumber Int
+  notes     String?
+
+  /// Double-booking guard: `${doctorId}|${date}|${startTime}` while the slot
+  /// is "occupying" (any status except cancelled), otherwise NULL.
+  /// Postgres allows unlimited NULLs through a UNIQUE index, so a cancelled
+  /// appointment silently frees its slot for rebooking while every other
+  /// status still collides on the real unique key. See scheduling/slotEngine.ts.
+  slotLockKey String? @unique
+
+  reminderSentAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  localId        String?
+
+  clinic  Clinic  @relation(fields: [clinicId], references: [id])
+  doctor  Doctor  @relation(fields: [doctorId], references: [id])
+  patient Patient @relation(fields: [patientId], references: [id])
+  visit   Visit?
+
+  @@index([doctorId, date])
+  @@index([clinicId, date, status])
+  @@map("appointments")
+}
+
+model Visit {
+  id               String   @id @default(uuid())
+  appointmentId    String   @unique
+  patientId        String
+  doctorId         String
+  diagnosisNote    String?
+  prescriptionText String?
+  createdAt        DateTime @default(now())
+  localId          String?
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+  patient     Patient     @relation(fields: [patientId], references: [id])
+  doctor      Doctor      @relation(fields: [doctorId], references: [id])
+
+  @@map("visits")
+}
+
+/// Idempotency ledger for the offline sync push endpoint. Every SyncOperation
+/// the client sends carries a client-generated opId; once applied it is
+/// recorded here so a retried push (flaky connection) is a safe no-op.
+model SyncedOperation {
+  opId       String   @id
+  entity     String
+  entityId   String
+  appliedAt  DateTime @default(now())
+
+  @@map("synced_operations")
+}
