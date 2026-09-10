@@ -6435,3 +6435,172 @@ correct:
   before that retest, since this deploy is what finally ships the new
   `CACHE_VERSION` that forces the previous round's already-live fix to
   stop being shadowed by a stale cached bundle on that specific device.
+
+## Account-state re-audit (confirmed already fixed) + a real root-cause fix for "UI disappears on refresh"
+
+The user's next message asked for two things, addressed to a combined
+software-developer/data-flow-and-state-management-engineering persona:
+(1) re-verify the "account not registered"/rejected-account flow and
+session persistence, since the error had been reported multiple times
+already; (2) root-cause a genuinely new report — the app's entire UI
+disappearing (blank/white screen) when attempting to refresh the page
+(pull-to-refresh) or refetch data. The request used Flutter/Dart terms
+(`FutureBuilder`/`StreamBuilder`/`ConnectionState.waiting`/`hasError`/
+"Widget Tree") that have no literal equivalent here — this app is React/
+Next.js/Firebase, not Flutter — translated onto the real primitives:
+React state (`undefined`/`null`/error variables), `useEffect`, Firestore
+`onSnapshot` live listeners, and the React component tree.
+
+### Request 1 — re-audited, not re-patched: already fully addressed
+
+Re-read every file this request named, rather than assuming the prior
+rounds' fixes still hold:
+- `lib/firebase/config.ts` still has its explicit
+  `setPersistence(auth, browserLocalPersistence)` call — the "session
+  persistence" the request asked for.
+- `SignupClient.tsx`'s redirect effect is still the one-shot listener
+  from the immediately preceding round (unsubscribes on its own first
+  callback, so it can never react to a later auth-state change) — the
+  registration race is closed by construction, not a flag.
+- `lib/firebase/firestore.ts`'s `watchClinicByOwner()` still has its
+  transient-error retry (re-verifies via `getDocs()` before ever
+  reporting "no clinic" on a `permission-denied`/`unavailable`/
+  `cancelled` error) — the returning-owner-login race is closed.
+- `/clinic/page.tsx`'s branch order (`undefined` → loading,
+  `null` → "no clinic registered", `status !== "approved"` → pending/
+  rejected, `!isSubscriptionActive` → expired, else the real dashboard)
+  and `registerClinic()`'s required-license-upload + pending-by-default
+  flow already match the exact journey the request described
+  (إدارة المراكز → نوع المركز → إنشاء حساب + رفع الإجازة → إرسال الطلب).
+No code change was needed for this request — it restates concerns this
+session had already root-caused and fixed in the two immediately
+preceding rounds, and every one of those fixes was re-confirmed present
+in the actual current source, not assumed from memory.
+
+### Request 2 — a real, previously undiagnosed gap: no error boundary anywhere in this app
+
+A repo-wide search confirmed this Next.js App Router project had **no**
+`error.tsx`/`global-error.tsx` anywhere — meaning ANY uncaught exception
+thrown while rendering any client component (a live `onSnapshot` callback
+handing a component data it didn't guard against, a failed dynamic
+import, anything) unmounted the **entire** React tree with nothing left
+to show. This is a real, mechanistically exact match for "the UI
+disappears completely" — not a guess, but the direct, documented
+consequence of Next.js's own error-boundary contract when no boundary
+exists.
+
+- **`apps/web/src/app/error.tsx`** (new): a route-segment error boundary —
+  renders a friendly "حدث خطأ غير متوقع" card with "إعادة المحاولة" (calls
+  the segment's own `reset()`) and "الرئيسية", instead of a blank page,
+  for any render exception in any route from here on. Next.js renders
+  this client-side regardless of static export (`output: "export"`), so
+  it's a real fix under this project's actual hosting model, not a
+  server-only feature this app can't use.
+- **`apps/web/src/app/global-error.tsx`** (new): the root-level fallback,
+  only reached if an error escapes even `error.tsx` (e.g. inside
+  `layout.tsx` itself) — must render its own `<html>/<body>` per Next's
+  own contract, since it fully replaces the root layout when active.
+- **`components/ChunkErrorRecovery.tsx`** (new, mounted once in
+  `app/layout.tsx` next to `RegisterServiceWorker`): the other real
+  trigger this project is specifically exposed to, closed at its actual
+  root cause rather than only papered over by the boundary above. This
+  project ships a new, content-hashed JS build on **every** deploy (see
+  this file's own multi-dozen-release deploy history), while `public/
+  sw.js` caches static assets cache-first with background refresh. A
+  client that had the app open across a deploy — or whose service worker
+  served an already-cached reference to a chunk filename from an earlier
+  visit — can end up asking the browser to fetch a chunk that no longer
+  exists on the server. That 404s and throws a `ChunkLoadError`/"failed
+  to fetch dynamically imported module" error **outside** React's render
+  phase (a script-loading failure, not a render exception) — `error.tsx`
+  alone can't reach it, since it only catches exceptions React itself
+  throws while rendering. With nothing left able to render, the page goes
+  blank: the exact "UI disappears when trying to refresh/refetch" report,
+  and a directly plausible one given how often this project's own deploy
+  history shows the JS bundle changing under an already-installed client.
+  `ChunkErrorRecovery` listens for `window.onerror`/`unhandledrejection`,
+  matches the message/name against the known chunk-load-failure
+  signatures, and performs exactly one real `window.location.reload()` —
+  the only real fix for a genuinely stale bundle, since no in-memory
+  retry can serve a file that isn't there — guarded by a one-shot
+  `sessionStorage` flag so a single unrelated JS error can never become a
+  reload loop.
+- **`watchAppointmentsForClinic()`** (`firestore.ts`) and
+  **`watchClinicQueue()`** (`queue.ts`) were both bare `onSnapshot` calls
+  that treated ANY error — including the same brief `permission-denied`
+  window right after sign-in that `watchAppointment()`/
+  `watchClinicByOwner()` already had to fix in earlier rounds — as "no
+  data," silently emptying `/clinic`'s reception table/waiting-room TV or
+  `/find/wait`'s "N ahead of you" queue count on exactly the kind of
+  refresh-right-after-navigating moment this request is about. Hardened
+  both with the identical transient-error-retry pattern already
+  established for their two siblings: re-verify via a direct `getDocs()`
+  before ever reporting an empty list on a transient error; a real,
+  final denial still resolves to `[]`.
+
+### Verified — not assumed from a clean build
+
+- `rm -rf .next out && npm run build` (typecheck + static export) clean
+  across all 19 routes both before and after a scratch verification
+  route was added and removed (see below) — confirming the new files
+  don't themselves regress anything.
+- **The error boundary's actual catching behavior was verified in a real
+  browser, not assumed from Next's docs**: a throwaway route
+  (`app/uitest-scratch-errorboundary/`, a button that sets local state and
+  throws only after client-side mount — thrown during the static export's
+  build-time prerender would fail the build itself rather than exercise
+  the browser-side boundary, so the throw was gated to a post-hydration
+  click) was built, and clicking the button in a real Playwright/Chromium
+  session confirmed the page's `document.body` rendered the full
+  "حدث خطأ غير متوقع" / "إعادة المحاولة" / "الرئيسية" fallback (5645
+  characters of real HTML, screenshotted for visual confirmation) instead
+  of going blank. The scratch route was deleted afterward, confirmed via
+  `git status` showing only the five real production files changed, and
+  the app rebuilt clean back to its normal 19 routes.
+- **`ChunkErrorRecovery`'s actual recovery behavior was verified with
+  real browser navigation events, not a mocked function call** — since
+  Chromium's `Location.reload` cannot be shadowed via `defineProperty`
+  (a real cross-origin-safety restriction, discovered by trying and
+  having it silently not take effect), the test instead counted real
+  `load` events: (1) dispatching a synthetic `ChunkLoadError`-shaped
+  `ErrorEvent` on a live page produced a genuine second `load` event
+  (a real reload actually happened), and the `sessionStorage` flag was
+  confirmed present immediately after that reload, proving the guard
+  survives the very reload it triggers; (2) dispatching the same kind of
+  error on a fresh page that already had the flag pre-set produced **no**
+  additional `load` event — the one-shot guard actually prevents a second
+  reload, not just in theory; (3) dispatching an unrelated `TypeError`
+  produced no reload at all — confirming the pattern-match doesn't
+  fire on ordinary errors and reload the page for no reason.
+- A full Playwright smoke pass (`/`, `/find`, `/find/wait`, `/find/book`,
+  `/find/requests`, `/find/passport`, `/clinic`, `/admin`, `/signup`,
+  `/subscribe`) against the final rebuilt `out/` (server bound to an
+  explicit absolute path) confirmed zero console/page errors on every
+  route with the new boundary/recovery files and the two hardened
+  watchers in place.
+- **Not independently live-verified against the real `mawid-app-d1d03`
+  project**: no fresh service-account key was shared with this request,
+  and this sandbox still can't reach `*.web.app` directly (confirmed
+  again this pass). The chunk-load-recovery mechanism's real trigger (an
+  actual stale client hitting an actual 404'd chunk right after a real
+  deploy) can't be reproduced against a live deploy from this offline
+  sandbox — the event-dispatch tests above are what stand in for it,
+  proving the mechanism's own logic is correct, not that it's been
+  observed firing against a genuinely stale production bundle.
+  Recommended before treating this as fully verified end-to-end: watch a
+  real installed client that was open across an actual Hosting deploy,
+  confirm it self-heals via one automatic reload instead of going blank.
+- **No `firestore.rules` changes** — every change in this pass is
+  client-side (two new error-boundary files, one new global listener
+  component, two hardened Firestore watcher functions) and needed no
+  service-account key to build or verify locally.
+
+### Deliberately not done, disclosed
+
+`lib/firebase/passport.ts`'s own `onSnapshot` call sites and
+`app/find/passport/page.tsx`'s access-request listener were not
+re-audited or hardened in this pass — this request's own examples were
+specifically about `/clinic`'s reception view and the booking/waiting
+flow, and widening this pass to every remaining bare listener in the app
+wasn't asked for. Worth the same treatment in a future pass if a similar
+report ever surfaces there.

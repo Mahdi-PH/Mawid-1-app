@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "../styles/globals.css";
 import { RegisterServiceWorker } from "../components/RegisterServiceWorker";
+import { ChunkErrorRecovery } from "../components/ChunkErrorRecovery";
 
 export const metadata: Metadata = {
   title: "موعد | Mawid",
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         {children}
         <RegisterServiceWorker />
+        <ChunkErrorRecovery />
       </body>
     </html>
   );

@@ -636,6 +636,14 @@ export async function listAppointmentsForClinic(clinicSlug: string, date: string
  *  manual reload either. Same two-equality-filter query shape, so this
  *  needs no rules change and no composite index, identical to the
  *  one-shot version. */
+/** Same transient-error retry pattern as watchAppointment()/
+ *  watchClinicByOwner() above — this used to be a bare onSnapshot that
+ *  treated ANY error (including the same brief permission-denied window
+ *  right after sign-in those two already had to fix) as "no appointments
+ *  today," silently emptying the reception table/waiting-room TV on a
+ *  refresh instead of showing what's really there. Re-verifies with a
+ *  direct getDocs() before ever reporting an empty list on a transient
+ *  error; a real, final denial still resolves to []. */
 export function watchAppointmentsForClinic(
   clinicSlug: string,
   date: string,
@@ -646,11 +654,53 @@ export function watchAppointmentsForClinic(
     where("clinicSlug", "==", clinicSlug),
     where("date", "==", date)
   );
-  return onSnapshot(
-    q,
-    (snap) => onChange(snap.docs.map((d) => d.data() as AppointmentDoc)),
-    () => onChange([])
-  );
+  let cancelled = false;
+  let unsubscribe: (() => void) | undefined;
+  let attemptsLeft = 3;
+
+  function toAppts(snap: { docs: { data: () => unknown }[] }): AppointmentDoc[] {
+    return snap.docs.map((d) => d.data() as AppointmentDoc);
+  }
+
+  function attach() {
+    unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        attemptsLeft = 3; // a real update arrived over the stream; any earlier error was indeed transient
+        onChange(toAppts(snap));
+      },
+      (err) => {
+        if (cancelled) return;
+        const transient = err.code === "permission-denied" || err.code === "unavailable" || err.code === "cancelled";
+        if (!transient || attemptsLeft <= 0) {
+          onChange([]);
+          return;
+        }
+        attemptsLeft -= 1;
+        unsubscribe?.();
+        getDocs(q)
+          .then((snap) => {
+            if (cancelled) return;
+            onChange(toAppts(snap));
+            attach(); // resume live updates either way, from whatever the direct read just confirmed
+          })
+          .catch(() => {
+            if (cancelled) return;
+            if (attemptsLeft <= 0) {
+              onChange([]);
+              return;
+            }
+            attach(); // one more stream attempt before giving up
+          });
+      }
+    );
+  }
+
+  attach();
+  return () => {
+    cancelled = true;
+    unsubscribe?.();
+  };
 }
 
 /** Single-field equality only (no orderBy) - same reasoning as

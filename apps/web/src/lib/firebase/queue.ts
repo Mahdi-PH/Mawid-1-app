@@ -17,7 +17,7 @@
 // change the clinic makes. Both calls are best-effort (see syncQueueSlot)
 // — a failure here never blocks the real booking/status-change, since
 // this board is a live convenience view, not the source of truth.
-import { collection, doc, onSnapshot, query, setDoc, serverTimestamp, where } from "firebase/firestore";
+import { collection, doc, getDocs, onSnapshot, query, setDoc, serverTimestamp, where } from "firebase/firestore";
 import { db } from "./config";
 import type { AppointmentStatus, ClinicQueueSlotDoc } from "./types";
 
@@ -48,18 +48,72 @@ export function syncQueueSlot(clinicSlug: string, date: string, startTime: strin
  *  appointments today" rather than "how many possible slots today" the
  *  way the older getSlotAvailability()-based capacity check did. Two
  *  plain equality filters on different fields need no composite index
- *  (same as listAppointmentsForClinic() elsewhere in this file). */
+ *  (same as listAppointmentsForClinic() elsewhere in this file).
+ *
+ *  Hardened with the same transient-error retry pattern as
+ *  watchAppointment()/watchClinicByOwner() (firestore.ts) — this was a
+ *  bare onSnapshot that emptied "N ahead of you" to 0/"—" on the exact
+ *  same brief permission-denied window right after sign-in those two
+ *  already had to fix, which on /find/wait reads as the wait-position
+ *  UI going blank/wrong the instant a patient's session is still settling
+ *  (e.g. right after a refresh). A real, final denial still resolves
+ *  to []. */
 export function watchClinicQueue(
   clinicSlug: string,
   date: string,
   onChange: (slots: ClinicQueueSlotDoc[]) => void
 ): () => void {
   const q = query(collection(db, "clinic_queue_slots"), where("clinicSlug", "==", clinicSlug), where("date", "==", date));
-  return onSnapshot(
-    q,
-    (snap) => onChange(snap.docs.map((d) => d.data() as ClinicQueueSlotDoc)),
-    () => onChange([])
-  );
+  let cancelled = false;
+  let unsubscribe: (() => void) | undefined;
+  let attemptsLeft = 3;
+
+  function toSlots(snap: { docs: { data: () => unknown }[] }): ClinicQueueSlotDoc[] {
+    return snap.docs.map((d) => d.data() as ClinicQueueSlotDoc);
+  }
+
+  function attach() {
+    unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        attemptsLeft = 3;
+        onChange(toSlots(snap));
+      },
+      (err) => {
+        if (cancelled) return;
+        const transient =
+          (err as { code?: string }).code === "permission-denied" ||
+          (err as { code?: string }).code === "unavailable" ||
+          (err as { code?: string }).code === "cancelled";
+        if (!transient || attemptsLeft <= 0) {
+          onChange([]);
+          return;
+        }
+        attemptsLeft -= 1;
+        unsubscribe?.();
+        getDocs(q)
+          .then((snap) => {
+            if (cancelled) return;
+            onChange(toSlots(snap));
+            attach();
+          })
+          .catch(() => {
+            if (cancelled) return;
+            if (attemptsLeft <= 0) {
+              onChange([]);
+              return;
+            }
+            attach();
+          });
+      }
+    );
+  }
+
+  attach();
+  return () => {
+    cancelled = true;
+    unsubscribe?.();
+  };
 }
 
 export interface QueueStanding {
