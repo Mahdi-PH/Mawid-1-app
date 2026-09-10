@@ -318,6 +318,31 @@ export default function Home() {
     if (forceIntro || !seen) setPhase("intro");
   }, []);
 
+  // Real, separate ask from the user, distinct from the mount-time
+  // decision above: the intro must replay on EVERY re-entry to the
+  // installed app — not just the first genuine launch per session. The
+  // mount-time decision above is deliberately still gated by
+  // sessionStorage (it exists specifically so ordinary in-app Back
+  // navigation, which remounts this same route, never replays the intro —
+  // see "Back returns to Intro" in CLAUDE.md); a plain
+  // `visibilitychange` listener is a different, better-suited signal for
+  // "the visitor actually left and came back" — switching to another app,
+  // the home screen, or the lock screen fires `hidden` then `visible` on
+  // this document, while an ordinary same-tab client-side route change
+  // never does. So this can force the intro back on every real resume
+  // without reopening the Back-into-Intro bug the sessionStorage gate
+  // above already closed.
+  useEffect(() => {
+    function onVisibilityChange() {
+      if (document.visibilityState !== "visible") return;
+      if (!isStandaloneDisplay()) return;
+      setShowHint(false);
+      setPhase("intro");
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+
   // FLIP transform: the logo lives in exactly one DOM spot (its normal,
   // small header position) the whole time — this measures that natural
   // position the instant it mounts, then fakes a large-and-centered

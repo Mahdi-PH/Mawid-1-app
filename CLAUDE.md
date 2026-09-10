@@ -6624,3 +6624,154 @@ live end-to-end populated-notification/badge behavior from earlier
 sections) are unaffected by this deploy — the underlying logic was
 verified via real browser event-dispatch/`page.goBack()` tests in this
 sandbox, not against the live project's own network conditions.
+
+## Intro replays on every real re-entry + the actual root cause of "blank white screen on reopen"
+
+The user's next request, addressed to a combined performance-engineering/
+professional-code-design persona: (1) the intro pose should replay every
+single time the installed app is re-entered, not just once — they
+reported that on a normal open it goes straight to the home screen, and
+on re-opening it shows a **completely blank white screen**, only
+recovering after several retries or clearing the app's storage; (2) test
+this repeatedly and prove the intro shows on every entry.
+
+### Root cause of the blank screen — found by reasoning through the actual cache/network sequence, not guessed
+
+Confirmed by reading `sw.js`'s exact fallback chain: the navigate
+handler's catch path was `caches.match(req).then((res) => res ||
+caches.match("/"))` — if BOTH lookups came back empty, this resolves to
+**`undefined`**, and passing `undefined` to `event.respondWith()` is not
+"no page" — it's a hard network error the browser renders as its own
+blank/failed-navigation screen, before any of this app's own JS (React,
+the error boundary, `ChunkErrorRecovery` from the previous fix) ever gets
+a chance to run. The static-asset branch had the identical shape
+(`cached || network` where `network`'s own `.catch()` returned `cached`,
+i.e. `undefined`, on failure).
+
+The two lookups in the navigate branch were BOTH empty at exactly the
+moment this project already deploys constantly (every meaningful change
+bumps `sw.js`'s own `CACHE_VERSION`, forcing a new cache bucket) —
+because the old `activate` handler deleted every OTHER cache bucket the
+instant a new `CACHE_VERSION` installed, **regardless of whether the new
+bucket had actually finished caching anything yet**. A device that
+resumes from the background right as a new version activates — a
+realistic moment for a brief network hiccup (Wi-Fi/cellular reconnecting)
+— could genuinely have an empty new bucket AND no old bucket left to fall
+back to, at the exact instant it also can't reach the network. Retrying
+several times, or clearing app data, only "worked" because it eventually
+caught a moment with working network (populating the new bucket for
+next time) or reset the whole SW/cache state cleanly — neither one
+actually fixed anything; both just got lucky or started over.
+
+### The fix (`apps/web/public/sw.js`, `CACHE_VERSION` bumped to `v4`)
+
+- **`activate` no longer prunes old cache buckets unconditionally** — it
+  first checks whether the new version's own shell (`"/"`) is actually
+  cached; only then does it delete the others. If the new bucket isn't
+  populated yet (e.g. install ran while offline), every older bucket is
+  left alone as a real, working fallback instead of being wiped out from
+  under the app.
+- **`matchAnyCache()`** (new): searches every cache bucket this SW
+  controls, not only the current `CACHE_VERSION` one — so a client
+  mid-transition between versions can still be served from whatever it
+  actually has cached, wherever that happens to live.
+- **The navigate branch's fallback chain now always ends in a real,
+  constructed `Response`** — `matchAnyCache(req)` → `matchAnyCache("/")`
+  → a small, self-contained offline page (`OFFLINE_FALLBACK_HTML`) that
+  auto-retries the network every 1.5s and reloads once it succeeds,
+  instead of requiring the visitor to manually keep reopening the app.
+  **Never `undefined`** at any point in the chain.
+- **The static-asset branch got the same treatment**: `matchAnyCache()`
+  instead of only the current bucket, and a real (if minimal, `504`)
+  `Response` as its own last resort instead of ever passing `undefined`
+  to `respondWith()`.
+
+### The intro-on-every-re-entry request (`apps/web/src/app/page.tsx`)
+
+This app already had a mount-time decision (`useLayoutEffect`, gated by
+`INTRO_SHOWN_THIS_SESSION_KEY` in `sessionStorage`) that intentionally
+shows the intro only once per running session — built specifically to fix
+an earlier "Back returns to Intro" bug, where ordinary in-app Back
+navigation (which remounts this same route) was wrongly treated as a
+fresh app launch. That mechanism is **left completely untouched**, since
+weakening it would reopen that exact bug.
+
+**What's new**: a separate `visibilitychange` listener. Switching to
+another app, the home screen, or the lock screen fires `hidden` on
+`document`; switching back fires `visible` — a genuine "the visitor left
+and came back" signal that a same-tab client-side route change (Back
+button included) never triggers. On every `hidden` → `visible`
+transition while running standalone, this forces `phase` back to
+`"intro"` — the already-existing FLIP-transform effect and hint-timer
+effect are both keyed on `[phase]`, so they naturally re-run and replay
+the whole opening sequence correctly from scratch, with no changes needed
+to either. Because this is a different signal from the mount-time
+decision above, it satisfies the new "every real re-entry" request
+without reopening the "Back returns to Intro" bug the session-storage
+gate exists to prevent.
+
+### Verified — deterministically, not against a flaky browser-cache confound
+
+- **The intro-on-resume behavior was verified with a real browser
+  (Playwright/Chromium), simulating standalone mode and three separate
+  hide→show cycles**, not just one: initial load shows the intro pose
+  (measured bounding box exactly 112×112px); tapping settles it to the
+  header spot (exactly 64×64px); each of three simulated resumes
+  (`visibilityState` flipped to `"hidden"` then `"visible"`, dispatching
+  a real `visibilitychange` event) reproduced the exact same 112px → tap
+  → 64px cycle, every single time — 8 assertions on the resume behavior
+  alone, all passed. A ninth and tenth assertion confirmed the pre-
+  existing "Back returns to Intro" fix still holds: a real click into
+  `/find` followed by a real `page.goBack()` lands on the settled home
+  screen (64px, role cards at full opacity) — not the intro pose —
+  proving the new resume listener didn't reopen that bug.
+- **The `sw.js` fix was verified with a deterministic Node `vm`-based
+  unit test running the actual shipped file's source directly** (not a
+  paraphrase), with `self`/`caches`/`fetch`/`Response` mocked — chosen
+  after a real, disclosed methodology problem surfaced first: an initial
+  attempt to prove this in a real Playwright/Chromium browser (emptying
+  Cache Storage, then using `context.setOffline(true)` or killing the
+  test server before a real navigation) kept loading the actual app page
+  successfully regardless — traced to Chromium's own HTTP disk cache
+  quietly serving the previously-fetched `/` response to the SW's
+  internal `fetch(req)` call, entirely bypassing both the emptied Cache
+  Storage AND the simulated offline/dead-server condition, since a plain
+  `fetch()` with no `cache: "no-store"` can be satisfied straight from
+  browser HTTP cache. This is a real property of how browsers cache, not
+  a flaw in the SW logic — disclosed here rather than quietly switching
+  approaches with no explanation. The Node `vm` test sidesteps this
+  entirely by controlling `fetch()` and Cache Storage directly: 7
+  assertions on the fetch handler (navigate+network-fails+empty-cache
+  resolves to a real Response containing the fallback page's own text,
+  never `undefined`; navigate+network-fails+an-older-bucket-has-it is
+  found via `matchAnyCache`; navigate+network-succeeds still returns the
+  normal networked response, unaffected; the same three shapes for the
+  static-asset branch) plus 3 more on the `activate` handler (a populated
+  new bucket prunes the old one; an unpopulated new bucket keeps the old
+  one as a fallback) — 10/10 passed.
+- `rm -rf .next out && npm run build` (typecheck + static export) clean
+  across all 19 routes. A full Playwright smoke pass (`/`, `/find`,
+  `/find/wait`, `/find/book`, `/find/requests`, `/find/passport`,
+  `/clinic`, `/admin`, `/signup`, `/subscribe`) against the rebuilt
+  `out/` confirmed zero console/page errors on every route.
+- **Not independently live-verified against the real `mawid-app-d1d03`
+  project's own real-world network conditions** — the Node `vm` test is
+  what stands in for proving the SW logic itself is correct (and is, if
+  anything, a stronger guarantee than a live spot-check, since it
+  exhaustively covers both branches × three cache states deterministically
+  rather than hoping to catch the race live); what it cannot confirm is
+  the exact on-device experience (Android's own process-lifecycle timing,
+  real Wi-Fi/cellular reconnect delays). Recommended before treating this
+  as fully, live-verified: reopen the installed app several times across
+  a real network dropout, confirming it now shows either the real app or
+  the auto-retrying fallback page — never a hard, permanently-blank
+  screen — and confirm the intro pose replays on every one of those
+  reopens.
+- **No `firestore.rules` changes** — both fixes are client-side (a
+  service-worker file and one component's effect wiring).
+
+### Deployed
+
+Not yet deployed as of writing this section — held per this project's
+standing practice of waiting for the user's explicit go-ahead (or a fresh
+service-account key) before pushing to `mawid-app-d1d03`.
