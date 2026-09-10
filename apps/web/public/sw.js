@@ -4,7 +4,7 @@
 // offline-first before this file existed (see src/lib/offline - IndexedDB +
 // sync queue). The two layers are independent on purpose: this file can be
 // deleted without breaking data offline-first, and vice versa.
-const CACHE_VERSION = "mawid-shell-v2";
+const CACHE_VERSION = "mawid-shell-v3";
 
 const APP_SHELL = [
   "/",
