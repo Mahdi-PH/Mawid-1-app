@@ -6772,6 +6772,13 @@ gate exists to prevent.
 
 ### Deployed
 
-Not yet deployed as of writing this section — held per this project's
-standing practice of waiting for the user's explicit go-ahead (or a fresh
-service-account key) before pushing to `mawid-app-d1d03`.
+Live on `mawid-app-d1d03` via `firebase deploy --only hosting`, verified
+FINALIZED by reading the release back from the Hosting Management API
+(release `sites/mawid-app-d1d03/releases/1789036419666000`) — this sandbox
+still can't reach `*.web.app` directly to browse it. No `firestore.rules`
+changes were needed (both fixes are client-side: `sw.js`'s cache-fallback
+chain and `app/page.tsx`'s `visibilitychange` intro-replay effect). The
+exported `out/sw.js` was grepped to confirm it carried `CACHE_VERSION =
+"mawid-shell-v4"` before deploying, not assumed from the source edit
+alone. The service-account key was deleted immediately after — both the
+copy used for the deploy and the original upload.
