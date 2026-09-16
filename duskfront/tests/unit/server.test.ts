@@ -17,7 +17,7 @@ import { hashPassword, verifyPassword } from '../../apps/server/src/auth/passwor
 import { generateRefreshToken, hashToken, safeEqual } from '../../apps/server/src/auth/tokens.js';
 import { MemoryStore } from '../../apps/server/src/persistence/memory-store.js';
 import { eloBucket, pingBucket } from '../../apps/server/src/api/matchmaking.routes.js';
-import { metricsFromParticipant, pickDailyMissions } from '../../apps/server/src/services/content.js';
+import { metricsFromParticipant, pickDailyMissions } from '@duskfront/shared';
 import type { ParticipantInput } from '../../apps/server/src/persistence/types.js';
 
 async function freshStore(): Promise<MemoryStore> {

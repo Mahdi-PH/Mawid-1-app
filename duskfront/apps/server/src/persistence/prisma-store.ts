@@ -6,16 +6,20 @@
  */
 import { Prisma, PrismaClient } from '@prisma/client';
 import {
+  ACHIEVEMENTS,
+  CATALOG,
+  DAILY_MISSIONS,
   balance,
   computeMatchReward,
   levelFromXp,
+  metricsFromParticipant,
+  pickDailyMissions,
   updateElo,
   utcDayKey,
   type CampaignCheckpoint,
   type Difficulty,
   type PlayerSettingsBundle,
 } from '@duskfront/shared';
-import { ACHIEVEMENTS, CATALOG, DAILY_MISSIONS, metricsFromParticipant, pickDailyMissions } from '../services/content.js';
 import { defaultSettings } from '../services/defaults.js';
 import type {
   CampaignSaveRecord,

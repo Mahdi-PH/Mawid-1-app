@@ -16,3 +16,4 @@ export * from './sim/events.js';
 export * from './sim/bots.js';
 export * from './sim/navgrid.js';
 export * from './sim/behavior-tree.js';
+export * from './content.js';

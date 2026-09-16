@@ -1,9 +1,35 @@
 /**
- * محتوى الكتالوج والإنجازات والمهام — يستخدمه seed.ts والمخزن الداخلي معًا.
- * Catalog, achievements and daily-mission definitions, shared by the seeder and the
- * in-memory store so both environments expose exactly the same content.
+ * محتوى اللعبة: الكتالوج التجميلي، الإنجازات، وبركة المهام اليومية.
+ * Game content — the cosmetic catalogue, the achievements and the daily-mission pool.
+ * It lives in the shared package so the seeder, the in-memory store and the Prisma
+ * store all read one definition, and so it ships in the production image.
  */
-import type { ParticipantInput } from '../persistence/types.js';
+import type { ClassKey, TeamId } from './types.js';
+
+/**
+ * أقلّ ما يلزم لحساب عدّادات المباراة. يُعرَّف هنا لا في الخادم حتى تبقى هذه
+ * الوحدة خالية من اعتماديات الخادم، فتُنسخ ضمن dist المشتركة إلى حاوية الإنتاج.
+ * Declared here (not in the server) so this module stays dependency-free and ships
+ * inside the shared dist that the production image copies — which is what the
+ * database seeder needs at container start-up.
+ */
+export interface ScoredParticipant {
+  userId: string;
+  team: TeamId;
+  classKey: ClassKey;
+  kills: number;
+  deaths: number;
+  assists: number;
+  damageDealt: number;
+  lumenGenerated: number;
+  mirrorsPlaced: number;
+  wellsCaptured: number;
+  timeInSunS: number;
+  timeInDarkS: number;
+  crawlerDestroyed: boolean;
+  mirrorReveals: number;
+  won: boolean;
+}
 
 export interface CatalogSeed {
   key: string;
@@ -95,7 +121,7 @@ export const DAILY_MISSIONS: MissionSeed[] = [
 ];
 
 /** عدّادات مباراة واحدة لتغذية الإنجازات والمهام. */
-export function metricsFromParticipant(p: ParticipantInput): Record<string, number> {
+export function metricsFromParticipant(p: ScoredParticipant): Record<string, number> {
   return {
     kills: Math.max(0, p.kills),
     deaths: p.deaths,

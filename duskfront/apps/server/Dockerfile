@@ -38,7 +38,9 @@ EXPOSE 2567
 USER node
 ENTRYPOINT ["/sbin/tini", "--"]
 # الترحيل والبذر اختياريان عبر متغيرات البيئة، ثم يقلع الخادم
+# مسارات ثنائية مباشرة بدل npx: لا بحث في الشبكة ولا كتابة في ذاكرة npx المؤقتة
 CMD sh -c '\
-  if [ "$RUN_MIGRATIONS" = "true" ]; then npx prisma migrate deploy --schema prisma/schema.prisma; fi; \
-  if [ "$RUN_SEED" = "true" ]; then npx tsx prisma/seed.ts || true; fi; \
-  node apps/server/dist/index.js'
+  set -e; \
+  if [ "$RUN_MIGRATIONS" = "true" ]; then ./node_modules/.bin/prisma migrate deploy --schema prisma/schema.prisma; fi; \
+  if [ "$RUN_SEED" = "true" ]; then node apps/server/dist/seed.js; fi; \
+  exec node apps/server/dist/index.js'

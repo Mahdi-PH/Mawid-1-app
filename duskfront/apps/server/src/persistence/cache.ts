@@ -133,6 +133,13 @@ export async function createCache(redisUrl?: string): Promise<Cache> {
     return new MemoryCache();
   }
   const client = new Redis(redisUrl, { maxRetriesPerRequest: 2, lazyConnect: true });
+  /*
+    ioredis يطلق حدث error غير معالَج ويطبعه على stderr قبل أن تصل رسالتنا،
+    فيبدو الرجوع السلس إلى الذاكرة وكأنه انهيار. نلتقطه بأنفسنا.
+    Without this, ioredis prints an alarming unhandled-error event before our own
+    graceful message, making a clean fallback look like a crash.
+  */
+  client.on('error', () => undefined);
   try {
     await client.connect();
     await client.ping();

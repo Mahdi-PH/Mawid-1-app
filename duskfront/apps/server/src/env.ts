@@ -1,5 +1,31 @@
 /** قراءة متغيرات البيئة والتحقق منها مرة واحدة عند الإقلاع. */
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { z } from 'zod';
+
+/**
+ * يحمّل ملف .env صراحةً وفي أول الإقلاع.
+ *
+ * لماذا صراحةً؟ لأن @prisma/client يحمّل .env كأثر جانبي عند استيراده، فيصبح ما
+ * يراه هذا الملف معتمدًا على ترتيب الاستيراد — وهو مصدر أخطاء صامتة. التحميل
+ * الصريح يجعل السلوك واحدًا مهما تغيّر ترتيب الوحدات.
+ *
+ * Loaded explicitly and first: @prisma/client loads .env as an import side effect,
+ * which would otherwise make this module's view depend on import order.
+ */
+function loadDotEnvFile(): void {
+  if (typeof process.loadEnvFile !== 'function') return;
+  for (const candidate of ['.env', '../.env', '../../.env']) {
+    const path = resolve(process.cwd(), candidate);
+    if (!existsSync(path)) continue;
+    try {
+      process.loadEnvFile(path);
+    } catch {
+      // ملف تالف: نتجاهله ونكمل بمتغيرات البيئة الحقيقية
+    }
+    return;
+  }
+}
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -33,6 +59,7 @@ let cached: Env | null = null;
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   if (cached) return cached;
+  if (source === process.env) loadDotEnvFile();
   const parsed = schema.safeParse(source);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n');
