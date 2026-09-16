@@ -666,6 +666,77 @@ function wrapAngle(angle: number): number {
   return wrapped;
 }
 
-const container = document.getElementById('app');
-if (!container) throw new Error('[duskfront] #app container is missing');
-void new DuskfrontApp(container).start();
+/**
+ * جسر إلى حارس الإقلاع المكتوب في الصفحة. وجوده غير مضمون (الاختبارات، أو صفحة
+ * مضيفة لا تحمل الحارس)، لذا كل نداء هنا دفاعي.
+ * Bridge to the in-page boot guard. It may legitimately be absent (unit tests, a host
+ * page without the shell), so every call is defensive.
+ */
+type BootGuard = { fail(title: string, detail: string): void; booted(): void; status(text: string): void };
+
+function bootGuard(): BootGuard | null {
+  const guard = (window as unknown as { __duskfront?: BootGuard }).__duskfront;
+  return guard && typeof guard.fail === 'function' ? guard : null;
+}
+
+/**
+ * يتحقّق من توفّر WebGL قبل بناء المشهد. المحرّك يحتاج WebGL2؛ وبعض الإطارات
+ * المعزولة أو الأجهزة القديمة لا توفّره، فنقولها صراحةً بدل أن ننهار بصمت.
+ * WebGL2 is required. Sandboxed frames and older devices may not provide it, so say so
+ * plainly instead of dying silently inside the renderer's constructor.
+ */
+function describeWebGLFailure(): string | null {
+  let canvas: HTMLCanvasElement;
+  try {
+    canvas = document.createElement('canvas');
+  } catch {
+    return 'Cannot create a <canvas> element in this context.';
+  }
+  try {
+    if (canvas.getContext('webgl2')) return null;
+  } catch (error) {
+    return `canvas.getContext('webgl2') threw: ${(error as Error)?.message ?? error}`;
+  }
+  const hasWebGL1 = (() => {
+    try {
+      return Boolean(canvas.getContext('webgl'));
+    } catch {
+      return false;
+    }
+  })();
+  return hasWebGL1
+    ? 'This browser exposes WebGL 1 but not WebGL 2, which the renderer requires.'
+    : 'WebGL is unavailable or disabled in this browser/frame (hardware acceleration may be off).';
+}
+
+async function boot(): Promise<void> {
+  const guard = bootGuard();
+  const container = document.getElementById('app');
+  if (!container) {
+    guard?.fail('تعذّر العثور على حاوية اللعبة', '#app container is missing from the document.');
+    return;
+  }
+
+  const webglFailure = describeWebGLFailure();
+  if (webglFailure) {
+    guard?.fail(
+      'هذا المتصفّح لا يدعم WebGL 2 المطلوب لتشغيل اللعبة. جرّب متصفّحًا حديثًا على الحاسوب، أو فعّل تسريع الرسوميات.',
+      webglFailure,
+    );
+    return;
+  }
+
+  try {
+    guard?.status('…جارٍ بناء الكوكب وخط الغسق');
+    await new DuskfrontApp(container).start();
+    guard?.booted();
+  } catch (error) {
+    guard?.fail(
+      'تعطّل المحرّك أثناء الإقلاع',
+      (error as Error)?.stack ?? (error as Error)?.message ?? String(error),
+    );
+    throw error;
+  }
+}
+
+void boot();

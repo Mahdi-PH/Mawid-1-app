@@ -12,7 +12,13 @@ export default defineConfig({
   },
   preview: { port: 4173, host: true },
   build: {
-    target: 'es2022',
+    /*
+      هدف أقدم قليلًا (es2020) يوسّع التوافق ليشمل متصفّحات الجوال الأقدم: خطأ
+      تحليل واحد في وحدة بحجم ميغابايت يعني صفحة لا تُقلع إطلاقًا.
+      A slightly older target widens mobile-browser support: a single parse error in a
+      megabyte-sized module means the page never boots at all.
+    */
+    target: 'es2020',
     sourcemap: process.env.VITE_NO_SOURCEMAP ? false : true,
     chunkSizeWarningLimit: 900,
     /*

@@ -13,10 +13,126 @@
       href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap"
       rel="stylesheet"
     />
+    <!--
+      شاشة الإقلاع مكتوبة هنا كـHTML ثابت بأنماطها الخاصة، لا يعتمد أيٌّ منها على
+      JavaScript ولا على ملف الأنماط المُحزَّم. الهدف: ألّا تكون الصفحة بيضاء فارغة
+      أبدًا — إن فشل المحرّك أو مُنع تنفيذ الحزمة، يبقى هذا المربّع ظاهرًا ويشرح السبب.
+      The boot shell is static HTML with its own styles: it depends on neither the
+      bundle nor JavaScript. A blank page is never an acceptable failure mode, so if
+      the engine throws — or the bundle never runs at all — this panel stays up and
+      says why, instead of leaving the viewer staring at white.
+    -->
+    <style>
+      html, body { margin: 0; padding: 0; height: 100%; background: #050814; }
+      #boot-shell {
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; align-items: center; justify-content: center;
+        padding: 24px; box-sizing: border-box;
+        background: linear-gradient(160deg, #050814 0%, #120a2a 55%, #2a1038 100%);
+        font-family: 'Tajawal', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        color: #e8ecff; text-align: center; direction: rtl;
+      }
+      #boot-shell .boot-inner { max-width: 560px; width: 100%; }
+      #boot-shell .boot-title {
+        font-size: clamp(1.6rem, 7vw, 2.6rem); font-weight: 800;
+        letter-spacing: 0.3em; color: #fff; margin: 0 0 6px;
+      }
+      #boot-shell .boot-sub { color: #ffc93c; font-size: 1rem; margin-bottom: 22px; }
+      #boot-shell .boot-bar {
+        width: min(260px, 70%); height: 3px; margin: 0 auto;
+        background: rgba(255, 255, 255, 0.12); border-radius: 2px; overflow: hidden;
+      }
+      #boot-shell .boot-bar > i {
+        display: block; height: 100%; width: 35%;
+        background: linear-gradient(90deg, #ffb347, #c64bff);
+        animation: boot-slide 1.1s ease-in-out infinite;
+      }
+      @keyframes boot-slide { 0% { margin-inline-start: -35%; } 100% { margin-inline-start: 100%; } }
+      #boot-shell .boot-status { margin-top: 16px; color: #92baff; font-size: 0.9rem; line-height: 1.7; }
+      #boot-shell .boot-detail {
+        display: none; margin: 16px auto 0; max-width: 100%;
+        padding: 12px 14px; border-radius: 10px; text-align: start; direction: ltr;
+        background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(198, 75, 255, 0.35);
+        color: #ffb3c7; font-size: 0.74rem; line-height: 1.6;
+        white-space: pre-wrap; word-break: break-word;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      #boot-shell.boot-failed .boot-bar { display: none; }
+      #boot-shell.boot-failed .boot-status { color: #ffc93c; }
+      #boot-shell.boot-failed .boot-detail { display: block; }
+      @media (prefers-reduced-motion: reduce) { #boot-shell .boot-bar > i { animation: none; } }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div id="boot-shell">
+        <div class="boot-inner">
+          <div class="boot-title">DUSKFRONT</div>
+          <div class="boot-sub">جبهة الغسق</div>
+          <div class="boot-bar"><i></i></div>
+          <div class="boot-status" id="boot-status">…جارٍ تجهيز المحرّك ثلاثي الأبعاد</div>
+          <div class="boot-detail" id="boot-detail"></div>
+        </div>
+      </div>
+    </div>
     <noscript>هذه اللعبة تتطلب تفعيل JavaScript. / This game requires JavaScript.</noscript>
+    <!--
+      حارس الإقلاع: سكربت كلاسيكي (غير module) ينفَّذ أثناء تحليل الصفحة، أي قبل
+      الحزمة المؤجَّلة. يلتقط كل خطأ غير معالَج ويحوّله إلى رسالة مقروءة.
+      Classic (non-module) guard: runs during parse, before the deferred bundle, so it
+      is already listening when the bundle evaluates. Any uncaught error becomes a
+      readable message rather than a silent white page.
+    -->
+    <script>
+      (function () {
+        var booted = false;
+        var failed = false;
+        function shell() { return document.getElementById('boot-shell'); }
+        function setStatus(text) {
+          var node = document.getElementById('boot-status');
+          if (node && !failed) node.textContent = text;
+        }
+        function fail(title, detail) {
+          if (booted || failed) return;
+          failed = true;
+          var node = shell();
+          if (!node) return;
+          node.className = 'boot-failed';
+          var status = document.getElementById('boot-status');
+          var box = document.getElementById('boot-detail');
+          if (status) status.textContent = title;
+          if (box) box.textContent = String(detail == null ? '' : detail).slice(0, 700);
+        }
+        function booted_() {
+          booted = true;
+          var node = shell();
+          if (node && node.parentNode) node.parentNode.removeChild(node);
+        }
+        window.__duskfront = { fail: fail, booted: booted_, status: setStatus };
+        window.addEventListener(
+          'error',
+          function (event) {
+            var target = event && event.target;
+            if (target && target !== window && target.tagName) return; // فشل مورد خارجي (خط مثلًا)
+            fail('تعذّر تشغيل اللعبة في هذا المتصفّح', (event && event.message) || 'خطأ غير معروف');
+          },
+          true,
+        );
+        window.addEventListener('unhandledrejection', function (event) {
+          var reason = event && event.reason;
+          fail(
+            'تعذّر تشغيل اللعبة في هذا المتصفّح',
+            (reason && (reason.stack || reason.message)) || String(reason),
+          );
+        });
+        setTimeout(function () {
+          fail(
+            'لم يبدأ محرّك اللعبة',
+            'The JavaScript bundle did not execute within 25s. This usually means the viewer blocked inline module scripts, or the page was still downloading.',
+          );
+        }, 25000);
+      })();
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

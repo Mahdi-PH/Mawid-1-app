@@ -39,12 +39,24 @@ head = head.replace(/<link\s+[^>]*rel="stylesheet"[^>]*href="(\.\/[^"]+)"[^>]*>/
   return `<style>\n${readAsset(href)}\n</style>`;
 });
 
-// أدرِج حزمة JS
+/*
+  تُنتزع حزمة JS من الرأس وتُلحق بآخر الصفحة. المنصّة تلصق الجزء كما هو داخل
+  <body>، فلو بقيت الحزمة (قرابة ميغابايت) في المقدّمة لوجب على المتصفّح تحليلها
+  قبل أن يصل أصلًا إلى شاشة الإقلاع — أي لحظات من صفحة فارغة. بوضعها في النهاية
+  تُرسم الشاشة أولًا، ثم يُقلع المحرّك.
+  The bundle is pulled out of the head and appended last. The platform pastes this
+  fragment verbatim into <body>, so a ~1 MB script left at the front would have to be
+  parsed before the browser even reaches the boot shell — a stretch of blank page.
+  Moving it to the end paints the shell first, then boots the engine.
+*/
+let bundle = '';
 head = head.replace(/<script\s+type="module"[^>]*src="(\.\/[^"]+)"[^>]*><\/script>/gi, (_m, src) => {
-  return `<script type="module">\n${guardInline(readAsset(src))}\n</script>`;
+  bundle = `<script type="module">\n${guardInline(readAsset(src))}\n</script>`;
+  return '';
 });
+if (!bundle) throw new Error('[build-artifact] no module bundle found to inline');
 
-const page = `${head.trim()}\n\n${bodyMatch[1].trim()}\n`;
+const page = `${head.trim()}\n\n${bodyMatch[1].trim()}\n\n${bundle}\n`;
 
 if (/src="\.\//.test(page) || /href="\.\//.test(page)) {
   throw new Error('[build-artifact] page still references external assets');

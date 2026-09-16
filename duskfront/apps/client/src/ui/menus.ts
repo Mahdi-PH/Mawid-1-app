@@ -442,7 +442,7 @@ export class Menus {
         </div>
       </div>
       ${
-        isGuest
+        isGuest && !OFFLINE_ONLY
           ? `<div class="settings-group">
                <h3>${escape(t('auth.upgrade'))}</h3>
                <div class="hint">${escape(t('auth.guestNotice'))}</div>
@@ -452,14 +452,26 @@ export class Menus {
              </div>`
           : ''
       }
-      <div class="settings-group">
-        <h3>${escape(t('menu.account'))}</h3>
-        <div class="btn-row">
-          <button class="btn ghost" data-ref="export">${escape(t('common.save'))} JSON</button>
-          <button class="btn ghost" data-ref="logout">${escape(t('auth.logout'))}</button>
-          <button class="btn danger" data-ref="delete">${escape(t('common.delete'))}</button>
-        </div>
-      </div>`;
+      ${
+        /*
+          أزرار الحساب (تصدير، خروج، حذف) كلّها تخاطب الخادم. في النسخة المستقلّة
+          لا خادم أصلًا، كما أنّ تنزيل ملف داخل إطار عرض معزول لا يفعل شيئًا —
+          فزرٌّ لا أثر له أسوأ من غيابه.
+          Every account action talks to the server, and a file download does nothing
+          inside a sandboxed viewer frame. A button that silently no-ops is worse than
+          one that isn't there, so the group is omitted in the standalone build.
+        */
+        OFFLINE_ONLY
+          ? ''
+          : `<div class="settings-group">
+               <h3>${escape(t('menu.account'))}</h3>
+               <div class="btn-row">
+                 <button class="btn ghost" data-ref="export">${escape(t('common.save'))} JSON</button>
+                 <button class="btn ghost" data-ref="logout">${escape(t('auth.logout'))}</button>
+                 <button class="btn danger" data-ref="delete">${escape(t('common.delete'))}</button>
+               </div>
+             </div>`
+      }`;
 
     const nameInput = this.content.querySelector<HTMLInputElement>('[data-ref="displayName"]');
     nameInput?.addEventListener('change', async () => {

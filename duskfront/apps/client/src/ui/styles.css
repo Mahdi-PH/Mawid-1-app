@@ -992,10 +992,25 @@ html, body {
   .hud-abilities { inset-inline-end: 12px; inset-block-end: 126px; gap: 9px; }
   .hud-ammo { inset-block-end: 14px; inset-inline-end: 12px; min-width: 140px; }
   .hud-topright { width: 210px; }
-  .menu-shell { grid-template-columns: 1fr; padding: 16px; }
-  .menu-nav { flex-direction: row; overflow-x: auto; }
-  .menu-nav button { white-space: nowrap; }
-  .setting-row { grid-template-columns: 1fr 140px 52px; gap: 8px; }
+  /*
+    على الشاشات الضيّقة تتحوّل القائمة إلى عمود واحد. عناصر الشبكة تأخذ افتراضيًا
+    عرض min-content، وعنوان DUSKFRONT بتباعد حروفه أعرض من الشاشة — فيفيض التخطيط
+    أفقيًا وتُدفع البطاقات خارج الإطار. لذا نصفّر الحدّ الأدنى ونقصّ الفيض الأفقي.
+    In one column, grid items default to min-content width and the letter-spaced
+    DUSKFRONT wordmark is wider than a phone screen, which pushed the whole menu
+    sideways out of the frame. Zero the minimum and clip horizontal overflow.
+  */
+  .menu-shell { grid-template-columns: minmax(0, 1fr); padding: 16px; }
+  .menu-shell > * { min-width: 0; }
+  #menu-layer { overflow-x: hidden; }
+  .menu-brand { padding-block-end: 14px; }
+  .menu-brand h1 { font-size: clamp(1.3rem, 8vw, 2.1rem); letter-spacing: 0.2em; }
+  .menu-brand .tagline { max-width: none; }
+  .menu-nav { flex-direction: row; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .menu-nav button { white-space: nowrap; border-inline-start-width: 1px; }
+  .menu-content { padding: 16px 14px; }
+  .card-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); }
+  .setting-row { grid-template-columns: minmax(0, 1fr) 140px 52px; gap: 8px; }
 }
 
 @media (max-height: 560px) {

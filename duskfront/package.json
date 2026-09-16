@@ -29,8 +29,8 @@
     "migrate:dev": "prisma migrate dev --schema prisma/schema.prisma",
     "seed": "tsx prisma/seed.ts",
     "lint": "npm run typecheck",
-    "start:e2e:server": "npm run build:shared && tsx apps/server/src/index.ts",
-    "start:e2e:web": "npm run build -w @duskfront/client && vite preview --config apps/client/vite.config.ts --port 4173 --host 127.0.0.1",
+    "start:e2e:server": "npm run build:shared && npm run build -w @duskfront/server && node apps/server/dist/index.js",
+    "start:e2e:web": "npm run build -w @duskfront/client && cd apps/client && vite preview --port 4173 --host 127.0.0.1",
     "build:standalone": "npm run build:shared && cd apps/client && VITE_API_URL= VITE_WS_URL= VITE_BASE=./ VITE_NO_SOURCEMAP=1 VITE_SINGLE_FILE=1 vite build && cd ../.. && node scripts/build-artifact.mjs"
   },
   "devDependencies": {
