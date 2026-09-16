@@ -21,7 +21,7 @@ import {
 } from '@duskfront/shared';
 import { Vector3 } from 'three';
 import { AudioEngine } from './audio/audio.js';
-import { ApiClient, type ProfileDto } from './core/api.js';
+import { ApiClient, OFFLINE_ONLY, type ProfileDto } from './core/api.js';
 import { SettingsStore } from './core/settings.js';
 import { LocalAuth } from './core/storage.js';
 import { CAMPAIGN_MISSIONS, CampaignRun, syncPendingSaves } from './game/campaign.js';
@@ -129,6 +129,22 @@ class DuskfrontApp {
   // ─────────────────────────── المصادقة / auth ──────────────────────────────
 
   private async authenticate(): Promise<void> {
+    if (OFFLINE_ONLY) {
+      // لا خادم في هذه النسخة: ملف شخصي محلي، وكل الأوضاع تعمل داخل المتصفّح
+      this.profile = {
+        userId: 'local',
+        displayName: 'قائد الغسق',
+        avatarId: 'avatar_default',
+        level: 1,
+        xp: 0,
+        shards: 0,
+        rankRating: 1000,
+        locale: 'ar',
+        isGuest: true,
+      };
+      this.applySettings();
+      return;
+    }
     const stored = LocalAuth.load();
     if (stored) {
       this.api.setTokens(stored);

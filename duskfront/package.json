@@ -30,7 +30,8 @@
     "seed": "tsx prisma/seed.ts",
     "lint": "npm run typecheck",
     "start:e2e:server": "npm run build:shared && tsx apps/server/src/index.ts",
-    "start:e2e:web": "npm run build -w @duskfront/client && vite preview --config apps/client/vite.config.ts --port 4173 --host 127.0.0.1"
+    "start:e2e:web": "npm run build -w @duskfront/client && vite preview --config apps/client/vite.config.ts --port 4173 --host 127.0.0.1",
+    "build:standalone": "npm run build:shared && cd apps/client && VITE_API_URL= VITE_WS_URL= VITE_BASE=./ VITE_NO_SOURCEMAP=1 vite build && cd ../.. && node scripts/build-artifact.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1",

@@ -127,7 +127,15 @@ export class InputManager {
 
   requestPointerLock(): void {
     if (!this.captureTarget) return;
-    void this.captureTarget.requestPointerLock?.();
+    // قد يرفضه المتصفّح أو سياسة الإطار؛ الرفض ليس خطأً — يتولّاه السحب للنظر
+    try {
+      const result = this.captureTarget.requestPointerLock?.() as unknown;
+      if (result && typeof (result as Promise<void>).catch === 'function') {
+        void (result as Promise<void>).catch(() => undefined);
+      }
+    } catch {
+      /* السحب للنظر يغطّي هذه الحالة */
+    }
   }
 
   exitPointerLock(): void {
@@ -278,7 +286,14 @@ export class InputManager {
   };
 
   private readonly onMouseMove = (event: MouseEvent): void => {
-    if (!this.enabled || !this.pointerLocked) return;
+    if (!this.enabled) return;
+    /*
+      قفل المؤشر غير متاح دائمًا — إطار مضمَّن بلا إذن pointer-lock مثلًا.
+      في تلك الحالة نتيح «السحب للنظر»: نقرأ الإزاحة ما دام زر الفأرة مضغوطًا.
+      Pointer lock is not always available (an embedded frame without the
+      pointer-lock permission). Fall back to drag-to-look so the game stays playable.
+    */
+    if (!this.pointerLocked && this.mouseButtons === 0) return;
     this.mouseDeltaX += event.movementX;
     this.mouseDeltaY += event.movementY;
   };

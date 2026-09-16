@@ -13,6 +13,7 @@ import {
   type GameMode,
   type PlayerSettingsBundle,
 } from '@duskfront/shared';
+import { OFFLINE_ONLY } from '../core/api.js';
 import type {
   AchievementDto,
   ApiClient,
@@ -122,7 +123,13 @@ export class Menus {
   }
 
   private buildNav(): void {
-    const pages: { page: MenuPage; labelKey: string }[] = [
+    /*
+      الصفحات التي تحتاج خادمًا (حساب، اقتصاد، اجتماعي) تُخفى في النسخة المستقلة
+      بدل أن تُعرض فارغة — الإخفاء أصدق من قائمة لا تعمل.
+      Server-backed pages are hidden in the standalone build rather than shown empty.
+    */
+    const needsServer: MenuPage[] = ['profile', 'stats', 'achievements', 'missions', 'shop', 'friends', 'leaderboard'];
+    const allPages: { page: MenuPage; labelKey: string }[] = [
       { page: 'home', labelKey: 'menu.main' },
       { page: 'modes', labelKey: 'menu.modes' },
       { page: 'loadout', labelKey: 'menu.loadout' },
@@ -136,6 +143,7 @@ export class Menus {
       { page: 'leaderboard', labelKey: 'menu.leaderboard' },
       { page: 'settings', labelKey: 'menu.settings' },
     ];
+    const pages = allPages.filter((entry) => !(OFFLINE_ONLY && needsServer.includes(entry.page)));
     this.navContainer.replaceChildren();
     for (const entry of pages) {
       const button = document.createElement('button');
@@ -171,7 +179,7 @@ export class Menus {
   }
 
   private profileStrip(): string {
-    if (!this.profile) return '';
+    if (!this.profile || OFFLINE_ONLY) return '';
     const progress = levelFromXp(this.profile.xp);
     const percent = progress.xpForNext > 0 ? (progress.xpIntoLevel / progress.xpForNext) * 100 : 100;
     return `
@@ -284,11 +292,13 @@ export class Menus {
 
   private async renderLoadout(): Promise<void> {
     let owned: (CatalogItemDto & { owned: boolean })[] = [];
-    try {
-      const inventory = await this.api.getInventory();
-      owned = inventory.catalog.filter((item) => item.owned);
-    } catch {
-      owned = [];
+    if (!OFFLINE_ONLY) {
+      try {
+        const inventory = await this.api.getInventory();
+        owned = inventory.catalog.filter((item) => item.owned);
+      } catch {
+        owned = [];
+      }
     }
 
     this.content.innerHTML = `

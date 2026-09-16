@@ -6,6 +6,16 @@ import type { CampaignSaveDto, PlayerSettingsBundle } from '@duskfront/shared';
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:2567';
 
+/**
+ * وضع «مستقل»: عندما يُبنى العميل بـ VITE_API_URL فارغًا فلا خادم أصلًا —
+ * تعمل اللعبة كاملة داخل المتصفّح بنفس المحاكاة المشتركة (تدريب، حملة، مناوشة
+ * ضد البوتات)، ويُحفظ التقدّم محليًا. هذا ما يجعل نشرها كصفحة واحدة ممكنًا.
+ *
+ * Standalone build: with an empty VITE_API_URL there is no server at all. The game
+ * runs entirely in the browser on the same shared simulation, saving locally.
+ */
+export const OFFLINE_ONLY = API_BASE.trim() === '';
+
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;

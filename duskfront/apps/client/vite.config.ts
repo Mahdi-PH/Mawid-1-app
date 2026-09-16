@@ -1,6 +1,11 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  /*
+    مسارات نسبية عند البناء المستقل حتى تعمل الصفحة من أي مجلد أو مضيف ثابت.
+    Relative asset paths for the standalone build so the page works from any host.
+  */
+  base: process.env.VITE_BASE ?? '/',
   server: {
     port: 5173,
     host: true,
@@ -8,7 +13,7 @@ export default defineConfig({
   preview: { port: 4173, host: true },
   build: {
     target: 'es2022',
-    sourcemap: true,
+    sourcemap: process.env.VITE_NO_SOURCEMAP ? false : true,
     chunkSizeWarningLimit: 900,
     rollupOptions: {
       output: {
