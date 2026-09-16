@@ -1,0 +1,316 @@
+// مخطط قاعدة بيانات DUSKFRONT — يطابق جداول القسم 10 من المواصفات.
+// DUSKFRONT database schema — mirrors section 10 of the specification 1:1.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [citext]
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String?   @unique @db.Citext
+  passwordHash String?   @map("password_hash")
+  isGuest      Boolean   @default(true) @map("is_guest")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(3)
+  bannedUntil  DateTime? @map("banned_until") @db.Timestamptz(3)
+
+  profile            Profile?
+  settings           PlayerSettings?
+  stats              PlayerStats?
+  refreshTokens      RefreshToken[]
+  classProgress      ClassProgress[]
+  inventory          PlayerInventory[]
+  loadouts           Loadout[]
+  participations     MatchParticipant[]
+  achievements       PlayerAchievement[]
+  missions           PlayerMission[]
+  campaignSaves      CampaignSave[]
+  ledger             CurrencyLedger[]
+  friendshipsOut     Friendship[]        @relation("friendship_owner")
+  friendshipsIn      Friendship[]        @relation("friendship_target")
+  reportsFiled       PlayerReport[]      @relation("report_reporter")
+  reportsAgainst     PlayerReport[]      @relation("report_reported")
+
+  @@index([bannedUntil])
+  @@map("users")
+}
+
+model Profile {
+  userId      String @id @map("user_id") @db.Uuid
+  displayName String @unique @map("display_name") @db.VarChar(20)
+  avatarId    String @default("avatar_default") @map("avatar_id") @db.VarChar(40)
+  level       Int    @default(1)
+  xp          Int    @default(0)
+  shards      Int    @default(0)
+  rankRating  Int    @default(1000) @map("rank_rating")
+  locale      String @default("ar") @db.VarChar(5)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // فهرس لوحة الصدارة / leaderboard index
+  @@index([rankRating(sort: Desc)])
+  @@map("profiles")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
+  deviceInfo String?   @map("device_info") @db.VarChar(200)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("refresh_tokens")
+}
+
+model PlayerSettings {
+  userId        String   @id @map("user_id") @db.Uuid
+  graphics      Json
+  audio         Json
+  controls      Json
+  accessibility Json
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("player_settings")
+}
+
+model ClassProgress {
+  userId       String @map("user_id") @db.Uuid
+  classKey     String @map("class_key") @db.VarChar(32)
+  xp           Int    @default(0)
+  masteryLevel Int    @default(1) @map("mastery_level")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, classKey])
+  @@map("class_progress")
+}
+
+model CatalogItem {
+  id           String  @id @default(uuid()) @db.Uuid
+  key          String  @unique @db.VarChar(60)
+  type         String  @db.VarChar(16) // skin | emblem | banner | emote
+  classKey     String? @map("class_key") @db.VarChar(32)
+  priceShards  Int     @map("price_shards")
+  rarity       String  @db.VarChar(16)
+  nameKeyAr    String  @map("name_key_ar") @db.VarChar(80)
+  nameKeyEn    String  @map("name_key_en") @db.VarChar(80)
+  colorPrimary String  @map("color_primary") @db.VarChar(9)
+  colorAccent  String  @map("color_accent") @db.VarChar(9)
+
+  owners PlayerInventory[]
+
+  @@index([type, priceShards])
+  @@map("catalog_items")
+}
+
+model PlayerInventory {
+  userId     String   @map("user_id") @db.Uuid
+  itemId     String   @map("item_id") @db.Uuid
+  acquiredAt DateTime @default(now()) @map("acquired_at") @db.Timestamptz(3)
+
+  user User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item CatalogItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@id([userId, itemId])
+  @@map("player_inventory")
+}
+
+model Loadout {
+  id       String @id @default(uuid()) @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+  classKey String @map("class_key") @db.VarChar(32)
+  slot     Int    @db.SmallInt
+  config   Json
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, classKey, slot])
+  @@map("loadouts")
+}
+
+model Match {
+  id            String    @id @default(uuid()) @db.Uuid
+  mode          String    @db.VarChar(24)
+  mapKey        String    @map("map_key") @db.VarChar(40)
+  startedAt     DateTime  @default(now()) @map("started_at") @db.Timestamptz(3)
+  endedAt       DateTime? @map("ended_at") @db.Timestamptz(3)
+  winnerTeam    Int?      @map("winner_team") @db.SmallInt
+  winReason     String?   @map("win_reason") @db.VarChar(32)
+  serverVersion String    @map("server_version") @db.VarChar(24)
+
+  participants MatchParticipant[]
+
+  @@index([endedAt])
+  @@index([mode, endedAt])
+  @@map("matches")
+}
+
+model MatchParticipant {
+  matchId        String @map("match_id") @db.Uuid
+  userId         String @map("user_id") @db.Uuid
+  team           Int    @db.SmallInt
+  classKey       String @map("class_key") @db.VarChar(32)
+  kills          Int    @default(0)
+  deaths         Int    @default(0)
+  assists        Int    @default(0)
+  damageDealt    Int    @default(0) @map("damage_dealt")
+  lumenGenerated Int    @default(0) @map("lumen_generated")
+  mirrorsPlaced  Int    @default(0) @map("mirrors_placed")
+  xpEarned       Int    @default(0) @map("xp_earned")
+  shardsEarned   Int    @default(0) @map("shards_earned")
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([matchId, userId])
+  @@index([userId])
+  @@map("match_participants")
+}
+
+model PlayerStats {
+  userId            String   @id @map("user_id") @db.Uuid
+  matchesPlayed     Int      @default(0) @map("matches_played")
+  wins              Int      @default(0)
+  kills             Int      @default(0)
+  deaths            Int      @default(0)
+  assists           Int      @default(0)
+  timeInSunS        Int      @default(0) @map("time_in_sun_s")
+  timeInDarkS       Int      @default(0) @map("time_in_dark_s")
+  crawlersDestroyed Int      @default(0) @map("crawlers_destroyed")
+  wellsCaptured     Int      @default(0) @map("wells_captured")
+  mirrorReveals     Int      @default(0) @map("mirror_reveals")
+  lastWinDay        String?  @map("last_win_day") @db.VarChar(10)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("player_stats")
+}
+
+model Achievement {
+  id            String @id @default(uuid()) @db.Uuid
+  key           String @unique @db.VarChar(60)
+  target        Int
+  rewardShards  Int    @map("reward_shards")
+  /** أي عدّاد يغذّي هذا الإنجاز / which stat counter feeds this achievement */
+  metric        String @db.VarChar(40)
+
+  players PlayerAchievement[]
+
+  @@map("achievements")
+}
+
+model PlayerAchievement {
+  userId        String    @map("user_id") @db.Uuid
+  achievementId String    @map("achievement_id") @db.Uuid
+  progress      Int       @default(0)
+  unlockedAt    DateTime? @map("unlocked_at") @db.Timestamptz(3)
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@id([userId, achievementId])
+  @@map("player_achievements")
+}
+
+model DailyMission {
+  id           String @id @default(uuid()) @db.Uuid
+  key          String @unique @db.VarChar(60)
+  target       Int
+  rewardXp     Int    @map("reward_xp")
+  rewardShards Int    @map("reward_shards")
+  metric       String @db.VarChar(40)
+
+  players PlayerMission[]
+
+  @@map("daily_missions")
+}
+
+model PlayerMission {
+  userId     String   @map("user_id") @db.Uuid
+  missionId  String   @map("mission_id") @db.Uuid
+  assignedOn DateTime @map("assigned_on") @db.Date
+  progress   Int      @default(0)
+  claimed    Boolean  @default(false)
+
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mission DailyMission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, missionId, assignedOn])
+  @@map("player_missions")
+}
+
+model CampaignSave {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  slot         Int      @db.SmallInt
+  missionIndex Int      @map("mission_index")
+  checkpoint   Json
+  difficulty   String   @db.VarChar(16)
+  playTimeS    Int      @default(0) @map("play_time_s")
+  version      Int      @default(1)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, slot])
+  @@map("campaign_saves")
+}
+
+model CurrencyLedger {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  delta     Int
+  reason    String   @db.VarChar(40)
+  refId     String?  @map("ref_id") @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("currency_ledger")
+}
+
+model Friendship {
+  userId    String   @map("user_id") @db.Uuid
+  friendId  String   @map("friend_id") @db.Uuid
+  status    String   @db.VarChar(16) // pending | accepted | blocked
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user   User @relation("friendship_owner", fields: [userId], references: [id], onDelete: Cascade)
+  friend User @relation("friendship_target", fields: [friendId], references: [id], onDelete: Cascade)
+
+  @@id([userId, friendId])
+  @@index([friendId, status])
+  @@map("friendships")
+}
+
+model PlayerReport {
+  id         String   @id @default(uuid()) @db.Uuid
+  reporterId String   @map("reporter_id") @db.Uuid
+  reportedId String   @map("reported_id") @db.Uuid
+  matchId    String?  @map("match_id") @db.Uuid
+  reason     String   @db.VarChar(32)
+  details    String?  @db.VarChar(500)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  reporter User @relation("report_reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reported User @relation("report_reported", fields: [reportedId], references: [id], onDelete: Cascade)
+
+  @@index([reportedId, createdAt])
+  @@map("player_reports")
+}

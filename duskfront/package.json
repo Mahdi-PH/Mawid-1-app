@@ -1,0 +1,48 @@
+{
+  "name": "duskfront",
+  "private": true,
+  "version": "1.0.0",
+  "description": "DUSKFRONT / جبهة الغسق — 3D web war game on a slowly rotating planet",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build:shared": "npm run build -w @duskfront/shared",
+    "build": "npm run build:shared && npm run build -w @duskfront/server && npm run build -w @duskfront/client",
+    "dev": "npm run build:shared && concurrently -n shared,server,client -c magenta,yellow,cyan \"npm:dev:shared\" \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:shared": "npm run dev -w @duskfront/shared",
+    "dev:server": "npm run dev -w @duskfront/server",
+    "dev:client": "npm run dev -w @duskfront/client",
+    "typecheck": "npm run typecheck -w @duskfront/shared && npm run typecheck -w @duskfront/server && npm run typecheck -w @duskfront/client",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "e2e": "playwright test",
+    "e2e:install": "playwright install --with-deps chromium",
+    "prisma:generate": "prisma generate --schema prisma/schema.prisma",
+    "migrate": "prisma migrate deploy --schema prisma/schema.prisma",
+    "migrate:dev": "prisma migrate dev --schema prisma/schema.prisma",
+    "seed": "tsx prisma/seed.ts",
+    "lint": "npm run typecheck",
+    "start:e2e:server": "npm run build:shared && tsx apps/server/src/index.ts",
+    "start:e2e:web": "npm run build -w @duskfront/client && vite preview --config apps/client/vite.config.ts --port 4173 --host 127.0.0.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1",
+    "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^3.2.4",
+    "concurrently": "^9.1.2",
+    "prisma": "^6.3.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3"
+  }
+}

@@ -1,0 +1,399 @@
+{
+  "$schema": "./balance.schema.json",
+  "version": 1,
+  "note": "المصدر الوحيد لكل أرقام التوازن. يُمنع كتابة أي رقم توازن داخل الكود. / Single source of truth for all balance numbers. No balance number may be hardcoded elsewhere.",
+
+  "match": {
+    "tickRate": 20,
+    "crawl": {
+      "durationSec": 1200,
+      "teamSize": 5,
+      "warmupSec": 10,
+      "respawnSec": 8,
+      "overtimeSec": 120
+    },
+    "shadowhunt": {
+      "durationSec": 600,
+      "teamSize": 5,
+      "warmupSec": 5,
+      "respawnSec": 5,
+      "killTarget": 40
+    },
+    "reconnectGraceSec": 90,
+    "botFillAfterSec": 60
+  },
+
+  "map": {
+    "key": "ash_valley",
+    "size": 1600,
+    "seed": 20260916,
+    "maxHeight": 110,
+    "waterLevel": -6,
+    "chunkSize": 100,
+    "chunkVerts": { "high": 49, "medium": 25, "low": 13 },
+    "borderMargin": 70,
+    "borderHeight": 190,
+    "walkableSlope": 0.82,
+    "spawnRadius": 60,
+    "riverHalfWidth": 190,
+    "cityCenter": { "x": -170, "z": -140 },
+    "cityRadius": 290,
+    "ruinCountMax": 420,
+    "crystalCountMax": 460,
+    "bridgeCount": 4
+  },
+
+  "dusk": {
+    "speedMps": 1.3333333333333333,
+    "bandWidth": 250,
+    "startOffset": 0,
+    "terminatorSoftness": 90,
+    "sunAltitudeSpan": 620,
+    "starFadeDistance": 260
+  },
+
+  "zones": {
+    "bright": {
+      "baseLight": 1.0,
+      "solarChargeMultiplier": 2.0,
+      "heatGraceSec": 20,
+      "heatDps": 4,
+      "heatCooldownRate": 1.6,
+      "ambientTempC": 64
+    },
+    "dusk": {
+      "baseLight": 0.55,
+      "solarChargeMultiplier": 1.0,
+      "ambientTempC": 31
+    },
+    "dark": {
+      "baseLight": 0.05,
+      "solarChargeMultiplier": 0.0,
+      "coldGraceSec": 30,
+      "coldDps": 2,
+      "coldCooldownRate": 1.2,
+      "nameplateRange": 15,
+      "hideFromMinimap": true,
+      "ambientTempC": -18
+    }
+  },
+
+  "light": {
+    "mirrorBonus": 0.85,
+    "mirrorRadius": 26,
+    "mirrorBeamLength": 90,
+    "mirrorBeamWidth": 14,
+    "shadowPenalty": 0.9,
+    "shadowRadius": 18,
+    "revealThreshold": 0.45,
+    "min": 0,
+    "max": 1
+  },
+
+  "lumen": {
+    "personalMax": 100,
+    "personalRegenPerLight": 6,
+    "personalStartAmount": 60,
+    "teamStartAmount": 0,
+    "teamMax": 2000,
+    "wellRatePerSec": 3,
+    "killReward": 10,
+    "assistReward": 4,
+    "spend": {
+      "crawlerBoost": { "cost": 20, "durationSec": 60, "speedMultiplier": 1.6 },
+      "coreShield": { "cost": 150, "durationSec": 30, "absorb": 0.75 },
+      "crawlerRepair": { "cost": 100, "integrityPercent": 5 }
+    }
+  },
+
+  "wells": {
+    "count": 6,
+    "captureSec": 8,
+    "captureRadius": 14,
+    "contestSlowdown": 0.5,
+    "decayPerSec": 0.6,
+    "captureXp": 50,
+    "positions": [
+      { "x": -520, "z": -420 },
+      { "x": -180, "z": 300 },
+      { "x": 90, "z": -310 },
+      { "x": 430, "z": 380 },
+      { "x": -430, "z": 110 },
+      { "x": 560, "z": -120 }
+    ]
+  },
+
+  "crawler": {
+    "integrityMax": 100,
+    "outsideGraceSec": 10,
+    "outsideDrainPerSec": 1,
+    "baseSpeedMps": 1.3333333333333333,
+    "steerSpeedMps": 4.5,
+    "maxSteerOffset": 220,
+    "voteWindowSec": 12,
+    "halfWidth": 46,
+    "halfLength": 86,
+    "height": 54,
+    "laneZ": [-280, 280],
+    "core": {
+      "health": 6000,
+      "radius": 12,
+      "exposedAfterIntegrity": 60,
+      "damageMultiplierWhenExposed": 1.0,
+      "damageMultiplierWhenSealed": 0.15
+    },
+    "repairPadHealPerSec": 12
+  },
+
+  "player": {
+    "eyeHeight": 1.62,
+    "crouchEyeHeight": 1.05,
+    "radius": 0.42,
+    "height": 1.8,
+    "gravity": -24,
+    "jumpSpeed": 8.4,
+    "sprintMultiplier": 1.45,
+    "crouchMultiplier": 0.55,
+    "adsMultiplier": 0.6,
+    "airControl": 0.32,
+    "groundAccel": 18,
+    "airAccel": 24,
+    "friction": 9,
+    "maxStepHeight": 0.55,
+    "shieldMax": 100,
+    "shieldRegenDelaySec": 6,
+    "shieldRegenPerSec": 14,
+    "healthRegenDelaySec": 9,
+    "healthRegenPerSec": 6,
+    "headshotMultiplier": 1.5,
+    "falloffStartFraction": 0.6,
+    "falloffMinMultiplier": 0.45,
+    "fallDamageMinSpeed": 19,
+    "fallDamagePerSpeed": 5.5,
+    "grenadesPerLife": 2,
+    "meleeDamage": 45,
+    "meleeRange": 2.4,
+    "meleeCooldownSec": 0.9,
+    "interactRange": 4
+  },
+
+  "classes": {
+    "guardian": {
+      "order": 1,
+      "health": 250,
+      "speed": 5.0,
+      "shield": 100,
+      "primary": "lumen_cannon",
+      "abilities": {
+        "q": { "key": "mirror_shield", "cooldownSec": 12, "durationSec": 4, "reflectFraction": 0.5 },
+        "e": { "key": "bulwark_dash", "cooldownSec": 10, "distance": 11, "durationSec": 0.42, "impactDamage": 35, "knockdownSec": 1.1 },
+        "f": { "key": "dawn_wall", "chargeCost": 1000, "length": 12, "height": 4.2, "durationSec": 8, "blocksProjectiles": true, "alliesLightBonus": 0.4 }
+      }
+    },
+    "sunshot": {
+      "order": 2,
+      "health": 150,
+      "speed": 5.5,
+      "shield": 100,
+      "primary": "beam_rifle",
+      "abilities": {
+        "q": { "key": "thermal_mark", "cooldownSec": 14, "durationSec": 6, "range": 160, "damageAmplify": 1.1 },
+        "e": { "key": "grapple_leap", "cooldownSec": 9, "range": 34, "impulse": 17 },
+        "f": { "key": "noon_strike", "chargeCost": 1000, "delaySec": 2, "radius": 9, "damage": 320, "burnDps": 18, "burnSec": 3 }
+      }
+    },
+    "nightstalker": {
+      "order": 3,
+      "health": 140,
+      "speed": 6.5,
+      "shield": 100,
+      "primary": "kinetic_smg",
+      "abilities": {
+        "q": { "key": "full_cloak", "cooldownSec": 16, "durationSec": 5, "darkDurationMultiplier": 2, "breakOnFire": true, "moveSpeedBonus": 1.12 },
+        "e": { "key": "dousing_grenade", "cooldownSec": 11, "radius": 8, "durationSec": 10, "throwSpeed": 24 },
+        "f": { "key": "twin_shadow", "chargeCost": 1000, "durationSec": 9, "decoyHealth": 90, "decoySpeed": 6.2 }
+      }
+    },
+    "engineer": {
+      "order": 4,
+      "health": 180,
+      "speed": 5.5,
+      "shield": 100,
+      "primary": "kinetic_dmr",
+      "abilities": {
+        "q": { "key": "deploy_mirror", "cooldownSec": 6, "maxActive": 3, "structureHealth": 120, "lumenCost": 25, "lifetimeSec": 90 },
+        "e": { "key": "shadow_tower", "cooldownSec": 14, "maxActive": 2, "structureHealth": 150, "lumenCost": 30, "lifetimeSec": 90 },
+        "f": { "key": "field_workshop", "chargeCost": 1000, "durationSec": 6, "crawlerRepairPercentPerSec": 2, "allyHealPerSec": 18, "radius": 12 }
+      }
+    }
+  },
+
+  "ultimate": {
+    "chargeTarget": 1000,
+    "chargePerDamage": 1.0,
+    "chargePerAssist": 45,
+    "chargePerKill": 70,
+    "chargePerSecond": 2.5,
+    "chargePerWellTick": 3
+  },
+
+  "weapons": {
+    "lumen_cannon": {
+      "nameKey": "weapon.lumen_cannon",
+      "family": "solar",
+      "fireMode": "burst_pellets",
+      "damage": 18,
+      "pellets": 6,
+      "fireRate": 1.2,
+      "range": 15,
+      "lumenPerShot": 4,
+      "spreadDeg": 7.5,
+      "adsSpreadDeg": 4.5,
+      "recoil": 2.4,
+      "hitscan": true
+    },
+    "beam_rifle": {
+      "nameKey": "weapon.beam_rifle",
+      "family": "solar",
+      "fireMode": "charge",
+      "damageMin": 60,
+      "damageMax": 140,
+      "chargeSecMin": 0,
+      "chargeSecMax": 1.5,
+      "fireRate": 0.9,
+      "range": 150,
+      "lumenPerShot": 15,
+      "spreadDeg": 0.15,
+      "adsSpreadDeg": 0,
+      "recoil": 3.6,
+      "hitscan": true,
+      "pierceStructures": false
+    },
+    "kinetic_smg": {
+      "nameKey": "weapon.kinetic_smg",
+      "family": "kinetic",
+      "fireMode": "auto",
+      "damage": 14,
+      "fireRate": 12,
+      "range": 40,
+      "magazine": 30,
+      "reserve": 180,
+      "reloadSec": 1.8,
+      "spreadDeg": 2.6,
+      "adsSpreadDeg": 1.1,
+      "recoil": 1.1,
+      "hitscan": true
+    },
+    "kinetic_dmr": {
+      "nameKey": "weapon.kinetic_dmr",
+      "family": "kinetic",
+      "fireMode": "semi",
+      "damage": 32,
+      "fireRate": 4,
+      "range": 70,
+      "magazine": 12,
+      "reserve": 96,
+      "reloadSec": 2.0,
+      "spreadDeg": 1.1,
+      "adsSpreadDeg": 0.25,
+      "recoil": 2.1,
+      "hitscan": true
+    },
+    "frag_grenade": {
+      "nameKey": "weapon.frag_grenade",
+      "family": "explosive",
+      "fireMode": "projectile",
+      "damageCenter": 90,
+      "damageEdge": 20,
+      "radius": 6,
+      "fuseSec": 2.4,
+      "throwSpeed": 22,
+      "bounce": 0.35,
+      "hitscan": false
+    }
+  },
+
+  "structures": {
+    "mirror": { "radius": 1.6, "height": 2.4, "rotateSpeedDeg": 70 },
+    "shadow_tower": { "radius": 1.2, "height": 4.0 },
+    "dawn_wall": { "thickness": 0.6 }
+  },
+
+  "network": {
+    "sendRateHz": 20,
+    "interpolationDelayMs": 100,
+    "lagCompensationMaxMs": 200,
+    "snapshotHistoryMs": 1000,
+    "inputBufferSize": 90,
+    "maxInputsPerPacket": 12,
+    "positionCorrectionThreshold": 0.35,
+    "hardSnapThreshold": 6
+  },
+
+  "anticheat": {
+    "maxSpeedTolerance": 1.25,
+    "maxFireRateTolerance": 1.12,
+    "maxYawRateDegPerSec": 2400,
+    "maxHitDistanceTolerance": 1.15,
+    "violationBanThreshold": 12,
+    "violationDecayPerSec": 0.05,
+    "tempBanMinutes": 30
+  },
+
+  "bots": {
+    "easy":   { "aimErrorDeg": 7.5, "reactionMs": 600, "burstAccuracy": 0.45, "coordination": 0.2, "leadTargets": false },
+    "normal": { "aimErrorDeg": 3.2, "reactionMs": 350, "burstAccuracy": 0.68, "coordination": 0.55, "leadTargets": true },
+    "hard":   { "aimErrorDeg": 1.1, "reactionMs": 180, "burstAccuracy": 0.86, "coordination": 0.85, "leadTargets": true },
+    "safetyMarginSec": 5,
+    "repathSec": 1.2,
+    "visionRange": 120,
+    "fovDeg": 130,
+    "wellPriority": 0.6,
+    "crawlerPriority": 0.8
+  },
+
+  "progression": {
+    "maxLevel": 50,
+    "xpBase": 500,
+    "xpPerLevel": 150,
+    "matchXp": { "win": 400, "loss": 200, "perKill": 10, "perAssist": 5, "perWellCapture": 50, "perCrawlerPercent": 3 },
+    "shards": { "win": 50, "loss": 25, "firstWinOfDay": 75 },
+    "masteryXpPerMatch": 120,
+    "masteryLevels": 20
+  },
+
+  "economy": {
+    "dailyMissionCount": 3,
+    "dailyResetUtcHour": 0,
+    "achievementCount": 20,
+    "shopCosmeticOnly": true
+  },
+
+  "audio": {
+    "masterDefault": 0.8,
+    "musicDefault": 0.45,
+    "sfxDefault": 0.85,
+    "crawlerAlarmDistance": 90,
+    "hrtf": true
+  },
+
+  "graphics": {
+    "low":    { "shadowMapSize": 0,    "cascades": 0, "resolutionScale": 0.65, "starCount": 400,  "crystalCount": 90,  "ruinCount": 120, "bloom": false, "fogQuality": 0 },
+    "medium": { "shadowMapSize": 1024, "cascades": 2, "resolutionScale": 0.85, "starCount": 1200, "crystalCount": 220, "ruinCount": 260, "bloom": true,  "fogQuality": 1 },
+    "high":   { "shadowMapSize": 2048, "cascades": 3, "resolutionScale": 1.0,  "starCount": 2600, "crystalCount": 420, "ruinCount": 420, "bloom": true,  "fogQuality": 2 },
+    "maxDrawCalls": 300,
+    "fovDefault": 78,
+    "fovMin": 60,
+    "fovMax": 110,
+    "lodDistances": [90, 260, 620]
+  },
+
+  "campaign": {
+    "missionCount": 8,
+    "saveSlots": 3,
+    "autosaveOnCheckpoint": true,
+    "difficulties": ["easy", "normal", "hard"]
+  },
+
+  "tutorial": { "steps": 7 }
+}

@@ -1,0 +1,86 @@
+# DUSKFRONT — تشغيل كامل بأمر واحد:  docker compose up
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: duskfront-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-duskfront}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-duskfront}
+      POSTGRES_DB: ${POSTGRES_DB:-duskfront}
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-duskfront} -d ${POSTGRES_DB:-duskfront}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: duskfront-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["6379:6379"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    container_name: duskfront-server
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-duskfront}:${POSTGRES_PASSWORD:-duskfront}@postgres:5432/${POSTGRES_DB:-duskfront}?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-change-me-0123456789abcdef}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me-fedcba9876543210}
+      NODE_ENV: production
+      PORT: "2567"
+      HOST: 0.0.0.0
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+      RUN_MIGRATIONS: "true"
+      RUN_SEED: "true"
+    ports: ["2567:2567"]
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/client/Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:2567}
+        VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:2567}
+    container_name: duskfront-web
+    restart: unless-stopped
+    depends_on: [server]
+    ports: ["8080:80"]
+
+  backup:
+    image: postgres:16-alpine
+    container_name: duskfront-backup
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-duskfront}
+      POSTGRES_USER: ${POSTGRES_USER:-duskfront}
+      POSTGRES_DB: ${POSTGRES_DB:-duskfront}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-7}
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup.sh:/usr/local/bin/backup.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/backup.sh"]
+
+volumes:
+  pgdata:
+  redisdata:

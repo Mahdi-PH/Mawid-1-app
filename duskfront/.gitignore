@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+.turbo/
+*.tsbuildinfo
+.env
+.env.local
+playwright-report/
+test-results/
+backups/
+prisma/migrations/dev.db*
+.DS_Store
