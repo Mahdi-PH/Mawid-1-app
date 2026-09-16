@@ -1,12 +1,13 @@
 /**
- * يحوّل مخرجات Vite إلى صفحة تصلح للنشر كـ Artifact.
+ * يحوّل ناتج Vite إلى صفحة HTML واحدة مكتفية بذاتها.
  *
- * منصّة Artifacts تغلّف الملف في هيكل <!doctype html><head>…<body> خاص بها،
- * فلا يجوز أن يحمل ملفنا وسومه الخاصة. هذا السكربت يستخرج محتوى <head> و<body>
- * من ناتج البناء ويدمجهما في شظية واحدة، مع إبقاء مسارات الأصول نسبية.
+ * لماذا ملف واحد؟ منصّات النشر تعرض الصفحة داخل إطار معزول، وقد لا تُحلّ فيه
+ * المسارات النسبية إلى ملفات الأصول — فتظهر صفحة فارغة. دمج الـJS والـCSS داخل
+ * الصفحة يلغي هذا الاعتماد كليًا. كما تُحذف وسوم <html>/<head>/<body> لأن تلك
+ * المنصّات تغلّف المحتوى في هيكلها الخاص.
  *
- * Artifacts wrap the published file in their own document skeleton, so the file must
- * not carry its own <html>/<head>/<body>. This flattens Vite's output into a fragment.
+ * Inlines the bundle into one self-contained page: viewer frames may not resolve
+ * relative asset paths, and the platform wraps the content in its own skeleton.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -20,21 +21,35 @@ const headMatch = source.match(/<head>([\s\S]*?)<\/head>/i);
 const bodyMatch = source.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
 if (!headMatch || !bodyMatch) throw new Error('[build-artifact] unexpected index.html shape');
 
-const head = headMatch[1]
-  // الهيكل الجاهز يضع charset وviewport بنفسه
+const readAsset = (href) => readFileSync(resolve(distDir, href.replace(/^\.?\//, '')), 'utf8');
+
+/** يمنع نصًّا مضمَّنًا من إغلاق وسم <script> الحاوي له. */
+const guardInline = (code) => code.replace(/<\/script>/gi, '<\\/script>');
+
+let head = headMatch[1]
+  // الهيكل الجاهز لدى المنصّة يضع charset وviewport بنفسه، والأيقونة تأتي كمعامل
   .replace(/<meta\s+charset=[^>]*>/gi, '')
   .replace(/<meta\s+name="viewport"[^>]*>/gi, '')
-  // الأيقونة تأتي من معامل favicon عند النشر
   .replace(/<link\s+rel="icon"[^>]*>/gi, '')
-  // الأصول على نفس الأصل، فلا داعي لوضع طلبها في نمط CORS (الخطوط الخارجية تحتفظ به)
-  .replace(/<(script|link)\b[^>]*>/gi, (tag) =>
-    /(?:src|href)="\.\//.test(tag) ? tag.replace(/\s+crossorigin(?=[\s>])/gi, '') : tag,
-  )
-  .trim();
+  // التحميل المسبق للوحدات بلا معنى بعد الدمج
+  .replace(/<link\s+rel="modulepreload"[^>]*>/gi, '');
 
-const body = bodyMatch[1].trim();
+// أدرِج ورقة الأنماط
+head = head.replace(/<link\s+[^>]*rel="stylesheet"[^>]*href="(\.\/[^"]+)"[^>]*>/gi, (_m, href) => {
+  return `<style>\n${readAsset(href)}\n</style>`;
+});
 
-const page = `${head}\n\n${body}\n`;
+// أدرِج حزمة JS
+head = head.replace(/<script\s+type="module"[^>]*src="(\.\/[^"]+)"[^>]*><\/script>/gi, (_m, src) => {
+  return `<script type="module">\n${guardInline(readAsset(src))}\n</script>`;
+});
+
+const page = `${head.trim()}\n\n${bodyMatch[1].trim()}\n`;
+
+if (/src="\.\//.test(page) || /href="\.\//.test(page)) {
+  throw new Error('[build-artifact] page still references external assets');
+}
+
 const outPath = resolve(distDir, 'artifact.html');
 writeFileSync(outPath, page, 'utf8');
-console.log(`[build-artifact] wrote ${outPath} (${page.length} bytes)`);
+console.log(`[build-artifact] wrote ${outPath} (${(page.length / 1024).toFixed(0)} KB, self-contained)`);

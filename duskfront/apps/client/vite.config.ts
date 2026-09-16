@@ -15,16 +15,27 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: process.env.VITE_NO_SOURCEMAP ? false : true,
     chunkSizeWarningLimit: 900,
+    /*
+      وضع «ملف واحد»: حزمة JS واحدة بلا تقسيم، تمهيدًا لدمجها داخل صفحة HTML
+      مكتفية بذاتها. هذا يلغي اعتماد الصفحة على حلّ المسارات النسبية، وهو ما
+      يكسرها داخل إطارات العرض المعزولة.
+      Single-file mode: one un-split bundle, so the page can be inlined and stops
+      depending on relative-path resolution — which is what breaks it inside
+      sandboxed viewer frames.
+    */
+    cssCodeSplit: !process.env.VITE_SINGLE_FILE,
     rollupOptions: {
-      output: {
-        // فصل three في حزمة خاصة حتى تبقى الحزمة الأولى صغيرة ويُحمَّل الباقي تدريجيًا
-        manualChunks(id) {
-          if (id.includes('node_modules/three')) return 'three';
-          if (id.includes('node_modules/colyseus.js')) return 'net';
-          if (id.includes('packages/shared')) return 'shared';
-          return undefined;
-        },
-      },
+      output: process.env.VITE_SINGLE_FILE
+        ? { inlineDynamicImports: true, manualChunks: undefined }
+        : {
+            // فصل three في حزمة خاصة حتى تبقى الحزمة الأولى صغيرة ويُحمَّل الباقي تدريجيًا
+            manualChunks(id) {
+              if (id.includes('node_modules/three')) return 'three';
+              if (id.includes('node_modules/colyseus.js')) return 'net';
+              if (id.includes('packages/shared')) return 'shared';
+              return undefined;
+            },
+          },
     },
   },
   esbuild: { legalComments: 'none' },
