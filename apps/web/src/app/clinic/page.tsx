@@ -12,6 +12,7 @@ import BackButton from "../../components/BackButton";
 import AppBackdrop from "../../components/AppBackdrop";
 import ClinicAccountDrawer from "../../components/ClinicAccountDrawer";
 import { auth } from "../../lib/firebase/config";
+import { signOutUser } from "../../lib/firebase/auth";
 import {
   isSubscriptionActive,
   setAppointmentStatus,
@@ -43,7 +44,23 @@ export default function ClinicDashboardPage() {
   const [tab, setTab] = useState<Tab>("reception");
   const [appts, setAppts] = useState<AppointmentDoc[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [signingOutToRetry, setSigningOutToRetry] = useState(false);
   const prevStatusRef = useRef<ClinicStatus | undefined>(undefined);
+
+  // The "no clinic registered" branch below is a dead end without this:
+  // this account's session is real (clinic/layout.tsx's own signed-out
+  // guard already let it through), so the home screen's auth-aware center
+  // card just routes straight back to /clinic — landing right back on this
+  // same screen, with no way to ever reach a login form again to retry
+  // with different credentials. Signing out here (deliberately WITHOUT
+  // markIntentionalSignOut() — this must land on /signup?mode=login, the
+  // real login form, not the home screen) lets clinic/layout.tsx's own
+  // existing signed-out effect do the actual redirect, reusing that
+  // already-tested path instead of duplicating its routing logic here.
+  async function handleSignOutAndRetryLogin() {
+    setSigningOutToRetry(true);
+    await signOutUser();
+  }
 
   // Live, not a one-shot fetch: an admin approving/rejecting the clinic
   // (or renewing its subscription) now reflects on this already-open
@@ -81,13 +98,25 @@ export default function ClinicDashboardPage() {
     return (
       <div className="relative min-h-screen">
         <AppBackdrop />
-        <div className="relative p-8 text-center">
+        <div className="relative mx-auto max-w-sm p-8 text-center">
           <BackButton
             fallbackHref="/"
             alwaysUseFallback
             className="mb-4"
           />
           <p className="text-red-600">هذا الحساب لا يملك عيادة مسجَّلة. سجّل عيادتك أولاً عبر صفحة التسجيل.</p>
+          <p className="mt-2 text-sm text-gray-500">
+            إذا كنت تحاول تسجيل الدخول لحساب عيادة موجود، سجّل الخروج من هذا الحساب وحاول تسجيل الدخول ببريدك الإلكتروني وكلمة مرورك الصحيحة.
+          </p>
+          <button
+            type="button"
+            onClick={handleSignOutAndRetryLogin}
+            disabled={signingOutToRetry}
+            className="mt-4 w-full rounded-lg py-3 font-bold text-white disabled:opacity-60"
+            style={{ backgroundColor: "#00ADB5" }}
+          >
+            {signingOutToRetry ? "…" : "تسجيل الخروج وإعادة تسجيل الدخول"}
+          </button>
         </div>
       </div>
     );

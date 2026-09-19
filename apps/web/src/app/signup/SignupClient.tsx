@@ -202,7 +202,7 @@ export default function SignupClient() {
       const code = (err as { code?: string })?.code ?? "";
       setError(
         code.startsWith("auth/")
-          ? "بيانات الدخول غير صحيحة."
+          ? "البريد الإلكتروني أو رمز المرور غير صحيح"
           : `تعذّر تسجيل الدخول: ${err instanceof Error ? err.message : String(err)}`
       );
     } finally {
@@ -221,7 +221,7 @@ export default function SignupClient() {
       const code = (err as { code?: string })?.code ?? "";
       setError(
         code.startsWith("auth/")
-          ? "بيانات الدخول غير صحيحة."
+          ? "البريد الإلكتروني أو رمز المرور غير صحيح"
           : `تعذّر تسجيل الدخول: ${err instanceof Error ? err.message : String(err)}`
       );
     } finally {
