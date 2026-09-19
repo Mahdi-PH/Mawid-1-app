@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  direction: rtl;
+}
+
+body {
+  font-family: "Tajawal", "Segoe UI", system-ui, sans-serif;
+  background-color: #f7f8f9;
+}
+
+/* Respect the OS-level "reduce motion" accessibility setting — every
+   animation added for the home screen's opening pose and role-selection
+   transition (see app/page.tsx) collapses to an instant state change
+   instead of skipping straight to unstyled content. This also covers the
+   inline `transition`/`transform` styles page.tsx sets imperatively for
+   the logo's FLIP animation, since a stylesheet !important rule always
+   wins over a non-!important inline style. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
