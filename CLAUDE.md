@@ -6957,6 +6957,15 @@ patient.
   calls it with them yet, so every new signup still gets `null`/default
   values until the owner visits "البطاقة والملف التعريفي" after
   approval.
-- **Not yet deployed** — built and verified locally only, per this
-  session's standing practice of holding a live deploy for the user's
-  explicit go-ahead.
+- **Deployed** (once the user shared a fresh service-account key with
+  "انشرها الآن"): no `firestore.rules` changes were needed for this
+  pass, so only the rebuilt `apps/web/out/` was pushed via `firebase
+  deploy --only hosting`, verified FINALIZED by reading the release back
+  from the Hosting Management API (release
+  `sites/mawid-app-d1d03/releases/1789805172201000`) — this sandbox still
+  can't reach `*.web.app` directly to browse it. The service-account key
+  was deleted immediately after — both the copy used for the deploy and
+  the original upload. The "not independently live-verified" gap above
+  (a real owner editing their profile against the live project) is
+  unaffected by deploying — still worth doing once there's a real center
+  to test with.
