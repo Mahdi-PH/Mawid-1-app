@@ -69,7 +69,41 @@ export interface ClinicDoc {
    *  any signup that leaves it blank — never required. */
   description: string | null;
   doctorName: string;
+  /** A single free-text line whose MEANING depends on entityType (see
+   *  terminology.ts's `specialtyLabel`): the precise sub-specialty for a
+   *  clinic ("جراحة عظام"), or the general nature of activity for a
+   *  "مركز تجاري آخر" account ("مركز تدريب"). NOT used for a beauty
+   *  center's own public profile — that type shows `serviceCategories`
+   *  (a structured multi-select) instead of this one free-text field, per
+   *  the user's explicit per-type field spec. Still required with a
+   *  generic default for every entityType (see registerClinic()) for
+   *  backward compatibility with the field's own original, more generic
+   *  role before the Center Profile feature gave it this precise meaning.
+   */
   specialty: string;
+  /** Beauty-center-only: which service categories this center offers,
+   *  picked from BEAUTY_SERVICE_CATEGORIES (terminology.ts) and shown as
+   *  tags on the public profile card. `null`/missing for a clinic or
+   *  "مركز تجاري آخر" account (which use `specialty` instead) and for
+   *  every beauty-center doc created before this field existed — the
+   *  profile card simply omits the categories row in that case rather
+   *  than treating it as an error, same disclosed backward-compat
+   *  posture as `entityType`/`description` above. */
+  serviceCategories: string[] | null;
+  /** Free-text "starting price"/"booking fee" shown on the public profile
+   *  — e.g. "الكشفية: 15,000 د.ع" or "يبدأ من 20,000 د.ع" or "مجاني". No
+   *  real payment/currency system backs this (see /subscribe's own
+   *  disclosed no-payment-gateway limitation) — purely informational,
+   *  owner-entered free text, same posture as `description`. `null` for
+   *  every clinic created before this field existed and for any center
+   *  that leaves it blank. */
+  priceInfo: string | null;
+  /** Owner-entered public contact phone number shown on the profile card
+   *  alongside the address/hours — deliberately separate from `email`
+   *  (the account's own login identifier, never meant to be dialed by a
+   *  visitor). `null` for every clinic created before this field existed
+   *  and for any center that leaves it blank. */
+  contactPhone: string | null;
   gov: string | null;
   district: string | null;
   street: string | null;

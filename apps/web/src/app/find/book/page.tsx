@@ -27,6 +27,7 @@ import {
 import { filterBookableSlots, generateDaySlots, isSlotBookable } from "../../../lib/firebase/slotEngine";
 import { useReliableNow } from "../../../lib/time/useReliableNow";
 import { now as reliableNow } from "../../../lib/time/timeService";
+import ClinicProfileCard from "../../../components/ClinicProfileCard";
 import type { ClinicDoc } from "../../../lib/firebase/types";
 import { getActiveBooking, getPatientProfile, saveActiveBooking, type PatientProfile } from "../../../lib/patientLocal";
 
@@ -317,13 +318,13 @@ function BookClinic() {
         <BackButton fallbackHref={backToFindHref} label="رجوع للبحث" alwaysUseFallback />
       )}
 
-      <h1 className="mt-3 text-xl font-bold" style={{ color: "#00ADB5" }}>
-        {clinic.clinicName}
-      </h1>
-      <p className="mb-6 text-sm text-gray-500">
-        {clinic.specialty} · {clinic.doctorName}
-        {clinic.gov && ` · ${clinic.gov}${clinic.district ? " - " + clinic.district : ""}`}
-      </p>
+      {view === "menu" ? (
+        <ClinicProfileCard clinic={clinic} />
+      ) : (
+        <h1 className="mt-3 mb-4 text-lg font-bold" style={{ color: "#00ADB5" }}>
+          {clinic.clinicName}
+        </h1>
+      )}
 
       {view === "menu" && (
         <ClinicMenu

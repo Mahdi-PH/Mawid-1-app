@@ -6782,3 +6782,181 @@ exported `out/sw.js` was grepped to confirm it carried `CACHE_VERSION =
 "mawid-shell-v4"` before deploying, not assumed from the source edit
 alone. The service-account key was deleted immediately after — both the
 copy used for the deploy and the original upload.
+
+## Real bug: wrong-password login could strand a clinic owner on /clinic's "no clinic registered" screen with no way back
+
+The user reported: entering a wrong password on `/signup`'s login form
+showed `/clinic`'s red "هذا الحساب لا يملك عيادة مسجَّلة" error instead
+of an inline "wrong credentials" message under the fields, and once
+there, there was no way back to a login form to retry.
+
+- **Root cause, found by reading the actual navigation graph, not
+  guessed**: `handleClinicLogin()`/`handleAdminSubmit()` already caught a
+  failed `signInWithEmail()` correctly and set an inline `error` without
+  navigating — that part was fine. The real trap was on the OTHER end:
+  `/clinic`'s `clinic === null` screen (reached whenever a real signed-in
+  session doesn't resolve to an owned clinic doc, for any reason) had a
+  `BackButton` pointed only at `/` — but `/`'s own auth-aware center card
+  routes a signed-in visitor straight back to `/clinic`, since it's still
+  a real session. Net effect: a visitor stuck in this state loops forever
+  between `/` and this same error screen, with no way to ever reach a
+  login form again to try different credentials — exactly "لا استطيع
+  العودة وتسجيل الدخول مرة اخرى".
+- **Fix**: `/clinic/page.tsx`'s `clinic === null` branch gained a
+  "تسجيل الخروج وإعادة تسجيل الدخول" button that calls `signOutUser()`
+  **without** `markIntentionalSignOut()` — so `clinic/layout.tsx`'s own,
+  already-existing signed-out effect (which distinguishes a deliberate
+  sign-out from an expired/broken session precisely via that flag) routes
+  to `/signup?mode=login` instead of home, reusing already-tested
+  infrastructure rather than duplicating routing logic. Also corrected
+  the login-error wording, verbatim per the user's ask: "البريد
+  الإلكتروني أو رمز المرور غير صحيح", for both `handleClinicLogin()` and
+  `handleAdminSubmit()` — it already rendered under the fields in red,
+  only the text itself needed changing.
+- **Verified**: `tsc --noEmit` and `next build` both clean; both new
+  strings confirmed present in the compiled bundle
+  (`clinic/page-*.js`, `signup/page-*.js`) before considering this done.
+  A local Playwright smoke pass (`/`, `/signup`, `/clinic`) against the
+  exported `out/` showed zero console errors. **Not independently
+  live-verified** — no service-account key was shared with the report
+  itself, so the real end-to-end "wrong password → inline error → retry"
+  flow and the new sign-out button's actual redirect were not exercised
+  against the live project this pass.
+- **Deployed**: only the rebuilt `apps/web/out/` was pushed via
+  `firebase deploy --only hosting` (no `firestore.rules` changes — both
+  fixes are client-side), verified FINALIZED by reading the release back
+  from the Hosting Management API (release
+  `sites/mawid-app-d1d03/releases/1789804114213000`). The service-account
+  key was deleted immediately after — both the copy used for the deploy
+  and the original upload.
+
+## Center Profile — a per-center public profile card + owner-only edit form, with per-entityType conditional fields
+
+A large, precisely-specified request, addressed to "a mobile app
+developer and UI/UX architect": give every center (clinic/beauty/other)
+a real public "Card & Profile" screen, opened the instant a patient taps
+that center's name from `/find`'s search results — before booking or the
+waiting screen — showing shared fields (name, price, bio, hours, address,
+contact) plus one conditional field that differs by `entityType`, fully
+editable only by the center's own owner via its dashboard, never by a
+patient.
+
+- **Reused the existing "menu" step, not a new screen** — `/find/book`'s
+  own landing view (تفاصيل المركز → تثبيت حجز/شاشة الانتظار, built in an
+  earlier pass) already opens exclusively for one specific center the
+  instant a patient enters it, before anything else — exactly the
+  request's own "فتح شاشة الملف التعريفي الخاص بالمركز حصرياً". Enriching
+  that existing view's header, rather than inventing a third screen,
+  kept the two action buttons underneath unchanged and avoided a
+  redundant navigation step.
+- **`ClinicDoc` gained three fields** (`lib/firebase/types.ts`):
+  `priceInfo: string | null` (free-text "مبلغ الحجز أو التكلفة
+  الأساسية" — no real payment/currency system exists in this app, same
+  informational-only posture as `/subscribe`'s own payment card),
+  `contactPhone: string | null` (public contact number, deliberately
+  separate from `email`, the account's own login identifier), and
+  `serviceCategories: string[] | null` (beauty-only, a fixed multi-select
+  list — see below). The pre-existing `specialty: string` field (already
+  on every clinic doc, previously just an internal default like "عيادة
+  عامة" with no UI to view/edit it) was given a new, precise public role:
+  the clinic/"مركز تجاري آخر" conditional field ("الاختصاص الدقيق" /
+  "طبيعة النشاط ونوع الخدمة") — no schema migration needed, its old
+  default values remain valid, sensible starting text. All three new
+  fields are `null` for every clinic created before this pass, same
+  disclosed backward-compat posture as `entityType`/`description`.
+- **`terminology.ts`** gained `specialtyLabel` (per-entityType label for
+  that one conditional field — set for all three types for interface
+  uniformity, but never actually rendered for "beauty") and
+  `BEAUTY_SERVICE_CATEGORIES` (a fixed 6-item list — العناية بالبشرة/
+  تصفيف الشعر/جلسات الليزر/المكياج, the request's own examples, plus
+  العناية بالأظافر/المساج والسبا rounding it out) — a fixed list, not a
+  free-text tag editor, so a beauty center's profile card always shows
+  visually consistent category tags.
+- **`components/ClinicProfileCard.tsx`** (new): the public, read-only
+  card — its own file, not a local function inside `find/book/page.tsx`,
+  since a Next.js `page.tsx` may only export its default component (the
+  same constraint that already forced `ScheduleForm`/`SubscriptionTab`
+  into `ClinicSettingsTools.tsx`) and this needed to be independently
+  mountable for its own visual verification. Visual language exactly per
+  the request: a soft light-gray (`#F5F8F8`) header block (entity-type
+  pill badge + name + bio) over a plain white body listing icon-labeled
+  rows (teal `#00ADB5`/`#EAF6F3` icon circles, matching the icon-row
+  language already established by the home screen's role cards and the
+  settings drawers' own menu rows) — clean 1px/ring borders throughout,
+  no decorative clutter. The conditional block switches by entityType:
+  a beauty center shows `serviceCategories` as teal pill tags; a clinic
+  or "مركز تجاري آخر" shows the one `specialty` line under its own
+  `specialtyLabel`. The phone row is a real `tel:` link.
+- **`components/ClinicSettingsTools.tsx`** gained `ProfileForm` — the
+  owner's own edit form for every field the card shows (clinicName,
+  description, the conditional field, priceInfo, contactPhone, gov/
+  district/street), the request's own explicit "قابل للتعديل حصرياً من
+  قبل مالك الحساب عبر لوحة التحكم". The conditional field switches shape
+  the same way the card does: a plain text input for clinic/"مركز تجاري
+  آخر", a checkbox grid for beauty. Reuses the same gov/district
+  validation rule already established at signup ("اكتب اسم الحي أو اترك
+  المحافظة فارغة").
+- **`firestore.ts`** gained `updateClinicProfile()` — one plain
+  `updateDoc()` call. **No `firestore.rules` change was needed**,
+  confirmed by re-reading the `clinics/{slug}` update rule end-to-end:
+  it has no `hasOnly()`/fixed-field-set restriction (only `status`/
+  `subscriptionEndsAt`/`subscriptionStartedAt` are locked to admin-only,
+  and `entityType` to its three valid values) — every field this
+  function writes was already freely owner-editable, the same way
+  `gov`/`district`/`street` always were.
+- **`ClinicAccountDrawer.tsx`** gained a new "البطاقة والملف التعريفي"
+  tool, first in the menu (it's the first thing a patient sees, so it's
+  first in the owner's own menu too) — `onProfileSaved` plumbed through
+  from `/clinic/page.tsx`'s existing `setClinic`, mirroring
+  `onScheduleSaved`'s exact pattern.
+- **Real bug caught and fixed during visual verification, not assumed
+  correct from the diff**: a throwaway scratch route mounting
+  `ClinicProfileCard` + `ProfileForm` with one mock `ClinicDoc` per
+  entityType, switched via three buttons, showed `ProfileForm` still
+  displaying the *previous* mock's `clinicName` and unchecked category
+  boxes after switching type — `useState(clinic.clinicName)` etc. only
+  initializes once on mount, and switching the `clinic` prop under an
+  already-mounted instance doesn't reset that local state. Not reachable
+  in the real dashboard (a signed-in owner's `clinic` prop never changes
+  identity under a mounted `ProfileForm` — the tool unmounts/remounts
+  fresh every time the drawer panel opens), but a real, cheap-to-close
+  gap regardless — fixed with `key={clinic.slug}` on `ProfileForm`'s
+  call site in `ClinicAccountDrawer.tsx`, forcing a fresh remount
+  whenever the clinic identity actually differs. Re-screenshotted after
+  the fix: all three types' forms correctly show their own name,
+  specialty/categories, and every other field.
+- **Verified, not just built**: `tsc --noEmit` and `next build` both
+  clean across all 19 routes (`/clinic` 56.7 kB → 57.9 kB, `/find/book`
+  5.16 kB → 6.4 kB). The scratch route's three Playwright screenshots
+  (one per entityType) confirmed, after the fix above: the card's own
+  entity-type badge/name/bio/conditional-field/price/hours/address/phone
+  all render correctly and correctly differ per type; the edit form
+  mirrors the card's own current values exactly, including the
+  beauty-only checkbox grid's checked state. Zero console errors. The
+  scratch route was deleted afterward, confirmed via `git status`
+  showing only the real production files (plus the new
+  `ClinicProfileCard.tsx`) changed. A separate signed-out smoke pass
+  (`/`, `/find`, `/find/book`, `/clinic`, `/admin`, `/signup`) against
+  the rebuilt static export confirmed zero console errors.
+- **Not independently live-verified**: no fresh service-account key was
+  shared with this request, so a real signed-in owner actually saving a
+  profile change via `updateClinicProfile()` against the live project,
+  and a real patient then seeing that exact change on `/find/book`'s
+  profile card, was not exercised this pass — same disclosed-gap shape
+  as several earlier UI-only passes in this file. Recommended before
+  treating this as fully verified: a real owner editing their profile
+  (including the beauty-only category checkboxes) and confirming the
+  public card reflects it immediately on next load.
+- **Deliberately out of scope, disclosed**: `SignupClient.tsx`'s signup
+  form itself was not changed to collect these new fields at account
+  creation — the request specifically scoped editing to "عبر لوحة
+  التحكم الخاصة بمركزه" (the owner's dashboard), which is where
+  `ProfileForm` now lives; `registerClinic()`'s own `RegisterClinicInput`
+  does accept all three new fields already (for forward-compatibility,
+  should a future pass want to collect them at signup too), but nothing
+  calls it with them yet, so every new signup still gets `null`/default
+  values until the owner visits "البطاقة والملف التعريفي" after
+  approval.
+- **Not yet deployed** — built and verified locally only, per this
+  session's standing practice of holding a live deploy for the user's
+  explicit go-ahead.

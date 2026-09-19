@@ -109,6 +109,9 @@ export interface RegisterClinicInput {
   slug?: string;
   doctorName?: string;
   specialty?: string;
+  serviceCategories?: string[] | null;
+  priceInfo?: string | null;
+  contactPhone?: string | null;
   gov?: string | null;
   district?: string | null;
   street?: string | null;
@@ -193,6 +196,9 @@ export async function registerClinic(input: RegisterClinicInput): Promise<{ slug
         specialty:
           input.specialty ||
           (input.entityType === "clinic" ? "عيادة عامة" : input.entityType === "beauty" ? "خدمات تجميل عامة" : "خدمات عامة"),
+        serviceCategories: input.entityType === "beauty" ? input.serviceCategories ?? null : null,
+        priceInfo: input.priceInfo?.trim() || null,
+        contactPhone: input.contactPhone?.trim() || null,
         gov: input.gov ?? null,
         district: input.district ?? null,
         street: input.street ?? null,
@@ -379,6 +385,44 @@ export async function updateClinicSchedule(slug: string, patch: ScheduleUpdate):
     slotMin: patch.slotMin,
     breakStart: patch.breakStart ?? null,
     breakEnd: patch.breakEnd ?? null,
+  });
+}
+
+/** Everything the Center Profile's owner-edit form can change. `specialty`
+ *  and `serviceCategories` are both accepted regardless of entityType (no
+ *  server-side gate needed — ProfileForm itself only ever renders and
+ *  sends the one field that's actually meaningful for the clinic's own
+ *  entityType, per specialty's own comment in types.ts) so this stays one
+ *  plain patch object rather than a per-type union. */
+export interface ClinicProfileUpdate {
+  clinicName: string;
+  description: string | null;
+  specialty: string;
+  serviceCategories: string[] | null;
+  priceInfo: string | null;
+  contactPhone: string | null;
+  gov: string | null;
+  district: string | null;
+  street: string | null;
+}
+
+/** No firestore.rules change needed: the clinics/{slug} update rule has
+ *  no hasOnly()/fixed-field-set restriction (confirmed by re-reading it
+ *  end-to-end) — only status/subscriptionEndsAt/subscriptionStartedAt are
+ *  locked to admin-only, and entityType to the three real values. Every
+ *  field this function writes is already freely owner-editable, the same
+ *  way gov/district/street always were. */
+export async function updateClinicProfile(slug: string, patch: ClinicProfileUpdate): Promise<void> {
+  await updateDoc(doc(db, "clinics", slug), {
+    clinicName: patch.clinicName,
+    description: patch.description,
+    specialty: patch.specialty,
+    serviceCategories: patch.serviceCategories,
+    priceInfo: patch.priceInfo,
+    contactPhone: patch.contactPhone,
+    gov: patch.gov,
+    district: patch.district,
+    street: patch.street,
   });
 }
 

@@ -37,18 +37,23 @@ import { useRouter } from "next/navigation";
 import AppBackdrop from "./AppBackdrop";
 import ConfirmPopup from "./ConfirmPopup";
 import ScanPatientTab from "./ScanPatientTab";
-import { ScheduleForm, SubscriptionTab } from "./ClinicSettingsTools";
+import { ProfileForm, ScheduleForm, SubscriptionTab } from "./ClinicSettingsTools";
 import { markIntentionalSignOut, signOutUser } from "../lib/firebase/auth";
 import { getTerminology, supportsMedicalRecordScan } from "../lib/firebase/terminology";
 import type { ClinicDoc } from "../lib/firebase/types";
 
-type Tool = "scan" | "schedule" | "subscription" | "link";
+type Tool = "profile" | "scan" | "schedule" | "subscription" | "link";
 
 /** The scan tool is conditionally present (not just conditionally
  *  enabled) based on the clinic's own entityType, so this is a plain
- *  function rather than a module-level constant. */
+ *  function rather than a module-level constant. "البطاقة والملف
+ *  التعريفي" sits first — it's what a visitor sees the instant they tap
+ *  this center's name, before anything else, so it comes first in the
+ *  owner's own menu too. */
 function buildTools(clinic: ClinicDoc, terms: ReturnType<typeof getTerminology>): { id: Tool; label: string; icon: string }[] {
-  const tools: { id: Tool; label: string; icon: string }[] = [];
+  const tools: { id: Tool; label: string; icon: string }[] = [
+    { id: "profile", label: "البطاقة والملف التعريفي", icon: "🪪" },
+  ];
   if (supportsMedicalRecordScan(clinic.entityType)) {
     tools.push({ id: "scan", label: "مسح السجل الطبي", icon: "📷" });
   }
@@ -65,11 +70,13 @@ export default function ClinicAccountDrawer({
   onClose,
   clinic,
   onScheduleSaved,
+  onProfileSaved,
 }: {
   open: boolean;
   onClose: () => void;
   clinic: ClinicDoc;
   onScheduleSaved: (c: ClinicDoc) => void;
+  onProfileSaved: (c: ClinicDoc) => void;
 }) {
   const router = useRouter();
   const [activeTool, setActiveTool] = useState<Tool | null>(null);
@@ -160,6 +167,7 @@ export default function ClinicAccountDrawer({
               >
                 ‹ رجوع
               </button>
+              {activeTool === "profile" && <ProfileForm key={clinic.slug} clinic={clinic} onSaved={onProfileSaved} />}
               {activeTool === "scan" && <ScanPatientTab clinic={clinic} />}
               {activeTool === "schedule" && <ScheduleForm clinic={clinic} onSaved={onScheduleSaved} />}
               {activeTool === "subscription" && <SubscriptionTab clinic={clinic} />}

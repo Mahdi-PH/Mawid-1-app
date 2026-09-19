@@ -244,7 +244,13 @@ export default function ClinicDashboardPage() {
         {tab === "tv" && <WaitingRoomTv clinic={clinic} appts={appts} />}
       </main>
 
-      <ClinicAccountDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} clinic={clinic} onScheduleSaved={setClinic} />
+      <ClinicAccountDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        clinic={clinic}
+        onScheduleSaved={setClinic}
+        onProfileSaved={setClinic}
+      />
     </div>
   );
 }

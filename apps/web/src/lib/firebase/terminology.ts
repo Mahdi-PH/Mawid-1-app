@@ -85,6 +85,14 @@ export interface Terminology {
    *  request's own explicit instruction), only the placeholder hint
    *  varies. */
   descriptionPlaceholder: string;
+  /** Label for the Center Profile's own conditional single-line field —
+   *  "الاختصاص الدقيق" (clinic) / "طبيعة النشاط ونوع الخدمة" (other
+   *  commercial center). Set for every type so the dictionary stays
+   *  uniform, but never actually rendered for "beauty" — that type shows
+   *  `serviceCategories` (BEAUTY_SERVICE_CATEGORIES below) instead of
+   *  this field on both the owner's edit form and the public profile
+   *  card; see ClinicDoc.specialty's own comment in types.ts. */
+  specialtyLabel: string;
 }
 
 const CLINIC_TERMS: Terminology = {
@@ -103,15 +111,20 @@ const CLINIC_TERMS: Terminology = {
   centerLinkLabel: "رابط العيادة",
   clinicNameLabel: "اسم العيادة",
   descriptionPlaceholder: "أدخل وصف العيادة",
+  specialtyLabel: "الاختصاص الدقيق",
 };
 
 /** Every term "beauty" and "salon" share — everything except
- *  practitionerNoun/clinicNameLabel/descriptionPlaceholder, which each
- *  type sets on its own below (a beauty center's own name-field label
- *  reads "اسم مركز التجميل", genuinely different from "مركز تجاري
- *  آخر"'s plain "اسم المركز" — these two types no longer share every
- *  term the way they still do for the rest of this dictionary). */
-const SALON_SHARED_TERMS: Omit<Terminology, "practitionerNoun" | "clinicNameLabel" | "descriptionPlaceholder"> = {
+ *  practitionerNoun/clinicNameLabel/descriptionPlaceholder/specialtyLabel,
+ *  which each type sets on its own below (a beauty center's own
+ *  name-field label reads "اسم مركز التجميل", genuinely different from
+ *  "مركز تجاري آخر"'s plain "اسم المركز" — these two types no longer
+ *  share every term the way they still do for the rest of this
+ *  dictionary; specialtyLabel differs for the same reason). */
+const SALON_SHARED_TERMS: Omit<
+  Terminology,
+  "practitionerNoun" | "clinicNameLabel" | "descriptionPlaceholder" | "specialtyLabel"
+> = {
   centerNoun: "الصالون أو المركز",
   centerPossessive: "لمركزك",
   personNoun: "الزبون",
@@ -131,6 +144,10 @@ const BEAUTY_TERMS: Terminology = {
   practitionerNoun: "أخصائي التجميل",
   clinicNameLabel: "اسم مركز التجميل",
   descriptionPlaceholder: "أدخل وصف مركز التجميل",
+  // Set for interface completeness only — never rendered for "beauty",
+  // which shows serviceCategories instead (see the field's own comment
+  // above and BEAUTY_SERVICE_CATEGORIES below).
+  specialtyLabel: "التخصص",
 };
 
 const SALON_TERMS: Terminology = {
@@ -138,7 +155,24 @@ const SALON_TERMS: Terminology = {
   practitionerNoun: "الموظف المختص",
   clinicNameLabel: "اسم المركز",
   descriptionPlaceholder: "أدخل وصف المركز",
+  specialtyLabel: "طبيعة النشاط ونوع الخدمة",
 };
+
+/** Fixed, curated set of beauty-service categories a "beauty" account
+ *  picks from (multi-select) on its own Center Profile — the request's
+ *  own explicit examples, plus two common additions (nails, spa/massage)
+ *  rounding out the list without inventing an open-ended taxonomy. Not a
+ *  free-text field: a fixed list keeps the profile card's own category
+ *  tags visually consistent across every beauty center, and keeps the
+ *  owner-edit form a simple checkbox group rather than a tag editor. */
+export const BEAUTY_SERVICE_CATEGORIES = [
+  "العناية بالبشرة",
+  "تصفيف الشعر",
+  "جلسات الليزر",
+  "المكياج",
+  "العناية بالأظافر",
+  "المساج والسبا",
+] as const;
 
 /** The one place every screen resolves entityType -> wording. A
  *  missing/unrecognized value (an old clinic doc from before this field
